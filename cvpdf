@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
+    <!-- UIkit CSS -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/uikit/3.0.0-rc.10/css/uikit.min.css" />
+
+    <!-- UIkit JS -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/uikit/3.0.0-rc.10/js/uikit.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/uikit/3.0.0-rc.10/js/uikit-icons.min.js"></script>
+    <link rel='shortcut icon' type='image/x-icon' href="favicon.ico" />
+
+    <style>
+        #pad {
+            margin-top: 10px;
+            padding: 0 40px;
+        }
+
+        #pad2 {
+            margin-top: 10px;
+            padding: 0 40px;
+        }
+    </style>
+    <title>CASTEFUL WORLD</title>
+</head>
+<body>
+    <div class="uk-grid-collapse uk-child-width-expand@s" uk-grid>
+        <div>
+                        <div id="cv" class="uk-section uk-section-small uk-section-muted">
+                            <div class="uk-container uk-container-large">
+
+                                <h3>RESUME</h3>
+
+                                <div class="uk-grid-match  uk-child-width-1-2@m" uk-grid>
+                                    <div>
+                                        <dl class="uk-description-list uk-description-list-divider">
+                                            <dt><span uk-icon="user"></span> Personal Info: </dt>
+                                            <div class="uk-column-1-2">
+                                                <dl class="uk-description-list" id="pad">
+                                                    <dt><span uk-icon="happy"></span> Name:</dt>
+                                                    <dd> Dmitry Lebed</dd>
+                                                    <dt><span uk-icon="receiver"></span> Phone:</dt>
+                                                    <dd> 0639594219</dd>
+                                                </dl>
+                                            </div>
+                                            <div class="uk-column-1-2">
+                                                <dl class="uk-description-list" id="pad">
+
+                                                    <dt><span uk-icon="mail"></span> Mail:</dt>
+                                                    <dd>casteful@gmail.com</dd>
+                                                    <dt><span uk-icon="world"></span> Site:</dt>
+                                                    <dd>casteful.github.io</dd>
+                                                </dl>
+                                            </div>
+                                            <dd>
+                                                <dl class="uk-description-list" id="pad">
+                                                    <dt><span uk-icon="info"></span> Overview:</dt>
+                                                    <dd>
+                                                        I have 6+ years experience in developing software
+                                                        using C# (.NET) and Unity Engine, Unity assets and new Unity features such as HDRP/URP, Cinemachine, Dots, etc. Also I have
+                                                        good knowledge of COP, Unit Testing, Design Patterns,
+                                                        S.O.L.I.D, experience
+                                                        in C, C++, Vex, Python, Java, JS, OpenGL,
+                                                        Shader programming languages and creating
+                                                        assets for Unity and Blender.<br><br>
+                                                        Creating games and applications is my passion,
+                                                        so I take pleasure from the development of
+                                                        high-quality, polished products, which run successfully
+                                                        afterwards.<br><br> I'm familiar with music production (Ableton, Reaper),
+                                                        concept drawing, UI design, lowpoly/highpoly modeling,
+                                                        retopologizing, texturing, baking maps, handpainting
+                                                        using Maya, 3ds Max, Cinema 4D, Blender, Substance, 3D-Coat, Modo, Houdini.
+
+                                                        <br><br>I’m a huge fan of automation, clean code and enthusiast of software craftsmanship.
+
+                                                    </dd>
+                                                </dl>
+                                            </dd>
+                                            <dt><span uk-icon="settings"></span> Dev skills: </dt>
+                                            <dd>
+                                                <dl class="uk-description-list" id="pad">
+                                                    <dt><span uk-icon="world"></span> Languares:</dt>
+                                                    <dd> • C#, C/C++, PYTHON, VEX, MEL, JS (React, React Native), JAVA, HLSL</dd>
+                                                    <dt><span uk-icon="cog"></span> Software Development:</dt>
+                                                    <dd>
+                                                        • Proficient in C# and Unity, including scriptng, textures, GUI, asset integration, animation, audio<br>
+                                                        • Integration of third-party SDK, Plugins, API's, Ads, Analytics SDK, REST API, Interacting with web browser's back-ends<br>
+                                                        • Design and create well-commented, clean, scalable and easily maintainable code.<br>
+                                                        • Cross-platform development.<br>
+                                                        • Design Patterns, SOLID, MVVM, MVC<br>
+                                                        • Experienced in workflow tools development<br>
+                                                        • Experienced with TDD: xUnit, NUnit<br>
+                                                        • Experienced with DI frameforks: Zenject, Autofac, Ninject, Unity, Microsoft DI - services<br>
+                                                        • Unity (Native C++/Obj-C/Java plugins, Photon, ECS, Wwise), Git (Bitbucket, Gitlab) <br>
+                                                        • Custom C++ OPEN-GL rendering<br>
+                                                        • Houdini, Maya, Blender, Substance, C4D, 3ds Max, UE4<br>
+                                                        • After Effects, Photoshop, etc
+                                                    </dd>
+                                                    <dt><span uk-icon="info"></span> Theory:</dt>
+                                                    <dd>
+                                                        • Vector, Linear Algebra, Trigonometry, Projections<br>
+                                                        • Transformations, Algorithms, Data structures<br>
+                                                        • Optimization techniques
+                                                    </dd>
+                                                    <dt><span uk-icon="info"></span> Project Planning and Tracking:</dt>
+                                                    <dd>• Jira/Asana - Scrum, Kanban</dd>
+                                                    <dt><span uk-icon="info"></span> Quality Management:</dt>
+                                                    <dd>
+                                                        • TDD, pair programming, code reviews<br>
+                                                        • Testing: Unit, Functional, Performance, etc.
+                                                    </dd>
+                                                </dl>
+                                            </dd>
+                                        </dl>
+                                    </div>
+                                    <div>
+                                        <dl class="uk-description-list uk-description-list-divider">
+
+                                            <dt><span uk-icon="cog"></span> Experience:</dt>
+                                            <dd>
+                                                <dl class="uk-description-list" id="pad">
+
+                                                    <dt><span uk-icon="clock"></span> 06.2020-12.2021:</dt>
+                                                    <dd id="pad2">
+                                                        <b>• Program-Ace </b> <br>
+                                                        <span class="uk-text-small">Senior Software developer</span>
+
+                                                        <br>- Creating and estimating RFPs, interviewing new unity candidates.
+                                                        <br>- Leading a team of 4 people (3 developers, 1 tester).
+                                                        <br>- Architectured extensible core for VR simulations.
+                                                        <br>- Simulation for blueprint reading with dimensional data (construction works, architectural planning, etc).
+                                                        <br>- Building scriptable object architecture for a movie with interactive features - watch/play, based on timelines, custom tracks, unity events.
+                                                        <br>- Creating animations, level design, effects with shaders, sound controllers, particle system.
+                                                        <br>- Working on AR/VR sdk integrations.
+                                                        <br>- VRTK 3.3.0 (VRTK 4.0) and custom scripts based on it, UI for VR, Oculus Rift/Quest development.
+                                                        <br>- Async API such as Audio/Video/Texture via Unity WebRequests.
+                                                        <br>- Creating webhooks for CI/CD.
+                                                        <br>- Automated tests for some parts of the project.
+                                                        <br>- Working on Addressable/Resource management.
+                                                        <br>- Zenject (dependency injection framework for Unity.
+                                                        <br>- Direct manipulation of Unity Yaml files via Yaml parser.
+                                                        <br>- Building tools for extracting all of the information from animator - states, transitions, timings, clips, blend trees, behavior scripts.
+                                                        <br>
+                                                        - Coordinating with team members to meet the needs of a project.<br>
+                                                    </dd>
+
+                                                    <dt><span uk-icon="clock"></span> 01.2020-04.2020:</dt>
+                                                    <dd id="pad2">
+                                                        <b>• teamIL GAMES</b> <br>
+                                                        <span class="uk-text-small">Software developer</span>
+
+                                                        <br>- Programming the game as primary unity developer.
+                                                        <br>- Building tools for other members of the team.
+                                                        <br>- Tasks for CI + UCB, Github Actions for Tests/Build, validation
+                                                        <br>- Google Cloud Console - Tokens, Service Account.
+                                                        <br>- Creating Asset bundle manager with cached data.
+                                                        <br>- Shader development (CG,HLSL), custom supported shadows, Material/GPU instancing
+                                                        <br>- Particle Effects/Shaders with Cg.
+                                                        <br>- Facebook/Google/In-App service account integration.
+                                                        <br>
+                                                        - Using Unity features such as Jobs system, ECS and others.<br>
+                                                    </dd>
+
+
+
+
+                                                    <dt><span uk-icon="clock"></span> 06.2019-01.2020:</dt>
+                                                    <dd id="pad2">
+                                                        <b>• English Parrot</b>
+                                                        <br>
+                                                        <span class="uk-text-small">Software developer</span><br>
+                                                        - Participating in publishing.<br>
+                                                        - Integrating the translate and others SDK.<br>
+                                                        - Webbrowser inside Unity - online/offline HTML.<br>
+                                                        - Unity Ads, In-App Purchases, Admob plug-in for Unity, Localization Plug-in<br>
+                                                        - Working with IBM Watson Services.<br>
+                                                        - Designing and developing mechanics and relevant upgrades.<br>
+                                                        - Application UI/UX design, creating views for controllers.<br>
+                                                        - Development for mobile platforms IOS/Android.<br>
+                                                    </dd>
+                                                    <dt><span uk-icon="clock"></span> 04.2018-05.2019:</dt>
+                                                    <dd id="pad2">
+                                                        <b>• Lindenvalley Gmbh</b>
+                                                        <br>
+                                                        <span class="uk-text-small">Software developer</span>
+                                                        <br>- Working on AR/VR projects for Siemens Healthineers, Allianz, Head Nexo.<br>
+                                                        - Programming the apps as primary unity developer.<br>
+                                                        - Programming and executing UI, menus and functionalities.<br>
+                                                        - Integrating the Ads, GameAnalytics, App Store and Google Play SDK and others.<br>
+                                                        - Participating in publishing game on iOS and Android devices.<br>
+                                                        - Experience with QT framework ( 5.x) - signals.<br>
+                                                        - Reverse Engineering APKs, Android (Java).<br>
+                                                        - Postman automation (tests/variables/api).<br>
+                                                        - Google OAuth (native callbacks/RefreshToken).<br>
+                                                        - ASP.Net - rest API.<br>
+                                                        - Vuforia SDK (AR SDK)<br>
+                                                        - Firebase (Database, Remote, Notifications, Auth).<br>
+                                                    </dd>
+                                                    <dt><span uk-icon="clock"></span> 11.2016-03.2018:</dt>
+                                                    <dd id="pad2">
+                                                        <b>• HM Games</b>
+                                                        <br>
+                                                        <span class="uk-text-small">Software developer</span><br>
+                                                        - Building most of the core mechanics in the game.<br>
+                                                        - Includes movement, shooting, spawning, scoring, real-time and turn based multiplayer logic (GameSparks/Photon), etc.<br>
+                                                        - Database manipulation with custom data, serverless backend.<br>
+                                                        - FaceBook SDK, Google Play Games plug-in for Unity.<br>
+                                                        - Creating prototypes for HyperCasual games<br>
+
+                                                    </dd>
+                                                    <dt><span uk-icon="clock"></span> 08.2015-11.2016:</dt>
+                                                    <dd id="pad2">
+                                                        <b>• Soap-Boat Games</b>
+                                                        <br>
+                                                        <span class="uk-text-small">Software developer</span>
+                                                        <br>
+                                                        - Programming game scripts.<br>
+                                                        - Maintaining game engine systems and implemented game system logic.<br>
+                                                        - Controlling characters through artificial intelligence.<br>
+                                                        - Coordinating with game developers for formulation of game constraints.<br>
+                                                        - Producing audio features including character voices, music and sound effects for the game.<br>
+</dl>
+                                            </dd>
+                                        </dl>
+                                    </div>
+
+                                </div>
+                            </div>
+                        </div>
+
+        </div>
+    </div>
+</body>
+</html>
