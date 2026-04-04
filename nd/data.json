@@ -287,6 +287,12 @@
       "content": "Коханий з майбутнього",
       "anas_rate": 7,
       "dima_rate": 0
+    },
+    {
+      "id": 49,
+      "content": "Служниця",
+      "anas_rate": 6,
+      "dima_rate": 0
     }
   ],
   "watchlist": []
