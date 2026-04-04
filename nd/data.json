@@ -255,8 +255,8 @@
     {
       "id": 43,
       "content": "Test2",
-      "anas_rate": 0,
-      "dima_rate": 0
+      "anas_rate": 1,
+      "dima_rate": 2
     }
   ],
   "watchlist": []
