@@ -281,6 +281,12 @@
       "content": "Гамнет (2025)",
       "anas_rate": 8,
       "dima_rate": 8
+    },
+    {
+      "id": 48,
+      "content": "Коханий з майбутнього",
+      "anas_rate": 7,
+      "dima_rate": 0
     }
   ],
   "watchlist": []
