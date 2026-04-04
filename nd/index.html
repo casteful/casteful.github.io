@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Фiльми та серiали</title>
+    <link rel="stylesheet" href="style.css">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@4.6.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+
+<!-- ===== Setup Banner (shown when not configured) ===== -->
+<div id="setupBanner" class="setup-banner d-none">
+    <div class="container">
+        <div class="card setup-card">
+            <div class="card-body text-center">
+                <h3>&#9881;&#65039; Налаштування</h3>
+                <p class="text-muted">Щоб зберігати та редагувати дані, налаштуйте доступ до GitHub репозиторію. Дані зберігатимуться у файлі <code>data.json</code> у вашому репозиторії.</p>
+                <div class="row setup-row">
+                    <div class="col-md-4">
+                        <label for="ghOwner"><b>GitHub Username / Org</b></label>
+                        <input type="text" class="form-control" id="ghOwner" placeholder="напр. myusername">
+                    </div>
+                    <div class="col-md-4">
+                        <label for="ghRepo"><b>Repository Name</b></label>
+                        <input type="text" class="form-control" id="ghRepo" placeholder="напр. movie-ratings">
+                    </div>
+                    <div class="col-md-4">
+                        <label for="ghToken"><b>Personal Access Token</b></label>
+                        <input type="password" class="form-control" id="ghToken" placeholder="ghp_xxxxxxxxxxxx">
+                    </div>
+                </div>
+                <div class="mt-3">
+                    <button class="btn btn-primary btn-lg" onclick="saveConfig()">Зберегти та Підключити</button>
+                </div>
+                <div class="mt-3 text-muted small">
+                    <p>Token зберігається лише у вашому браузері. Поділіться ним з другом, щоб він теж міг редагувати.</p>
+                    <p>Потрібен token з правом <code>repo</code> (Full control of private repositories).</p>
+                    <p><a href="https://github.com/settings/tokens/new" target="_blank">&#128279; Створити новий token</a></p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ===== Connection Status Bar ===== -->
+<div id="statusBar" class="status-bar d-none">
+    <div class="container d-flex justify-content-between align-items-center">
+        <div id="statusText" class="status-text">
+            <span class="status-dot"></span> Підключено
+        </div>
+        <div>
+            <span class="text-muted small" id="repoInfo"></span>
+            <button class="btn btn-sm btn-outline-light ml-2" onclick="editConfig()">&#9881;&#65039; Налаштування</button>
+        </div>
+    </div>
+</div>
+
+<!-- ===== Loading Overlay ===== -->
+<div id="loadingOverlay" class="loading-overlay d-none">
+    <div class="spinner-border text-primary" role="status">
+        <span class="sr-only">Завантаження...</span>
+    </div>
+    <p class="mt-2">Завантаження даних...</p>
+</div>
+
+<!-- ===== Main App ===== -->
+<div class="container-fluid main-content">
+    <div class="page-header">
+        <h1 class="main-title">
+            Фiльми та серiали
+            <small class="text-muted">
+                <button type="button" class="btn btn-link version-btn" data-toggle="modal" data-target="#versionModal">
+                    ver:3.0
+                </button>
+            </small>
+        </h1>
+        <p class="subtitle">Рейтинг фiльмiв та серiалiв вiд Анастасiї та Дмитра</p>
+    </div>
+
+    <!-- Navigation Tabs -->
+    <ul class="nav nav-pills nav-justified" role="tablist" id="mainTabs">
+        <li class="nav-item">
+            <a class="nav-link active" data-toggle="pill" href="#watched">
+                &#127916; Переглянуті фільми та серіали
+            </a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link" data-toggle="pill" href="#watchlist">
+                &#128203; Подивитися наступного разу
+            </a>
+        </li>
+    </ul>
+
+    <div class="tab-content">
+
+        <!-- ===== TAB 1: Watched Movies ===== -->
+        <div id="watched" class="container tab-pane active">
+            <br>
+
+            <!-- Add Film Form -->
+            <div class="card form-card">
+                <div class="card-body">
+                    <h5 class="card-title form-title">&#10024; Додати фільм або серіал</h5>
+                    <form id="addMovieForm" onsubmit="return false;">
+                        <div class="form-row align-items-end">
+                            <div class="form-group col-md-4">
+                                <label for="filmName"><b>Назва</b></label>
+                                <input type="text" class="form-control" id="filmName"
+                                       placeholder="Назва фiльму чи серiалу" required>
+                            </div>
+                            <div class="form-group col-md-3">
+                                <label for="anasRate"><b>Оцiнка Анастасiї</b></label>
+                                <div class="input-group">
+                                    <input type="number" class="form-control rate-input" id="anasRate"
+                                           min="0" max="10" value="0" required>
+                                    <div class="input-group-append">
+                                        <span class="input-group-text">/10</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="form-group col-md-3">
+                                <label for="dimaRate"><b>Оцiнка Дмитра</b></label>
+                                <div class="input-group">
+                                    <input type="number" class="form-control rate-input" id="dimaRate"
+                                           min="0" max="10" value="0" required>
+                                    <div class="input-group-append">
+                                        <span class="input-group-text">/10</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="form-group col-md-2">
+                                <button type="submit" class="btn btn-primary btn-block add-btn" onclick="addMovie()">
+                                    Додати
+                                </button>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Stats Summary -->
+            <div class="stats-bar" id="statsBar">
+                <span class="stat-item">
+                    <span class="stat-label">Всього:</span>
+                    <span class="stat-value" id="totalCount">0</span>
+                </span>
+                <span class="stat-divider">|</span>
+                <span class="stat-item">
+                    <span class="stat-label">Середня оцiнка:</span>
+                    <span class="stat-value" id="totalAvg">0.0</span>
+                </span>
+                <span class="stat-divider">|</span>
+                <span class="stat-item">
+                    <span class="stat-label">Середня загальна:</span>
+                    <span class="stat-value" id="totalCombined">0.0</span>
+                </span>
+            </div>
+
+            <!-- Movies Table -->
+            <div class="table-responsive">
+                <table class="table table-bordered table-hover movies-table" id="moviesTable">
+                    <thead>
+                        <tr>
+                            <th class="col-num">#</th>
+                            <th class="col-name">Назва</th>
+                            <th class="col-rate sortable" onclick="sortTable(2)">
+                                Оцiнка Анастасiї <span class="sort-icon" id="sortIcon2"></span>
+                            </th>
+                            <th class="col-rate sortable" onclick="sortTable(3)">
+                                Оцiнка Дмитра <span class="sort-icon" id="sortIcon3"></span>
+                            </th>
+                            <th class="col-rate sortable" onclick="sortTable(4)">
+                                Середня оцiнка <span class="sort-icon" id="sortIcon4"></span>
+                            </th>
+                            <th class="col-rate sortable" onclick="sortTable(5)">
+                                Загальна оцiнка <span class="sort-icon" id="sortIcon5"></span>
+                            </th>
+                            <th class="col-actions">Опцiї</th>
+                        </tr>
+                    </thead>
+                    <tbody id="moviesBody">
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- ===== TAB 2: Watchlist ===== -->
+        <div id="watchlist" class="container tab-pane fade">
+            <br>
+            <div class="text-center mb-4">
+                <button class="btn btn-success mr-2" onclick="openAddWatchlistModal()">
+                    &#10133; Додати фільм чи серіал для перегляду
+                </button>
+                <button class="btn btn-info" onclick="pickRandom()">
+                    &#127922; Вибрати випадковий фільм чи серіал
+                </button>
+            </div>
+
+            <div class="alert alert-info random-result d-none" id="randomResult">
+                <h5>&#127922; Випадковий вибір:</h5>
+                <p class="mb-0 font-weight-bold" id="randomMovieName"></p>
+            </div>
+
+            <div class="table-responsive">
+                <table class="table table-bordered table-hover movies-table" id="watchlistTable">
+                    <thead>
+                        <tr>
+                            <th class="sortable" onclick="sortWatchlistTable(0)">
+                                Назва <span class="sort-icon" id="sortIconW0"></span>
+                            </th>
+                            <th class="col-actions">Опцiї</th>
+                        </tr>
+                    </thead>
+                    <tbody id="watchlistBody">
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ===== Edit Movie Modal ===== -->
+<div class="modal fade" id="editModal" tabindex="-1" role="dialog" aria-hidden="true">
+    <div class="modal-dialog" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h4 class="modal-title"><b>&#9998; Редагувати фільм чи серіал</b></h4>
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <form id="editForm">
+                    <input type="hidden" id="editId">
+                    <div class="form-group">
+                        <label for="editName"><b>Назва</b></label>
+                        <input type="text" class="form-control" id="editName" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="editAnasRate"><b>Оцiнка Анастасiї</b></label>
+                        <div class="input-group">
+                            <input type="number" class="form-control" id="editAnasRate" min="0" max="10" required>
+                            <div class="input-group-append">
+                                <span class="input-group-text">/10</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label for="editDimaRate"><b>Оцiнка Дмитра</b></label>
+                        <div class="input-group">
+                            <input type="number" class="form-control" id="editDimaRate" min="0" max="10" required>
+                            <div class="input-group-append">
+                                <span class="input-group-text">/10</span>
+                            </div>
+                        </div>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-danger mr-auto" onclick="confirmDeleteMovie()">
+                    &#128465; Видалити
+                </button>
+                <button type="button" class="btn btn-secondary" data-dismiss="modal">Скасувати</button>
+                <button type="button" class="btn btn-primary" onclick="saveEdit()">
+                    &#128190; Зберегти
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ===== Add Watchlist Item Modal ===== -->
+<div class="modal fade" id="addWatchlistModal" tabindex="-1" role="dialog" aria-hidden="true">
+    <div class="modal-dialog" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h4 class="modal-title"><b>&#10133; Додати для перегляду</b></h4>
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <form id="watchlistForm">
+                    <div class="form-group">
+                        <label for="watchlistName"><b>Назва фільму чи серіалу</b></label>
+                        <input type="text" class="form-control" id="watchlistName"
+                               placeholder="Назва фiльму чи серiалу" required>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-dismiss="modal">Скасувати</button>
+                <button type="button" class="btn btn-success" onclick="addToWatchlist()">Додати</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ===== Delete Confirmation Modal ===== -->
+<div class="modal fade" id="deleteConfirmModal" tabindex="-1" role="dialog" aria-hidden="true">
+    <div class="modal-dialog modal-sm modal-dialog-centered" role="document">
+        <div class="modal-content">
+            <div class="modal-header bg-danger text-white">
+                <h5 class="modal-title">&#9888;&#65039; Підтвердження</h5>
+                <button type="button" class="close text-white" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <p>Ви впевнені, що хочете видалити?</p>
+                <p class="font-weight-bold text-danger" id="deleteConfirmName"></p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-dismiss="modal">Скасувати</button>
+                <button type="button" class="btn btn-danger" id="confirmDeleteBtn">Видалити</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ===== Version History Modal ===== -->
+<div class="modal fade" id="versionModal" tabindex="-1" role="dialog" aria-hidden="true">
+    <div class="modal-dialog modal-lg" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h4 class="modal-title"><b>&#128336; Історія змін</b></h4>
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <div class="modal-body version-history">
+                <h5><dt>Version 3.0</dt></h5>
+                <h6><dd><ul>
+                    <li>Повністю клієнтський додаток для GitHub Pages.</li>
+                    <li>Дані зберігаються у файлі data.json у GitHub репозиторії.</li>
+                    <li>Жодних серверів чи баз даних — все працює через GitHub API.</li>
+                    <li>Один спільний токен для двох користувачів.</li>
+                    <li>Оновлений дизайн з використанням Bootstrap 4.</li>
+                </ul></dd></h6>
+                <h5><dt>Version 2.4</dt></h5>
+                <h6><dd><ul>
+                    <li>Базу даних перенесено на Aiven.io.</li>
+                    <li>Репозиторій перенесено на Vercel.com.</li>
+                </ul></dd></h6>
+                <h5><dt>Version 2.3</dt></h5>
+                <h6><dd><ul>
+                    <li>Виправлено конфлікти при додаванні ID.</li>
+                    <li>Прибрано день перегляду фільму чи серіалу.</li>
+                </ul></dd></h6>
+                <h5><dt>Version 2.2</dt></h5>
+                <h6><dd><ul>
+                    <li>Базу даних перенесено на Timescale.com.</li>
+                </ul></dd></h6>
+                <h5><dt>Version 2.1</dt></h5>
+                <h6><dd><ul>
+                    <li>Базу даних перенесено на Render.com.</li>
+                    <li>Репозиторій перенесено на Koyeb.com.</li>
+                </ul></dd></h6>
+                <h5><dt>Version 2.0</dt></h5>
+                <h6><dd><ul>
+                    <li>Виправлено сортування по всіх колонках.</li>
+                    <li>Додано індекс та середній рейтинг фільму чи серіалу.</li>
+                </ul></dd></h6>
+                <h5><dt>Version 1.5</dt></h5>
+                <h6><dd><ul>
+                    <li>Доданий день перегляду фільму чи серіалу.</li>
+                    <li>Додано загальний рейтинг фільму чи серіалу.</li>
+                    <li>Прибрана кнопка видалити в "Переглянуті фільми чи серіали".</li>
+                    <li>Виправлена кнопка видалити в "Подивитися наступного разу".</li>
+                </ul></dd></h6>
+                <h5><dt>Version 1.4</dt></h5>
+                <h6><dd><ul>
+                    <li>Сортування оцінок відображається коректно.</li>
+                    <li>Додана перевірка перед видаленням фільму чи серіалу.</li>
+                </ul></dd></h6>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-dismiss="modal">Закрити</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ===== Toast Container ===== -->
+<div class="toast-container" id="toastContainer"></div>
+
+<script src="https://code.jquery.com/jquery-3.6.0.slim.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@4.6.2/dist/js/bootstrap.bundle.min.js"></script>
+<script src="app.js"></script>
+
+</body>
+</html>
