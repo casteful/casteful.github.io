@@ -4,11 +4,44 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Фiльми та серiали</title>
-    <link rel="stylesheet" href="style.css?v=3.2">
+    <link rel="stylesheet" href="style.css?v=4.0">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@4.6.2/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 </head>
 <body>
+
+<!-- ===== Token Entry Overlay ===== -->
+<div id="tokenOverlay" class="token-overlay d-none">
+    <div class="token-card">
+        <div class="token-icon">&#128274;</div>
+        <h2 class="token-title">Введіть GitHub Token</h2>
+        <p class="token-desc">
+            Щоб додаток міг зберігати дані, потрібен Personal Access Token з правом <b>repo</b>.<br>
+            Токен зберігається лише у вашому браузері та ніде не відправляється.
+        </p>
+        <div class="token-form">
+            <input type="password" class="form-control token-input" id="tokenInput"
+                   placeholder="ghp_xxxxxxxxxxxxxxxxxxxx">
+            <div class="token-error text-danger small d-none" id="tokenError"></div>
+            <button class="btn btn-primary token-submit-btn" id="tokenSubmitBtn" onclick="submitToken()">
+                &#128274; Зберегти
+            </button>
+        </div>
+        <div class="token-help">
+            <details>
+                <summary>Як створити токен?</summary>
+                <ol>
+                    <li>Відкрийте <a href="https://github.com/settings/tokens/new" target="_blank" rel="noopener">github.com/settings/tokens/new</a></li>
+                    <li>В полі <b>Note</b> напишіть назву (наприклад: "movie-app")</li>
+                    <li>Оберіть термін дії <b>No expiration</b> (або будь-який інший)</li>
+                    <li>Під <b>Select scopes</b> поставте галочку на <b>repo</b> (весь розділ)</li>
+                    <li>Натисніть <b>Generate token</b> внизу</li>
+                    <li>Скопіюйте токен і вставте сюди</li>
+                </ol>
+            </details>
+        </div>
+    </div>
+</div>
 
 <!-- ===== Connection Status Bar ===== -->
 <div id="statusBar" class="status-bar d-none">
@@ -17,7 +50,7 @@
             <span class="status-dot"></span> Підключено
         </div>
         <div>
-            <span class="text-muted small" id="repoInfo"></span>
+            <span class="text-muted small cursor-pointer" id="tokenStatusBtn" onclick="clearToken()" title="Змінити токен">&#128274;</span>
         </div>
     </div>
 </div>
@@ -37,7 +70,7 @@
             Фiльми та серiали
             <small class="text-muted">
                 <button type="button" class="btn btn-link version-btn" data-toggle="modal" data-target="#versionModal">
-                    ver:3.1
+                    ver:4.0
                 </button>
             </small>
         </h1>
@@ -296,6 +329,12 @@
                 </button>
             </div>
             <div class="modal-body version-history">
+                <h5><dt>Version 4.0</dt></h5>
+                <h6><dd><ul>
+                    <li>Токен GitHub більше не зберігається у коді.</li>
+                    <li>Токен вводиться один раз у браузері та зберігається локально.</li>
+                    <li>Автоматична перевірка токена при вході.</li>
+                </ul></dd></h6>
                 <h5><dt>Version 3.0</dt></h5>
                 <h6><dd><ul>
                     <li>Повністю клієнтський додаток для GitHub Pages.</li>
@@ -353,7 +392,7 @@
 
 <script src="https://code.jquery.com/jquery-3.6.0.slim.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@4.6.2/dist/js/bootstrap.bundle.min.js"></script>
-<script src="app.js?v=3.2"></script>
+<script src="app.js?v=4.0"></script>
 
 </body>
 </html>

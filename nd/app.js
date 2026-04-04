@@ -1,6 +1,8 @@
 /* ============================================
    Movie Ratings App — Main Application Logic
    Uses GitHub API to store data in data.json
+   Token is stored in browser localStorage only
+   (never committed to the repo)
    ============================================ */
 
 // ===== Global State =====
@@ -10,19 +12,31 @@ let currentSort = { col: -1, asc: true };
 let watchlistSort = { col: -1, asc: true };
 let isSaving = false;
 
-// ===== Configuration (hardcoded) =====
+// ===== Configuration (token is NOT hardcoded — stored in localStorage) =====
 const CONFIG = {
     owner: 'casteful',
     repo: 'casteful.github.io',
-    token: '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',
+    path: 'nd/data.json',
     branch: 'master'
 };
-const DATA_FILE = 'nd/data.json';
 const API_BASE = 'https://api.github.com';
+const TOKEN_KEY = 'movieApp_token';
+
+function getToken() {
+    return localStorage.getItem(TOKEN_KEY) || '';
+}
+
+function setToken(token) {
+    localStorage.setItem(TOKEN_KEY, token);
+}
+
+function hasToken() {
+    return !!getToken();
+}
 
 function getApiHeaders() {
     return {
-        'Authorization': `token ${CONFIG.token}`,
+        'Authorization': `token ${getToken()}`,
         'Accept': 'application/vnd.github.v3+json',
         'Content-Type': 'application/json'
     };
@@ -30,9 +44,79 @@ function getApiHeaders() {
 
 // ===== Initialization =====
 document.addEventListener('DOMContentLoaded', () => {
-    localStorage.removeItem('movieAppConfig');
-    initApp();
+    if (hasToken()) {
+        initApp();
+    } else {
+        showTokenOverlay(true);
+    }
 });
+
+// ===== Token Overlay =====
+function showTokenOverlay(show) {
+    const overlay = document.getElementById('tokenOverlay');
+    if (show) {
+        overlay.classList.remove('d-none');
+        // Focus on token input
+        setTimeout(() => document.getElementById('tokenInput').focus(), 100);
+    } else {
+        overlay.classList.add('d-none');
+    }
+}
+
+async function submitToken() {
+    const input = document.getElementById('tokenInput');
+    const token = input.value.trim();
+    const errorEl = document.getElementById('tokenError');
+
+    if (!token) {
+        errorEl.textContent = 'Введіть токен';
+        errorEl.classList.remove('d-none');
+        return;
+    }
+
+    // Validate token by making a test API call
+    errorEl.classList.add('d-none');
+    document.getElementById('tokenSubmitBtn').disabled = true;
+    document.getElementById('tokenSubmitBtn').innerHTML = '<span class="spinner-border spinner-border-sm"></span> Перевірка...';
+
+    try {
+        const url = `${API_BASE}/repos/${CONFIG.owner}/${CONFIG.repo}/contents/${CONFIG.path}`;
+        const response = await fetch(url, {
+            headers: {
+                'Authorization': `token ${token}`,
+                'Accept': 'application/vnd.github.v3+json'
+            }
+        });
+
+        if (!response.ok) {
+            if (response.status === 401) {
+                throw new Error('Токен недійсний або має неправильні права. Переконайтеся, що токен має scope "repo".');
+            } else if (response.status === 404) {
+                // File doesn't exist yet — that's ok, token works
+            } else {
+                throw new Error(`Помилка API: ${response.status}`);
+            }
+        }
+
+        // Token is valid!
+        setToken(token);
+        showTokenOverlay(false);
+        showToast('Токен збережено!', 'success');
+        initApp();
+
+    } catch (error) {
+        errorEl.textContent = error.message;
+        errorEl.classList.remove('d-none');
+        document.getElementById('tokenSubmitBtn').disabled = false;
+        document.getElementById('tokenSubmitBtn').innerHTML = '&#128274; Зберегти';
+    }
+}
+
+function clearToken() {
+    localStorage.removeItem(TOKEN_KEY);
+    showToast('Токен видалено. Сторінка буде перезавантажена.', 'info');
+    setTimeout(() => location.reload(), 1000);
+}
 
 // ===== App Initialization =====
 async function initApp() {
@@ -44,6 +128,12 @@ async function initApp() {
         document.querySelector('.status-dot').classList.remove('error');
     } catch (error) {
         console.error('Failed to initialize:', error);
+        if (error.status === 401) {
+            // Token is expired or invalid
+            showToast('Токен недійсний. Будь ласка, введіть новий.', 'error');
+            clearToken();
+            return;
+        }
         if (error.status === 404) {
             try {
                 appData = { movies: [], watchlist: [] };
@@ -71,7 +161,7 @@ async function initApp() {
 
 // ===== GitHub API — Read Data =====
 async function fetchData() {
-    const url = `${API_BASE}/repos/${CONFIG.owner}/${CONFIG.repo}/contents/${DATA_FILE}`;
+    const url = `${API_BASE}/repos/${CONFIG.owner}/${CONFIG.repo}/contents/${CONFIG.path}`;
 
     const response = await fetch(url, {
         headers: getApiHeaders()
@@ -110,7 +200,7 @@ async function pushData(commitMessage) {
 
     try {
         // Always fetch latest SHA before pushing to avoid conflicts
-        const url = `${API_BASE}/repos/${CONFIG.owner}/${CONFIG.repo}/contents/${DATA_FILE}`;
+        const url = `${API_BASE}/repos/${CONFIG.owner}/${CONFIG.repo}/contents/${CONFIG.path}`;
         const headResponse = await fetch(url, {
             headers: getApiHeaders()
         });
@@ -618,6 +708,11 @@ function escapeHtml(text) {
 
 // ===== Keyboard Shortcuts =====
 document.addEventListener('keydown', (e) => {
+    // Enter in token form
+    if (e.key === 'Enter' && document.activeElement.id === 'tokenInput') {
+        e.preventDefault();
+        submitToken();
+    }
     // Enter in add form
     if (e.key === 'Enter' && document.activeElement.closest('#addMovieForm')) {
         e.preventDefault();

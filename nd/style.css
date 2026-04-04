@@ -647,3 +647,146 @@ body {
 ::-webkit-scrollbar-thumb:hover {
     background: var(--text-secondary);
 }
+
+/* ===== Token Entry Overlay ===== */
+.token-overlay {
+    position: fixed;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    background: var(--bg-body);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 99999;
+    padding: 20px;
+}
+
+.token-card {
+    background: var(--bg-card);
+    border-radius: var(--radius-lg);
+    padding: 40px 36px;
+    max-width: 460px;
+    width: 100%;
+    box-shadow: var(--shadow-lg);
+    text-align: center;
+    border: 1px solid var(--border-color);
+}
+
+.token-icon {
+    font-size: 3rem;
+    margin-bottom: 16px;
+}
+
+.token-title {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin-bottom: 12px;
+}
+
+.token-desc {
+    color: var(--text-secondary);
+    font-size: 0.88rem;
+    line-height: 1.6;
+    margin-bottom: 24px;
+}
+
+.token-form {
+    text-align: left;
+    margin-bottom: 20px;
+}
+
+.token-input {
+    width: 100%;
+    padding: 12px 16px;
+    font-size: 0.95rem;
+    font-family: monospace;
+    letter-spacing: 0.5px;
+    margin-bottom: 8px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border-color);
+    background: var(--bg-input);
+    color: var(--text-primary);
+}
+
+.token-input:focus {
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px var(--primary-glow);
+    outline: none;
+}
+
+.token-error {
+    margin-bottom: 10px;
+    font-size: 0.82rem;
+}
+
+.token-submit-btn {
+    width: 100%;
+    padding: 12px;
+    font-size: 1rem;
+    font-weight: 600;
+    background: var(--primary);
+    border: none;
+    color: #fff;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    box-shadow: 0 2px 8px var(--primary-glow);
+}
+
+.token-submit-btn:hover {
+    background: var(--primary-hover);
+    box-shadow: 0 4px 16px var(--primary-glow);
+    transform: translateY(-1px);
+}
+
+.token-submit-btn:disabled {
+    opacity: 0.7;
+    cursor: not-allowed;
+    transform: none;
+}
+
+.token-help {
+    text-align: left;
+    border-top: 1px solid var(--border-color);
+    padding-top: 16px;
+}
+
+.token-help summary {
+    color: var(--primary);
+    cursor: pointer;
+    font-size: 0.85rem;
+    font-weight: 500;
+    margin-bottom: 10px;
+}
+
+.token-help summary:hover {
+    color: var(--primary-hover);
+}
+
+.token-help ol {
+    padding-left: 20px;
+    color: var(--text-secondary);
+    font-size: 0.82rem;
+    line-height: 1.8;
+    margin-bottom: 0;
+}
+
+.token-help a {
+    color: var(--primary);
+    text-decoration: underline;
+    word-break: break-all;
+}
+
+.token-help a:hover {
+    color: var(--primary-hover);
+}
+
+.cursor-pointer {
+    cursor: pointer;
+    opacity: 0.6;
+    transition: opacity 0.2s;
+}
+
+.cursor-pointer:hover {
+    opacity: 1;
+}
