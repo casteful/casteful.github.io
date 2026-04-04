@@ -30,6 +30,8 @@ function getApiHeaders() {
 
 // ===== Initialization =====
 document.addEventListener('DOMContentLoaded', () => {
+    // Clear any old config from localStorage (no longer needed)
+    localStorage.removeItem('movieAppConfig');
     initApp();
 });
 
