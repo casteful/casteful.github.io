@@ -87,56 +87,56 @@
     {
       "id": 15,
       "content": "Як я зустрів вашу маму",
-      "anas_rate": 10,
-      "dima_rate": 9
-    },
-    {
-      "id": 16,
-      "content": "Офіс",
-      "anas_rate": 10,
-      "dima_rate": 8
-    },
-    {
-      "id": 17,
-      "content": "Друзі",
       "anas_rate": 9,
       "dima_rate": 10
     },
     {
+      "id": 16,
+      "content": "Офіс",
+      "anas_rate": 8,
+      "dima_rate": 10
+    },
+    {
+      "id": 17,
+      "content": "Друзі",
+      "anas_rate": 10,
+      "dima_rate": 9
+    },
+    {
       "id": 18,
       "content": "Теорія великого вибуху",
-      "anas_rate": 0,
-      "dima_rate": 8
+      "anas_rate": 8,
+      "dima_rate": 0
     },
     {
       "id": 19,
       "content": "В усі тяжкі",
-      "anas_rate": 8,
-      "dima_rate": 7
+      "anas_rate": 7,
+      "dima_rate": 8
     },
     {
       "id": 20,
       "content": "Чорне дзеркало",
-      "anas_rate": 0,
-      "dima_rate": 8
+      "anas_rate": 8,
+      "dima_rate": 0
     },
     {
       "id": 21,
       "content": "Ти",
-      "anas_rate": 7,
-      "dima_rate": 9
+      "anas_rate": 9,
+      "dima_rate": 7
     },
     {
       "id": 22,
       "content": "Дивні дива",
-      "anas_rate": 0,
-      "dima_rate": 6
+      "anas_rate": 6,
+      "dima_rate": 0
     },
     {
       "id": 23,
       "content": "Останні з нас",
-      "anas_rate": 10,
-      "dima_rate": 9
+      "anas_rate": 9,
+      "dima_rate": 10
     },
     {
       "id": 24,
@@ -147,14 +147,14 @@
     {
       "id": 25,
       "content": "Антарктида",
-      "anas_rate": 7,
-      "dima_rate": 8
+      "anas_rate": 8,
+      "dima_rate": 7
     },
     {
       "id": 26,
       "content": "Вікі Крістіна Барселона",
-      "anas_rate": 7,
-      "dima_rate": 6
+      "anas_rate": 6,
+      "dima_rate": 7
     },
     {
       "id": 27,
@@ -172,13 +172,13 @@
       "id": 29,
       "content": "Довга хода",
       "anas_rate": 7,
-      "dima_rate": 0
+      "dima_rate": 7
     },
     {
       "id": 30,
       "content": "Невірна (2002)",
-      "anas_rate": 7,
-      "dima_rate": 8
+      "anas_rate": 8,
+      "dima_rate": 7
     },
     {
       "id": 31,
@@ -189,14 +189,14 @@
     {
       "id": 32,
       "content": "Солодкий листопад",
-      "anas_rate": 7,
-      "dima_rate": 8
+      "anas_rate": 8,
+      "dima_rate": 7
     },
     {
       "id": 33,
       "content": "Нірджа",
-      "anas_rate": 7,
-      "dima_rate": 0
+      "anas_rate": 0,
+      "dima_rate": 7
     },
     {
       "id": 34,
@@ -207,8 +207,8 @@
     {
       "id": 35,
       "content": "Легенда (2025)",
-      "anas_rate": 5,
-      "dima_rate": 0
+      "anas_rate": 0,
+      "dima_rate": 5
     },
     {
       "id": 36,
@@ -225,14 +225,14 @@
     {
       "id": 38,
       "content": "З міркувань совісті",
-      "anas_rate": 8,
-      "dima_rate": 9
+      "anas_rate": 9,
+      "dima_rate": 8
     },
     {
       "id": 39,
       "content": "Грабіжник за покликанням",
-      "anas_rate": 8,
-      "dima_rate": 0
+      "anas_rate": 0,
+      "dima_rate": 8
     },
     {
       "id": 40,
@@ -243,14 +243,14 @@
     {
       "id": 41,
       "content": "Людина, що біжить",
-      "anas_rate": 6,
-      "dima_rate": 0
+      "anas_rate": 0,
+      "dima_rate": 6
     },
     {
       "id": 42,
       "content": "Аватар: Вогонь і попіл",
-      "anas_rate": 7,
-      "dima_rate": 0
+      "anas_rate": 0,
+      "dima_rate": 7
     },
     {
       "id": 43,
