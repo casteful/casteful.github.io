@@ -6,7 +6,7 @@
 // ===== Global State =====
 let appData = { movies: [], watchlist: [] };
 let fileSha = null;         // SHA of data.json on GitHub (needed for updates)
-let currentSort = { col: -1, asc: true };
+let currentSort = { col: 0, asc: false };  // Default: newest first (by ID descending)
 let watchlistSort = { col: -1, asc: true };
 let isSaving = false;
 
@@ -181,23 +181,18 @@ function renderMoviesTable() {
     const movies = [...appData.movies];
 
     // Apply sort
-    if (currentSort.col >= 0) {
-        const dir = currentSort.asc ? 1 : -1;
-        movies.sort((a, b) => {
-            let valA, valB;
-            switch (currentSort.col) {
-                case 2: valA = a.anas_rate; valB = b.anas_rate; break;
-                case 3: valA = a.dima_rate; valB = b.dima_rate; break;
-                case 4:
-                    valA = (a.anas_rate + a.dima_rate) / 2;
-                    valB = (b.anas_rate + b.dima_rate) / 2;
-                    break;
-                case 5: valA = a.anas_rate + a.dima_rate; valB = b.anas_rate + b.dima_rate; break;
-                default: return 0;
-            }
-            return (valA - valB) * dir;
-        });
-    }
+    const dir = currentSort.asc ? 1 : -1;
+    movies.sort((a, b) => {
+        switch (currentSort.col) {
+            case 0: return (a.id - b.id) * dir;  // Sort by ID (date added)
+            case 2: return (a.anas_rate - b.anas_rate) * dir;
+            case 3: return (a.dima_rate - b.dima_rate) * dir;
+            case 4:
+                return ((a.anas_rate + a.dima_rate) / 2 - (b.anas_rate + b.dima_rate) / 2) * dir;
+            case 5: return (a.anas_rate + a.dima_rate - b.anas_rate - b.dima_rate) * dir;
+            default: return (b.id - a.id);  // Fallback: newest first
+        }
+    });
 
     if (movies.length === 0) {
         tbody.innerHTML = `
@@ -540,7 +535,7 @@ function pickRandom() {
 // ===== Sorting =====
 function sortTable(colIndex) {
     // Clear all sort icons
-    for (let i = 2; i <= 5; i++) {
+    for (let i = 0; i <= 5; i++) {
         const icon = document.getElementById(`sortIcon${i}`);
         if (icon) icon.className = 'sort-icon';
     }
@@ -549,7 +544,7 @@ function sortTable(colIndex) {
         currentSort.asc = !currentSort.asc;
     } else {
         currentSort.col = colIndex;
-        currentSort.asc = false; // Descending by default
+        currentSort.asc = colIndex === 0 ? false : false; // Descending by default for all
     }
 
     const icon = document.getElementById(`sortIcon${colIndex}`);
