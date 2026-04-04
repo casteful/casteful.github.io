@@ -31,52 +31,6 @@ body {
     min-height: 100vh;
 }
 
-/* ===== Setup Banner ===== */
-.setup-banner {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    min-height: 100vh;
-    display: flex;
-    align-items: center;
-    padding: 40px 0;
-}
-
-.setup-card {
-    border: none;
-    border-radius: var(--radius);
-    box-shadow: var(--shadow-lg);
-    max-width: 700px;
-    margin: 0 auto;
-}
-
-.setup-card .card-body {
-    padding: 40px;
-}
-
-.setup-card h3 {
-    color: var(--dark);
-    margin-bottom: 10px;
-}
-
-.setup-card .text-muted {
-    font-size: 0.95rem;
-    line-height: 1.6;
-}
-
-.setup-card label {
-    text-align: left;
-}
-
-.setup-row {
-    margin-top: 20px;
-}
-
-.setup-card code {
-    background: var(--primary-light);
-    padding: 2px 6px;
-    border-radius: 4px;
-    font-size: 0.9em;
-}
-
 /* ===== Status Bar ===== */
 .status-bar {
     background: var(--dark);
@@ -597,14 +551,6 @@ body {
     .movies-table tbody td {
         padding: 8px 10px;
         font-size: 0.85rem;
-    }
-
-    .setup-card .card-body {
-        padding: 20px;
-    }
-
-    .setup-row > div {
-        margin-bottom: 10px;
     }
 }
 

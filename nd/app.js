@@ -10,110 +10,57 @@ let currentSort = { col: -1, asc: true };
 let watchlistSort = { col: -1, asc: true };
 let isSaving = false;
 
-// ===== Configuration =====
-const STORAGE_KEY = 'movieAppConfig';
-const DATA_FILE = 'data.json';
+// ===== Configuration (hardcoded) =====
+const CONFIG = {
+    owner: 'casteful',
+    repo: 'casteful.github.io',
+    token: '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',
+    branch: 'master'
+};
+const DATA_FILE = 'nd/data.json';
 const API_BASE = 'https://api.github.com';
 
-// ===== Initialization =====
-document.addEventListener('DOMContentLoaded', () => {
-    const config = getConfig();
-
-    if (config && config.owner && config.repo && config.token) {
-        initApp(config);
-    } else {
-        // Show setup banner
-        document.getElementById('setupBanner').classList.remove('d-none');
-        document.querySelector('.main-content').style.display = 'none';
-    }
-});
-
-function getConfig() {
-    try {
-        const raw = localStorage.getItem(STORAGE_KEY);
-        return raw ? JSON.parse(raw) : null;
-    } catch (e) {
-        return null;
-    }
-}
-
-function saveConfigToStorage(config) {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(config));
-}
-
-function getApiHeaders(token) {
+function getApiHeaders() {
     return {
-        'Authorization': `token ${token}`,
+        'Authorization': `token ${CONFIG.token}`,
         'Accept': 'application/vnd.github.v3+json',
         'Content-Type': 'application/json'
     };
 }
 
-// ===== Setup / Configuration =====
-function saveConfig() {
-    const owner = document.getElementById('ghOwner').value.trim();
-    const repo = document.getElementById('ghRepo').value.trim();
-    const token = document.getElementById('ghToken').value.trim();
-
-    if (!owner || !repo || !token) {
-        showToast('Будь ласка, заповніть всі поля', 'error');
-        return;
-    }
-
-    const config = { owner, repo, token };
-    saveConfigToStorage(config);
-
-    showToast('Конфігурацію збережено! Підключення...', 'info');
-    setTimeout(() => {
-        document.getElementById('setupBanner').classList.add('d-none');
-        initApp(config);
-    }, 500);
-}
-
-function editConfig() {
-    const config = getConfig();
-    if (!config) return;
-
-    document.getElementById('ghOwner').value = config.owner;
-    document.getElementById('ghRepo').value = config.repo;
-    document.getElementById('ghToken').value = config.token;
-
-    document.getElementById('setupBanner').classList.remove('d-none');
-    document.querySelector('.main-content').style.display = 'none';
-    document.getElementById('statusBar').classList.add('d-none');
-}
+// ===== Initialization =====
+document.addEventListener('DOMContentLoaded', () => {
+    initApp();
+});
 
 // ===== App Initialization =====
-async function initApp(config) {
+async function initApp() {
     showLoading(true);
 
     try {
-        // Test the config by reading data.json
-        await fetchData(config);
-        // Config works — show the app
-        document.getElementById('setupBanner').classList.add('d-none');
-        document.querySelector('.main-content').style.display = 'block';
+        await fetchData();
         document.getElementById('statusBar').classList.remove('d-none');
-        document.getElementById('statusText').querySelector('.status-dot').classList.remove('error');
-        document.getElementById('repoInfo').textContent = `${config.owner}/${config.repo}`;
+        document.querySelector('.status-dot').classList.remove('error');
     } catch (error) {
         console.error('Failed to initialize:', error);
-        // If data.json doesn't exist yet, create it
         if (error.status === 404) {
             try {
                 appData = { movies: [], watchlist: [] };
-                await pushData(config, 'Initial commit — create data.json');
-                document.getElementById('setupBanner').classList.add('d-none');
-                document.querySelector('.main-content').style.display = 'block';
+                await pushData('Initial commit — create data.json');
                 document.getElementById('statusBar').classList.remove('d-none');
-                document.getElementById('statusText').querySelector('.status-dot').classList.remove('error');
-                document.getElementById('repoInfo').textContent = `${config.owner}/${config.repo}`;
+                document.querySelector('.status-dot').classList.remove('error');
             } catch (createErr) {
                 console.error('Failed to create data.json:', createErr);
-                showSetupError(createErr.message);
+                document.getElementById('statusBar').classList.remove('d-none');
+                document.querySelector('.status-dot').classList.add('error');
+                document.querySelector('.status-text').innerHTML = '<span class="status-dot error"></span> Помилка підключення';
+                showToast(`Помилка: ${createErr.message}`, 'error');
             }
         } else {
-            showSetupError(error.message);
+            document.getElementById('statusBar').classList.remove('d-none');
+            document.querySelector('.status-dot').classList.add('error');
+            document.querySelector('.status-text').innerHTML = '<span class="status-dot error"></span> Помилка підключення';
+            showToast(`Помилка: ${error.message}`, 'error');
         }
     }
 
@@ -121,22 +68,12 @@ async function initApp(config) {
     renderAll();
 }
 
-function showSetupError(msg) {
-    document.getElementById('setupBanner').classList.remove('d-none');
-    document.querySelector('.main-content').style.display = 'none';
-    document.getElementById('statusBar').classList.add('d-none');
-    document.getElementById('statusText').querySelector('.status-dot').classList.add('error');
-    document.getElementById('statusText').innerHTML = '<span class="status-dot error"></span> Помилка підключення';
-    showToast(`Помилка: ${msg}`, 'error');
-}
-
 // ===== GitHub API — Read Data =====
-async function fetchData(config) {
-    const cfg = config || getConfig();
-    const url = `${API_BASE}/repos/${cfg.owner}/${cfg.repo}/contents/${DATA_FILE}`;
+async function fetchData() {
+    const url = `${API_BASE}/repos/${CONFIG.owner}/${CONFIG.repo}/contents/${DATA_FILE}`;
 
     const response = await fetch(url, {
-        headers: getApiHeaders(cfg.token)
+        headers: getApiHeaders()
     });
 
     if (!response.ok) {
@@ -162,9 +99,7 @@ async function fetchData(config) {
 }
 
 // ===== GitHub API — Write Data =====
-async function pushData(config, commitMessage) {
-    const cfg = config || getConfig();
-
+async function pushData(commitMessage) {
     if (isSaving) {
         throw new Error('Збереження вже триває...');
     }
@@ -174,9 +109,9 @@ async function pushData(config, commitMessage) {
 
     try {
         // Always fetch latest SHA before pushing to avoid conflicts
-        const url = `${API_BASE}/repos/${cfg.owner}/${cfg.repo}/contents/${DATA_FILE}`;
+        const url = `${API_BASE}/repos/${CONFIG.owner}/${CONFIG.repo}/contents/${DATA_FILE}`;
         const headResponse = await fetch(url, {
-            headers: getApiHeaders(cfg.token)
+            headers: getApiHeaders()
         });
 
         if (headResponse.ok) {
@@ -190,12 +125,12 @@ async function pushData(config, commitMessage) {
             message: commitMessage || 'Update movie ratings',
             content: content,
             sha: fileSha,
-            branch: 'main'
+            branch: CONFIG.branch
         };
 
         const response = await fetch(url, {
             method: 'PUT',
-            headers: getApiHeaders(cfg.token),
+            headers: getApiHeaders(),
             body: JSON.stringify(body)
         });
 
@@ -369,7 +304,7 @@ async function addMovie() {
     appData.movies.push(newMovie);
 
     try {
-        await pushData(null, `Додано: ${name}`);
+        await pushData(`Додано: ${name}`);
         showToast(`"${name}" додано!`, 'success');
 
         // Clear form
@@ -433,7 +368,7 @@ async function saveEdit() {
         const msg = oldName !== name
             ? `Оновлено: "${oldName}" → "${name}"`
             : `Оновлено оцінки: ${name}`;
-        await pushData(null, msg);
+        await pushData(msg);
         showToast(`"${name}" оновлено!`, 'success');
         $('#editModal').modal('hide');
         renderAll();
@@ -473,7 +408,7 @@ async function executeDeleteMovie() {
     const deletedName = deletedMovie.content;
 
     try {
-        await pushData(null, `Видалено: ${deletedName}`);
+        await pushData(`Видалено: ${deletedName}`);
         showToast(`"${deletedName}" видалено!`, 'success');
         pendingDeleteId = null;
         renderAll();
@@ -500,7 +435,7 @@ async function addToWatchlist() {
     appData.watchlist.push({ name });
 
     try {
-        await pushData(null, `Додано до списку: ${name}`);
+        await pushData(`Додано до списку: ${name}`);
         showToast(`"${name}" додано до списку!`, 'success');
         $('#addWatchlistModal').modal('hide');
         renderAll();
@@ -530,7 +465,7 @@ async function executeDeleteWatchlist() {
     const deletedItem = appData.watchlist.splice(pendingDeleteWatchlistIndex, 1)[0];
 
     try {
-        await pushData(null, `Видалено зі списку: ${deletedItem.name}`);
+        await pushData(`Видалено зі списку: ${deletedItem.name}`);
         showToast(`"${deletedItem.name}" видалено!`, 'success');
         pendingDeleteWatchlistIndex = null;
         renderAll();
@@ -556,7 +491,7 @@ async function moveToWatched(index) {
     appData.watchlist.splice(index, 1);
 
     try {
-        await pushData(null, `Переміщено до переглянутих: ${item.name}`);
+        await pushData(`Переміщено до переглянутих: ${item.name}`);
         showToast(`"${item.name}" переміщено!`, 'success');
         renderAll();
     } catch (error) {
