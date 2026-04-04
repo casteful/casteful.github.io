@@ -293,6 +293,12 @@
       "content": "Служниця",
       "anas_rate": 5,
       "dima_rate": 0
+    },
+    {
+      "id": 50,
+      "content": "У ліжку з ворогом",
+      "anas_rate": 8,
+      "dima_rate": 0
     }
   ],
   "watchlist": []
