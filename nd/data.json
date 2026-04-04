@@ -253,5 +253,9 @@
       "dima_rate": 0
     }
   ],
-  "watchlist": []
+  "watchlist": [
+    {
+      "name": "Test2"
+    }
+  ]
 }
