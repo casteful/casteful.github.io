@@ -1,47 +1,261 @@
 {
   "movies": [
-    {"id": 1, "content": "Аватар: Шлях води", "anas_rate": 7, "dima_rate": 6},
-    {"id": 2, "content": "Меню (2022)", "anas_rate": 6, "dima_rate": 6},
-    {"id": 3, "content": "Ножі наголо", "anas_rate": 8, "dima_rate": 8},
-    {"id": 4, "content": "Ножі наголо 2", "anas_rate": 7, "dima_rate": 6},
-    {"id": 5, "content": "Швидкісний потяг", "anas_rate": 7, "dima_rate": 6},
-    {"id": 6, "content": "Таємне життя Уолтера Мітті", "anas_rate": 8, "dima_rate": 9},
-    {"id": 7, "content": "Ноу (Nope)", "anas_rate": 7, "dima_rate": 7},
-    {"id": 8, "content": "Мій пес ідіот", "anas_rate": 7, "dima_rate": 7},
-    {"id": 9, "content": "Список останніх бажань", "anas_rate": 0, "dima_rate": 8},
-    {"id": 10, "content": "Любов і монстри", "anas_rate": 7, "dima_rate": 6},
-    {"id": 11, "content": "Костюм (2022)", "anas_rate": 7, "dima_rate": 7},
-    {"id": 12, "content": "Вавілон (2006)", "anas_rate": 0, "dima_rate": 8},
-    {"id": 13, "content": "Вавілон (2022)", "anas_rate": 4, "dima_rate": 5},
-    {"id": 14, "content": "Одержимість (2014)", "anas_rate": 8, "dima_rate": 7},
-    {"id": 15, "content": "Як я зустрів вашу маму", "anas_rate": 10, "dima_rate": 9},
-    {"id": 16, "content": "Офіс", "anas_rate": 10, "dima_rate": 8},
-    {"id": 17, "content": "Друзі", "anas_rate": 9, "dima_rate": 10},
-    {"id": 18, "content": "Теорія великого вибуху", "anas_rate": 0, "dima_rate": 8},
-    {"id": 19, "content": "В усі тяжкі", "anas_rate": 8, "dima_rate": 7},
-    {"id": 20, "content": "Чорне дзеркало", "anas_rate": 0, "dima_rate": 8},
-    {"id": 21, "content": "Ти", "anas_rate": 7, "dima_rate": 9},
-    {"id": 22, "content": "Дивні дива", "anas_rate": 0, "dima_rate": 6},
-    {"id": 23, "content": "Останні з нас", "anas_rate": 10, "dima_rate": 9},
-    {"id": 24, "content": "Роузи", "anas_rate": 7, "dima_rate": 7},
-    {"id": 25, "content": "Антарктида", "anas_rate": 7, "dima_rate": 8},
-    {"id": 26, "content": "Вікі Крістіна Барселона", "anas_rate": 7, "dima_rate": 6},
-    {"id": 27, "content": "Один день", "anas_rate": 7, "dima_rate": 7},
-    {"id": 28, "content": "Душевна кухня", "anas_rate": 6, "dima_rate": 6},
-    {"id": 29, "content": "Довга хода", "anas_rate": 7, "dima_rate": 0},
-    {"id": 30, "content": "Невірна (2002)", "anas_rate": 7, "dima_rate": 8},
-    {"id": 31, "content": "Коли Гаррі зустрів Саллі", "anas_rate": 7, "dima_rate": 7},
-    {"id": 32, "content": "Солодкий листопад", "anas_rate": 7, "dima_rate": 8},
-    {"id": 33, "content": "Нірджа", "anas_rate": 7, "dima_rate": 0},
-    {"id": 34, "content": "Я, «Побєда» і Берлін", "anas_rate": 7, "dima_rate": 7},
-    {"id": 35, "content": "Легенда (2025)", "anas_rate": 5, "dima_rate": 0},
-    {"id": 36, "content": "Кохання з попередженням", "anas_rate": 6, "dima_rate": 6},
-    {"id": 37, "content": "Ноттінг Гілл", "anas_rate": 7, "dima_rate": 7},
-    {"id": 38, "content": "З міркувань совісті", "anas_rate": 8, "dima_rate": 9},
-    {"id": 39, "content": "Грабіжник за покликанням", "anas_rate": 8, "dima_rate": 0},
-    {"id": 40, "content": "Франкенштейн (2025)", "anas_rate": 7, "dima_rate": 7},
-    {"id": 41, "content": "Людина, що біжить", "anas_rate": 6, "dima_rate": 0},
-    {"id": 42, "content": "Аватар: Вогонь і попіл", "anas_rate": 7, "dima_rate": 0}
+    {
+      "id": 1,
+      "content": "Аватар: Шлях води",
+      "anas_rate": 7,
+      "dima_rate": 6
+    },
+    {
+      "id": 2,
+      "content": "Меню (2022)",
+      "anas_rate": 6,
+      "dima_rate": 6
+    },
+    {
+      "id": 3,
+      "content": "Ножі наголо",
+      "anas_rate": 8,
+      "dima_rate": 8
+    },
+    {
+      "id": 4,
+      "content": "Ножі наголо 2",
+      "anas_rate": 7,
+      "dima_rate": 6
+    },
+    {
+      "id": 5,
+      "content": "Швидкісний потяг",
+      "anas_rate": 7,
+      "dima_rate": 6
+    },
+    {
+      "id": 6,
+      "content": "Таємне життя Уолтера Мітті",
+      "anas_rate": 8,
+      "dima_rate": 9
+    },
+    {
+      "id": 7,
+      "content": "Ноу (Nope)",
+      "anas_rate": 7,
+      "dima_rate": 7
+    },
+    {
+      "id": 8,
+      "content": "Мій пес ідіот",
+      "anas_rate": 7,
+      "dima_rate": 7
+    },
+    {
+      "id": 9,
+      "content": "Список останніх бажань",
+      "anas_rate": 0,
+      "dima_rate": 8
+    },
+    {
+      "id": 10,
+      "content": "Любов і монстри",
+      "anas_rate": 7,
+      "dima_rate": 6
+    },
+    {
+      "id": 11,
+      "content": "Костюм (2022)",
+      "anas_rate": 7,
+      "dima_rate": 7
+    },
+    {
+      "id": 12,
+      "content": "Вавілон (2006)",
+      "anas_rate": 0,
+      "dima_rate": 8
+    },
+    {
+      "id": 13,
+      "content": "Вавілон (2022)",
+      "anas_rate": 4,
+      "dima_rate": 5
+    },
+    {
+      "id": 14,
+      "content": "Одержимість (2014)",
+      "anas_rate": 8,
+      "dima_rate": 7
+    },
+    {
+      "id": 15,
+      "content": "Як я зустрів вашу маму",
+      "anas_rate": 10,
+      "dima_rate": 9
+    },
+    {
+      "id": 16,
+      "content": "Офіс",
+      "anas_rate": 10,
+      "dima_rate": 8
+    },
+    {
+      "id": 17,
+      "content": "Друзі",
+      "anas_rate": 9,
+      "dima_rate": 10
+    },
+    {
+      "id": 18,
+      "content": "Теорія великого вибуху",
+      "anas_rate": 0,
+      "dima_rate": 8
+    },
+    {
+      "id": 19,
+      "content": "В усі тяжкі",
+      "anas_rate": 8,
+      "dima_rate": 7
+    },
+    {
+      "id": 20,
+      "content": "Чорне дзеркало",
+      "anas_rate": 0,
+      "dima_rate": 8
+    },
+    {
+      "id": 21,
+      "content": "Ти",
+      "anas_rate": 7,
+      "dima_rate": 9
+    },
+    {
+      "id": 22,
+      "content": "Дивні дива",
+      "anas_rate": 0,
+      "dima_rate": 6
+    },
+    {
+      "id": 23,
+      "content": "Останні з нас",
+      "anas_rate": 10,
+      "dima_rate": 9
+    },
+    {
+      "id": 24,
+      "content": "Роузи",
+      "anas_rate": 7,
+      "dima_rate": 7
+    },
+    {
+      "id": 25,
+      "content": "Антарктида",
+      "anas_rate": 7,
+      "dima_rate": 8
+    },
+    {
+      "id": 26,
+      "content": "Вікі Крістіна Барселона",
+      "anas_rate": 7,
+      "dima_rate": 6
+    },
+    {
+      "id": 27,
+      "content": "Один день",
+      "anas_rate": 7,
+      "dima_rate": 7
+    },
+    {
+      "id": 28,
+      "content": "Душевна кухня",
+      "anas_rate": 6,
+      "dima_rate": 6
+    },
+    {
+      "id": 29,
+      "content": "Довга хода",
+      "anas_rate": 7,
+      "dima_rate": 0
+    },
+    {
+      "id": 30,
+      "content": "Невірна (2002)",
+      "anas_rate": 7,
+      "dima_rate": 8
+    },
+    {
+      "id": 31,
+      "content": "Коли Гаррі зустрів Саллі",
+      "anas_rate": 7,
+      "dima_rate": 7
+    },
+    {
+      "id": 32,
+      "content": "Солодкий листопад",
+      "anas_rate": 7,
+      "dima_rate": 8
+    },
+    {
+      "id": 33,
+      "content": "Нірджа",
+      "anas_rate": 7,
+      "dima_rate": 0
+    },
+    {
+      "id": 34,
+      "content": "Я, «Побєда» і Берлін",
+      "anas_rate": 7,
+      "dima_rate": 7
+    },
+    {
+      "id": 35,
+      "content": "Легенда (2025)",
+      "anas_rate": 5,
+      "dima_rate": 0
+    },
+    {
+      "id": 36,
+      "content": "Кохання з попередженням",
+      "anas_rate": 6,
+      "dima_rate": 6
+    },
+    {
+      "id": 37,
+      "content": "Ноттінг Гілл",
+      "anas_rate": 7,
+      "dima_rate": 7
+    },
+    {
+      "id": 38,
+      "content": "З міркувань совісті",
+      "anas_rate": 8,
+      "dima_rate": 9
+    },
+    {
+      "id": 39,
+      "content": "Грабіжник за покликанням",
+      "anas_rate": 8,
+      "dima_rate": 0
+    },
+    {
+      "id": 40,
+      "content": "Франкенштейн (2025)",
+      "anas_rate": 7,
+      "dima_rate": 7
+    },
+    {
+      "id": 41,
+      "content": "Людина, що біжить",
+      "anas_rate": 6,
+      "dima_rate": 0
+    },
+    {
+      "id": 42,
+      "content": "Аватар: Вогонь і попіл",
+      "anas_rate": 7,
+      "dima_rate": 0
+    }
   ],
-  "watchlist": []
+  "watchlist": [
+    {
+      "name": "Test"
+    }
+  ]
 }
