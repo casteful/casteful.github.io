@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Фiльми та серiали</title>
-    <link rel="stylesheet" href="style.css?v=3.0">
+    <link rel="stylesheet" href="style.css?v=3.1">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@4.6.2/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 </head>
@@ -17,7 +17,9 @@
             <span class="status-dot"></span> Підключено
         </div>
         <div>
-            <span class="text-muted small" id="repoInfo"></span>
+            <button class="theme-toggle" onclick="toggleTheme()" title="Змінити тему">
+                <span id="themeIcon">🌙</span>
+            </button>
         </div>
     </div>
 </div>
@@ -37,7 +39,7 @@
             Фiльми та серiали
             <small class="text-muted">
                 <button type="button" class="btn btn-link version-btn" data-toggle="modal" data-target="#versionModal">
-                    ver:3.0
+                    ver:3.1
                 </button>
             </small>
         </h1>
@@ -353,7 +355,7 @@
 
 <script src="https://code.jquery.com/jquery-3.6.0.slim.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@4.6.2/dist/js/bootstrap.bundle.min.js"></script>
-<script src="app.js?v=3.0"></script>
+<script src="app.js?v=3.1"></script>
 
 </body>
 </html>
