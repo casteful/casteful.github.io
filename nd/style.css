@@ -1,10 +1,9 @@
 /* ============================================
-   Movie Ratings App — Modern Theme
-   Light / Dark mode support
+   Movie Ratings App — Modern Light Theme
    ============================================ */
 
 :root {
-    /* Light theme (default) */
+    /* Theme */
     --primary: #6c5ce7;
     --primary-hover: #5a4bd1;
     --primary-light: #ede7ff;
@@ -47,59 +46,11 @@
     --rate-top-bg: #c3e6cb;
     --rate-top-text: #0b5132;
 
-    --toggle-bg: #ddd;
-    --toggle-icon: "☀️";
-}
-
-/* ===== Dark Theme ===== */
-[data-theme="dark"] {
-    --primary: #a29bfe;
-    --primary-hover: #8c83f7;
-    --primary-light: #2d2b55;
-    --primary-glow: rgba(162, 155, 254, 0.2);
-    --danger: #ff7675;
-    --danger-light: #3d2020;
-    --success: #55efc4;
-    --success-light: #1a3a32;
-    --info: #74b9ff;
-    --info-light: #1a2d45;
-    --warning: #ffeaa7;
-    --warning-text: #ffeaa7;
-
-    --bg-body: #1a1a2e;
-    --bg-card: #232342;
-    --bg-card-hover: #2a2a4a;
-    --bg-input: #2a2a4a;
-    --text-primary: #e8e8f0;
-    --text-secondary: #a0a0b8;
-    --text-muted: #6c6c85;
-    --border-color: #35355a;
-    --border-light: #2d2d50;
-    --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.2);
-    --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.3);
-    --shadow-lg: 0 8px 30px rgba(0, 0, 0, 0.4);
-
-    --th-bg: #2a2a4a;
-    --th-text: #b0b0cc;
-    --rate-zero-bg: #2a2a4a;
-    --rate-zero-text: #6c6c85;
-    --rate-low-bg: #3d2020;
-    --rate-low-text: #ff7675;
-    --rate-mid-bg: #3d3520;
-    --rate-mid-text: #ffeaa7;
-    --rate-high-bg: #1a3a32;
-    --rate-high-text: #55efc4;
-    --rate-top-bg: #1a4030;
-    --rate-top-text: #55efc4;
-
-    --toggle-bg: #6c5ce7;
-    --toggle-icon: "🌙";
 }
 
 /* ===== Base ===== */
 * {
     box-sizing: border-box;
-    transition: background-color 0.3s ease, color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
 body {
@@ -145,32 +96,6 @@ body {
 @keyframes pulse {
     0%, 100% { opacity: 1; }
     50% { opacity: 0.4; }
-}
-
-/* ===== Theme Toggle ===== */
-.theme-toggle {
-    background: var(--toggle-bg);
-    border: none;
-    width: 36px;
-    height: 36px;
-    border-radius: 50%;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 1.1rem;
-    box-shadow: var(--shadow-sm);
-    position: relative;
-    overflow: hidden;
-}
-
-.theme-toggle:hover {
-    transform: scale(1.1);
-    box-shadow: var(--shadow-md);
-}
-
-.theme-toggle:active {
-    transform: scale(0.95);
 }
 
 /* ===== Loading Overlay ===== */
@@ -570,9 +495,7 @@ body {
     background: rgba(0, 0, 0, 0.4) !important;
 }
 
-[data-theme="dark"] .modal-backdrop {
-    background: rgba(0, 0, 0, 0.6) !important;
-}
+
 
 /* ===== Version History ===== */
 .version-history h5 {

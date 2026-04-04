@@ -14,7 +14,7 @@ let isSaving = false;
 const CONFIG = {
     owner: 'casteful',
     repo: 'casteful.github.io',
-    token: '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',
+    token: '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',
     branch: 'master'
 };
 const DATA_FILE = 'nd/data.json';
@@ -28,35 +28,9 @@ function getApiHeaders() {
     };
 }
 
-// ===== Theme Toggle =====
-function toggleTheme() {
-    const html = document.documentElement;
-    const current = html.getAttribute('data-theme');
-    const next = current === 'dark' ? 'light' : 'dark';
-    html.setAttribute('data-theme', next);
-    localStorage.setItem('theme', next);
-    updateThemeIcon(next);
-}
-
-function updateThemeIcon(theme) {
-    const icon = document.getElementById('themeIcon');
-    if (icon) {
-        icon.textContent = theme === 'dark' ? '☀️' : '🌙';
-    }
-}
-
-function loadTheme() {
-    const saved = localStorage.getItem('theme');
-    const theme = saved || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
-    document.documentElement.setAttribute('data-theme', theme);
-    updateThemeIcon(theme);
-}
-
 // ===== Initialization =====
 document.addEventListener('DOMContentLoaded', () => {
-    // Clear any old config from localStorage (no longer needed)
     localStorage.removeItem('movieAppConfig');
-    loadTheme();
     initApp();
 });
 
