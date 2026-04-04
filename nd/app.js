@@ -14,7 +14,7 @@ let isSaving = false;
 const CONFIG = {
     owner: 'casteful',
     repo: 'casteful.github.io',
-    token: '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',
+    token: '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',
     branch: 'master'
 };
 const DATA_FILE = 'nd/data.json';
