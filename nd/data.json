@@ -323,6 +323,12 @@
       "content": "Ти-космос",
       "anas_rate": 9,
       "dima_rate": 9
+    },
+    {
+      "id": 55,
+      "content": "Буремний Перевал (2026)",
+      "anas_rate": 0,
+      "dima_rate": 7
     }
   ],
   "watchlist": []
