@@ -341,6 +341,12 @@
       "content": "Дівчина з каюти №10",
       "anas_rate": 6,
       "dima_rate": 6
+    },
+    {
+      "id": 58,
+      "content": "Вершина (2026)",
+      "anas_rate": 0,
+      "dima_rate": 7
     }
   ],
   "watchlist": []
