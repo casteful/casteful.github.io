@@ -359,6 +359,12 @@
       "content": "Любить / не любить",
       "anas_rate": 6,
       "dima_rate": 7
+    },
+    {
+      "id": 61,
+      "content": "Вівці-детективи",
+      "anas_rate": 0,
+      "dima_rate": 6
     }
   ],
   "watchlist": []
