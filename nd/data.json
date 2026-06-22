@@ -383,6 +383,12 @@
       "content": "Залаштунки",
       "anas_rate": 6,
       "dima_rate": 6
+    },
+    {
+      "id": 65,
+      "content": "Доказ (2005)",
+      "anas_rate": 0,
+      "dima_rate": 0
     }
   ],
   "watchlist": []
