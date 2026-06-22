@@ -377,6 +377,12 @@
       "content": "Талановитий містер Ріплі (1999)",
       "anas_rate": 0,
       "dima_rate": 8
+    },
+    {
+      "id": 64,
+      "content": "Залаштунки",
+      "anas_rate": 6,
+      "dima_rate": 6
     }
   ],
   "watchlist": []
