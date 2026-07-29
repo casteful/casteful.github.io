@@ -395,6 +395,12 @@
       "content": "Малкольм і Марі",
       "anas_rate": 7,
       "dima_rate": 6
+    },
+    {
+      "id": 67,
+      "content": "Душа",
+      "anas_rate": 0,
+      "dima_rate": 8
     }
   ],
   "watchlist": []
