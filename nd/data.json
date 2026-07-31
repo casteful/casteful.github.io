@@ -401,6 +401,12 @@
       "content": "Душа",
       "anas_rate": 8,
       "dima_rate": 8
+    },
+    {
+      "id": 68,
+      "content": "10 речей, які я в тобі ненавиджу",
+      "anas_rate": 0,
+      "dima_rate": 8
     }
   ],
   "watchlist": []
