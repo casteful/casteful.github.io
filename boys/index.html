@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="uk" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Кінобаза — спільний кіножурнал</title>
+<meta name="description" content="Спільний кіножурнал Dima, Deni, Yura та Ihor: 53 фільми, оцінки, статистика з 2019 року.">
+<meta name="color-scheme" content="dark light">
+<meta name="theme-color" content="#0a0d14">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='3' y='10' width='26' height='17' rx='3' fill='%23e5484d'/%3E%3Cpath d='M4 10l3.2-5h4.4L8.4 10H4zm7.6 0l3.2-5h4.4L16 10h-4.4zm7.6 0l3.2-5h4.4L23.6 10h-4.4z' fill='%23f5b544'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Unbounded:wght@500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/css/style.css">
+<script>
+/* Apply saved theme/language before first paint to avoid flashing */
+try{
+  var p=JSON.parse(localStorage.getItem('mb_prefs_v2')||'{}');
+  if(p.theme)document.documentElement.dataset.theme=p.theme;
+  if(p.lang)document.documentElement.lang=p.lang;
+}catch(e){}
+</script>
+</head>
+<body>
+<div class="bg-glow" aria-hidden="true"></div>
+
+<header class="site-header">
+  <div class="container header-inner">
+    <div class="brand">
+      <span class="brand-logo" id="brandLogo" aria-hidden="true"></span>
+      <div class="brand-text">
+        <h1 class="brand-title" data-i18n="appTitle">Кінобаза</h1>
+        <p class="brand-sub" id="brandSub"></p>
+      </div>
+    </div>
+    <div class="header-actions">
+      <div class="seg" role="group" aria-label="Мова / Language">
+        <button type="button" class="seg-btn" id="langUa">UA</button>
+        <button type="button" class="seg-btn" id="langEn">EN</button>
+      </div>
+      <button type="button" class="icon-btn" id="themeToggle" aria-label="Тема"></button>
+      <button type="button" class="btn btn-ghost" id="dataBtn">
+        <span class="btn-ic" id="dataBtnIcon" aria-hidden="true"></span>
+        <span data-i18n="dataBtn">Дані</span>
+        <span class="dot" id="unsyncedDot" hidden></span>
+      </button>
+      <button type="button" class="btn btn-primary" id="addBtn">
+        <span class="btn-ic" id="addBtnIcon" aria-hidden="true"></span>
+        <span data-i18n="addMovie">Додати фільм</span>
+      </button>
+    </div>
+  </div>
+</header>
+
+<main class="container">
+
+  <section class="stats" aria-label="Статистика">
+    <div class="reviewers-grid" id="reviewersGrid"></div>
+    <div class="summary-row">
+      <div class="card-soft summary-card" id="summaryCard"></div>
+      <div class="card-soft dist-card">
+        <h2 class="card-title" data-i18n="distTitle">Розподіл середніх оцінок</h2>
+        <div class="dist-chart" id="distChart"></div>
+      </div>
+    </div>
+  </section>
+
+  <section aria-label="Список фільмів">
+    <div class="toolbar">
+      <div class="search-wrap">
+        <span class="search-icon" id="searchIcon" aria-hidden="true"></span>
+        <input type="search" id="searchInput" class="search-input" placeholder="Пошук фільму…" data-i18n-placeholder="searchPlaceholder">
+      </div>
+      <select id="reviewerFilter" class="select" aria-label="Фільтр за глядачем"></select>
+      <select id="sortSelect" class="select" aria-label="Сортування"></select>
+      <div class="seg" id="viewToggle" role="group" aria-label="Вигляд">
+        <button type="button" class="seg-btn" id="viewTableBtn" aria-label="Таблиця"></button>
+        <button type="button" class="seg-btn" id="viewCardsBtn" aria-label="Картки"></button>
+      </div>
+    </div>
+
+    <div class="banner" id="sourceBanner" hidden></div>
+    <div id="listWrap"></div>
+    <p class="empty" id="emptyState" hidden></p>
+  </section>
+
+</main>
+
+<footer class="site-footer">
+  <div class="container footer-inner">
+    <p id="footerLeft"></p>
+    <p id="footerRight"></p>
+  </div>
+</footer>
+
+<!-- ============ Movie editor modal ============ -->
+<div class="modal-backdrop" id="movieModal" hidden>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="movieModalTitle">
+    <div class="modal-head">
+      <h2 id="movieModalTitle">Новий фільм</h2>
+      <button type="button" class="icon-btn" id="movieModalClose" aria-label="Закрити"></button>
+    </div>
+    <form id="movieForm" novalidate>
+      <div class="field">
+        <label for="movieTitle" data-i18n="fieldTitle">Назва</label>
+        <input type="text" id="movieTitle" maxlength="200" autocomplete="off" placeholder="Напр., Дюна (2021)">
+        <p class="field-err" id="titleErr" hidden data-i18n="errTitleRequired">Вкажіть назву</p>
+      </div>
+      <div class="field">
+        <label for="movieDate" data-i18n="fieldDate">Дата перегляду</label>
+        <input type="date" id="movieDate">
+      </div>
+      <fieldset class="rates-fieldset">
+        <legend data-i18n="ratesHeading">Оцінки</legend>
+        <div id="rateRows"></div>
+      </fieldset>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-danger-ghost" id="movieDeleteBtn" hidden>
+          <span class="btn-ic" id="delBtnIcon" aria-hidden="true"></span><span data-i18n="deleteBtn">Видалити</span>
+        </button>
+        <span class="spacer"></span>
+        <button type="button" class="btn btn-ghost" id="movieCancelBtn" data-i18n="cancel">Скасувати</button>
+        <button type="submit" class="btn btn-primary" data-i18n="save">Зберегти</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ============ Data manager modal ============ -->
+<div class="modal-backdrop" id="dataModal" hidden>
+  <div class="modal modal-wide" role="dialog" aria-modal="true" aria-labelledby="dataModalTitle">
+    <div class="modal-head">
+      <h2 id="dataModalTitle" data-i18n="dataModalTitle">Керування даними</h2>
+      <button type="button" class="icon-btn" id="dataModalClose" aria-label="Закрити"></button>
+    </div>
+
+    <div class="card-soft status-card">
+      <div class="status-row"><span class="status-label" data-i18n="sourceLabel">Джерело</span><span class="badge" id="dataSource"></span></div>
+      <div class="status-row"><span class="status-label" data-i18n="lastUpdated">Оновлено</span><span id="dataUpdated"></span></div>
+      <div class="status-row"><span class="status-label" data-i18n="syncState">Стан синхронізації</span><span class="badge" id="dataSynced"></span></div>
+      <div class="status-actions">
+        <button type="button" class="btn btn-ghost btn-sm" id="resetLocalBtn">
+          <span class="btn-ic" id="resetBtnIcon" aria-hidden="true"></span><span data-i18n="resetLocal">Скинути локальні зміни</span>
+        </button>
+      </div>
+    </div>
+
+    <div class="data-cols">
+      <section class="card-soft">
+        <h3 class="card-title" data-i18n="exportHeading">Експорт / Імпорт</h3>
+        <div class="btn-row">
+          <button type="button" class="btn btn-ghost" id="exportJsonBtn">
+            <span class="btn-ic" id="expJsonIcon" aria-hidden="true"></span><span data-i18n="exportJson">Завантажити JSON</span>
+          </button>
+          <button type="button" class="btn btn-ghost" id="exportCsvBtn">
+            <span class="btn-ic" id="expCsvIcon" aria-hidden="true"></span><span data-i18n="exportCsv">Завантажити CSV</span>
+          </button>
+        </div>
+        <div class="import-block">
+          <div class="radio-row">
+            <label class="radio"><input type="radio" name="importMode" value="merge" checked><span data-i18n="importMerge">Об'єднати за ID</span></label>
+            <label class="radio"><input type="radio" name="importMode" value="replace"><span data-i18n="importReplace">Замінити все</span></label>
+          </div>
+          <input type="file" id="importFile" accept=".json,application/json" hidden>
+          <button type="button" class="btn btn-ghost" id="importBtn">
+            <span class="btn-ic" id="impIcon" aria-hidden="true"></span><span data-i18n="importBtn">Імпортувати JSON</span>
+          </button>
+        </div>
+      </section>
+
+      <section class="card-soft">
+        <h3 class="card-title" data-i18n="ghHeading">Синхронізація з GitHub</h3>
+        <p class="gh-desc" data-i18n="ghDesc">Зберігає data/movies.json безпосередньо у репозиторій через GitHub API — зміни з'являються на сайті після оновлення сторінки.</p>
+        <div class="gh-grid">
+          <div class="field"><label for="ghOwner" data-i18n="ghOwner">Власник</label><input type="text" id="ghOwner" autocomplete="off" spellcheck="false"></div>
+          <div class="field"><label for="ghRepo" data-i18n="ghRepo">Репозиторій</label><input type="text" id="ghRepo" autocomplete="off" spellcheck="false"></div>
+          <div class="field"><label for="ghBranch" data-i18n="ghBranch">Гілка</label><input type="text" id="ghBranch" autocomplete="off" spellcheck="false"></div>
+          <div class="field field-wide"><label for="ghPath" data-i18n="ghPath">Шлях до файлу</label><input type="text" id="ghPath" autocomplete="off" spellcheck="false"><p class="hint" data-i18n="ghPathHint">Від кореня репозиторію, напр.: movies/data/movies.json</p></div>
+          <div class="field field-wide">
+            <label for="ghToken">GitHub token</label>
+            <input type="password" id="ghToken" autocomplete="off" spellcheck="false" placeholder="github_pat_…">
+            <p class="hint"><span data-i18n="ghTokenHint">Fine-grained PAT з правом «Contents: Read and write». Зберігається лише у вашому браузері.</span> <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener" data-i18n="ghTokenLink">Створити токен</a></p>
+          </div>
+          <div class="field field-wide"><label for="ghMsg" data-i18n="ghCommitMsg">Повідомлення коміту</label><input type="text" id="ghMsg" autocomplete="off"></div>
+        </div>
+        <div class="btn-row">
+          <button type="button" class="btn btn-ghost" id="ghTestBtn" data-i18n="ghTest">Перевірити</button>
+          <button type="button" class="btn btn-primary" id="ghSaveBtn">
+            <span class="btn-ic" id="ghSaveIcon" aria-hidden="true"></span><span data-i18n="ghSave">Зберегти в GitHub</span>
+          </button>
+        </div>
+        <p class="gh-status" id="ghStatus" hidden></p>
+      </section>
+    </div>
+  </div>
+</div>
+
+<!-- ============ Confirm modal ============ -->
+<div class="modal-backdrop" id="confirmModal" hidden>
+  <div class="modal modal-confirm" role="alertdialog" aria-modal="true" aria-labelledby="confirmTitle">
+    <h2 id="confirmTitle"></h2>
+    <p id="confirmBody"></p>
+    <div class="modal-actions">
+      <button type="button" class="btn btn-ghost" id="confirmNo"></button>
+      <button type="button" class="btn btn-danger" id="confirmYes"></button>
+    </div>
+  </div>
+</div>
+
+<div class="toast-host" id="toastHost" aria-live="polite"></div>
+
+<script type="application/json" id="seed-data">{"name": "movie_base", "version": 2, "updatedAt": "2025-10-01T22:19:13Z", "source": "DBeaver HTML export, 2025-10-01", "note": "rate 0 = not rated (reviewer did not watch); kept for DB fidelity", "reviewers": [{"key": "dima", "name": "Dima"}, {"key": "deni", "name": "Deni"}, {"key": "yura", "name": "Yura"}, {"key": "ihor", "name": "Ihor"}], "movies": [{"id": 55, "title": "Фантазм 2", "dima_rate": 7, "deni_rate": 7, "yura_rate": 9, "ihor_rate": 7, "date_created": "2025-08-30"}, {"id": 54, "title": "Повернення живих мерців 2", "dima_rate": 6, "deni_rate": 6, "yura_rate": 6, "ihor_rate": 6, "date_created": "2025-08-29"}, {"id": 53, "title": "Ніч демонів 3", "dima_rate": 7, "deni_rate": 8, "yura_rate": 8, "ihor_rate": 7, "date_created": "2025-08-29"}, {"id": 52, "title": "Дюна (2021)", "dima_rate": 8, "deni_rate": 8, "yura_rate": 9, "ihor_rate": 10, "date_created": "2021-09-19"}, {"id": 51, "title": "Сканнери", "dima_rate": 7, "deni_rate": 7, "yura_rate": 6, "ihor_rate": 6, "date_created": "2021-08-08"}, {"id": 50, "title": "Срібна куля", "dima_rate": 7, "deni_rate": 7, "yura_rate": 7, "ihor_rate": 0, "date_created": "2021-04-17"}, {"id": 49, "title": "Франкеншльондра", "dima_rate": 7, "deni_rate": 7, "yura_rate": 6, "ihor_rate": 7, "date_created": "2021-04-10"}, {"id": 48, "title": "Суспільство", "dima_rate": 4, "deni_rate": 4, "yura_rate": 4, "ihor_rate": 0, "date_created": "2021-04-10"}, {"id": 47, "title": "Виконавець бажань 2", "dima_rate": 6, "deni_rate": 6, "yura_rate": 6, "ihor_rate": 0, "date_created": "2021-04-10"}, {"id": 46, "title": "Виконавець бажань", "dima_rate": 6, "deni_rate": 7, "yura_rate": 8, "ihor_rate": 0, "date_created": "2021-04-10"}, {"id": 45, "title": "Маніяк-поліцейський", "dima_rate": 6, "deni_rate": 6, "yura_rate": 4, "ihor_rate": 5, "date_created": "2021-03-07"}, {"id": 44, "title": "Хронос", "dima_rate": 4, "deni_rate": 5, "yura_rate": 5, "ihor_rate": 2, "date_created": "2021-03-07"}, {"id": 43, "title": "Графиня Дракула", "dima_rate": 5, "deni_rate": 6, "yura_rate": 6, "ihor_rate": 0, "date_created": "2021-01-23"}, {"id": 42, "title": "Троль (1986)", "dima_rate": 5, "deni_rate": 5, "yura_rate": 4, "ihor_rate": 6, "date_created": "2021-01-23"}, {"id": 41, "title": "Жахаючий", "dima_rate": 3, "deni_rate": 5, "yura_rate": 4, "ihor_rate": 1, "date_created": "2020-12-05"}, {"id": 40, "title": "Ніч демонів 2", "dima_rate": 8, "deni_rate": 8, "yura_rate": 10, "ihor_rate": 6, "date_created": "2020-12-05"}, {"id": 39, "title": "Судоми", "dima_rate": 4, "deni_rate": 6, "yura_rate": 3, "ihor_rate": 0, "date_created": "2020-11-21"}, {"id": 38, "title": "Наречена реаніматора", "dima_rate": 3, "deni_rate": 3, "yura_rate": 3, "ihor_rate": 0, "date_created": "2020-11-21"}, {"id": 37, "title": "Сновида", "dima_rate": 7, "deni_rate": 7, "yura_rate": 7, "ihor_rate": 0, "date_created": "2020-11-15"}, {"id": 36, "title": "Ніч демонів", "dima_rate": 7, "deni_rate": 7, "yura_rate": 7, "ihor_rate": 0, "date_created": "2020-11-14"}, {"id": 35, "title": "Попутник", "dima_rate": 6, "deni_rate": 7, "yura_rate": 10, "ihor_rate": 5, "date_created": "2020-09-05"}, {"id": 34, "title": "ЗЛО", "dima_rate": 5, "deni_rate": 5, "yura_rate": 6, "ihor_rate": 0, "date_created": "2020-08-23"}, {"id": 33, "title": "Американський перевертень у Лондоні", "dima_rate": 7, "deni_rate": 7, "yura_rate": 6, "ihor_rate": 0, "date_created": "2020-08-23"}, {"id": 32, "title": "Крістіна", "dima_rate": 5, "deni_rate": 5, "yura_rate": 5, "ihor_rate": 0, "date_created": "2020-08-23"}, {"id": 31, "title": "Апостол", "dima_rate": 5, "deni_rate": 5, "yura_rate": 6, "ihor_rate": 4, "date_created": "2020-07-18"}, {"id": 30, "title": "Фантазм", "dima_rate": 4, "deni_rate": 4, "yura_rate": 5, "ihor_rate": 3, "date_created": "2020-06-13"}, {"id": 29, "title": "Зоряний десант", "dima_rate": 8, "deni_rate": 8, "yura_rate": 10, "ihor_rate": 8, "date_created": "2020-06-13"}, {"id": 28, "title": "Книга Мертвих", "dima_rate": 6, "deni_rate": 5, "yura_rate": 7, "ihor_rate": 4, "date_created": "2020-03-01"}, {"id": 27, "title": "Прокляття", "dima_rate": 4, "deni_rate": 5, "yura_rate": 5, "ihor_rate": 4, "date_created": "2020-03-01"}, {"id": 26, "title": "День звіра", "dima_rate": 4, "deni_rate": 4, "yura_rate": 5, "ihor_rate": 4, "date_created": "2020-01-25"}, {"id": 25, "title": "П'ятниця, 13-те (1980)", "dima_rate": 6, "deni_rate": 6, "yura_rate": 7, "ihor_rate": 0, "date_created": "2020-01-18"}, {"id": 24, "title": "Демон всередині", "dima_rate": 6, "deni_rate": 7, "yura_rate": 7, "ihor_rate": 8, "date_created": "2019-12-28"}, {"id": 23, "title": "Сіністер", "dima_rate": 7, "deni_rate": 7, "yura_rate": 6, "ihor_rate": 7, "date_created": "2019-12-28"}, {"id": 22, "title": "Телефон диявола", "dima_rate": 3, "deni_rate": 5, "yura_rate": 3, "ihor_rate": 4, "date_created": "2019-12-28"}, {"id": 21, "title": "Відеодром", "dima_rate": 6, "deni_rate": 5, "yura_rate": 6, "ihor_rate": 3, "date_created": "2019-12-14"}, {"id": 20, "title": "Лепрекон 2", "dima_rate": 6, "deni_rate": 6, "yura_rate": 8, "ihor_rate": 8, "date_created": "2019-12-14"}, {"id": 19, "title": "Офісний простір", "dima_rate": 7, "deni_rate": 7, "yura_rate": 5, "ihor_rate": 0, "date_created": "2019-12-14"}, {"id": 18, "title": "Кошмар на вулиці В'язів", "dima_rate": 7, "deni_rate": 7, "yura_rate": 8, "ihor_rate": 5, "date_created": "2019-12-14"}, {"id": 17, "title": "Повернення живих мерців", "dima_rate": 5, "deni_rate": 7, "yura_rate": 7, "ihor_rate": 8, "date_created": "2019-11-23"}, {"id": 16, "title": "Закоханий могильник", "dima_rate": 8, "deni_rate": 10, "yura_rate": 10, "ihor_rate": 10, "date_created": "2019-10-05"}, {"id": 15, "title": "Драбина Джейкоба", "dima_rate": 6, "deni_rate": 7, "yura_rate": 6, "ihor_rate": 7, "date_created": "2019-10-05"}, {"id": 14, "title": "Ззовні", "dima_rate": 4, "deni_rate": 5, "yura_rate": 6, "ihor_rate": 2, "date_created": "2019-10-05"}, {"id": 13, "title": "Реаніматор", "dima_rate": 7, "deni_rate": 7, "yura_rate": 7, "ihor_rate": 6, "date_created": "2019-09-29"}, {"id": 12, "title": "Дагон", "dima_rate": 7, "deni_rate": 6, "yura_rate": 6, "ihor_rate": 5, "date_created": "2019-09-28"}, {"id": 11, "title": "Лепрекон 4: У космосі", "dima_rate": 0, "deni_rate": 4, "yura_rate": 10, "ihor_rate": 0, "date_created": "2019-09-28"}, {"id": 10, "title": "Троль 2", "dima_rate": 3, "deni_rate": 2, "yura_rate": 4, "ihor_rate": 8, "date_created": "2019-09-28"}, {"id": 9, "title": "Великий переполох у малому Китаї", "dima_rate": 7, "deni_rate": 7, "yura_rate": 7, "ihor_rate": 0, "date_created": "2019-08-28"}, {"id": 8, "title": "Ніч кошмарів", "dima_rate": 3, "deni_rate": 5, "yura_rate": 6, "ihor_rate": 0, "date_created": "2019-08-28"}, {"id": 7, "title": "Муха", "dima_rate": 7, "deni_rate": 6, "yura_rate": 5, "ihor_rate": 0, "date_created": "2019-08-28"}, {"id": 6, "title": "Принц темряви", "dima_rate": 3, "deni_rate": 3, "yura_rate": 5, "ihor_rate": 0, "date_created": "2019-08-28"}, {"id": 5, "title": "Мішки для трупів", "dima_rate": 7, "deni_rate": 7, "yura_rate": 7, "ihor_rate": 0, "date_created": "2019-08-28"}, {"id": 4, "title": "Лепрекон 3", "dima_rate": 4, "deni_rate": 5, "yura_rate": 6, "ihor_rate": 0, "date_created": "2019-08-28"}, {"id": 3, "title": "У пащі божевілля", "dima_rate": 7, "deni_rate": 5, "yura_rate": 3, "ihor_rate": 0, "date_created": "2019-08-28"}]}</script>
+<script defer src="assets/js/i18n.js"></script>
+<script defer src="assets/js/icons.js"></script>
+<script defer src="assets/js/store.js"></script>
+<script defer src="assets/js/github.js"></script>
+<script defer src="assets/js/render.js"></script>
+<script defer src="assets/js/main.js"></script>
+<noscript><p style="padding:24px;text-align:center;font-family:sans-serif">Для роботи Кінобази потрібен JavaScript.</p></noscript>
+</body>
+</html>
