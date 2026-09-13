@@ -3,16 +3,16 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>movie_base — Movie Club</title>
-  <meta name="description" content="Movie club collection: ratings by Dima, Deni, Yura & Ihor. Seasons, directors, countries, statistics.">
-  <meta name="theme-color" content="#f4f6fb">
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><defs><linearGradient id='g' x1='0' y1='0' x2='1' y2='1'><stop offset='0' stop-color='%236d8bff'/><stop offset='1' stop-color='%234a5df0'/></linearGradient></defs><rect width='100' height='100' rx='22' fill='url(%23g)'/><text x='50' y='67' font-size='42' text-anchor='middle' fill='white' font-family='monospace' font-weight='bold'>mb</text></svg>">
+  <title>movie_base — Кіноклуб</title>
+  <meta name="description" content="Колекція фільмів кіноклубу: оцінки Dima, Deni, Yura та Ihor. Сезони, режисери, країни, статистика.">
+  <meta name="theme-color" content="#f5f6fa">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><defs><linearGradient id='g' x1='0' y1='0' x2='1' y2='1'><stop offset='0' stop-color='%236366f1'/><stop offset='1' stop-color='%23a855f7'/></linearGradient></defs><rect width='100' height='100' rx='24' fill='url(%23g)'/><text x='50' y='68' font-size='44' text-anchor='middle' fill='white' font-family='monospace' font-weight='bold'>mb</text></svg>">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="css/styles.css">
   <script>
-    // theme: light is the default (original design). Stored choice persists.
+    // theme: light is the default. Stored choice persists (no flash on load).
     try {
       var t = localStorage.getItem("movieclub_theme");
       if (t === "dark") document.documentElement.dataset.theme = "dark";
@@ -26,22 +26,28 @@
     <div class="container header-inner">
       <div class="brand">
         <span class="brand-mark">mb</span>
-        <span class="brand-name">movie_base</span>
-        <span class="brand-sub">movie club · est. 2019</span>
+        <span class="brand-text">
+          <span class="brand-name">movie_base</span>
+          <span class="brand-sub" data-i18n="brandSub">кіноклуб · з 2019</span>
+        </span>
       </div>
 
       <nav class="tabs" role="tablist">
-        <button class="tab active" data-tab="movies" role="tab">Movies</button>
-        <button class="tab" data-tab="stats" role="tab">Stats</button>
-        <button class="tab" data-tab="admin" role="tab">Manage</button>
+        <button class="tab active" data-tab="movies" role="tab" data-i18n="tabMovies">Фільми</button>
+        <button class="tab" data-tab="stats" role="tab" data-i18n="tabStats">Статистика</button>
+        <button class="tab" data-tab="admin" role="tab" data-i18n="tabAdmin">Керування</button>
       </nav>
 
       <div class="header-tools">
-        <span class="sync" id="syncBadge" title="Firebase Realtime Database connection">
+        <span class="sync" id="syncBadge" title="Firebase Realtime Database">
           <span class="dot" id="syncDot"></span>
-          <span id="syncText">connecting</span>
+          <span id="syncText" data-i18n="syncConnecting">з'єднання…</span>
         </span>
-        <button class="theme-btn" id="themeBtn" title="Switch theme">Dark</button>
+        <button class="lang-btn" id="langBtn" data-i18n-title="langBtnTitle" title="Мова інтерфейсу / UI language">EN</button>
+        <button class="icon-btn theme-btn" id="themeBtn" data-i18n-title="themeToggle" aria-label="Світла / темна тема">
+          <svg class="i-moon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+          <svg class="i-sun" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
+        </button>
       </div>
     </div>
   </header>
@@ -54,35 +60,35 @@
       <p class="summary" id="moviesStrip"></p>
 
       <div class="toolbar">
-        <input type="search" id="fSearch" placeholder="Search title, director, country, year…">
-        <select id="fSeason" title="Season"><option value="">Season: all</option></select>
-        <select id="fDecade" title="Release decade"><option value="">Decade: all</option></select>
-        <select id="fCountry" title="Country"><option value="">Country: all</option></select>
-        <select id="fDirector" title="Director"><option value="">Director: all</option></select>
+        <input type="search" id="fSearch" data-i18n-ph="searchPh" placeholder="Пошук: назва, режисер, країна, рік…">
+        <select id="fSeason" title="Season"><option value="" data-i18n="seasonAll">Сезон: усі</option></select>
+        <select id="fDecade" title="Release decade"><option value="" data-i18n="decadeAll">Десятиліття: усі</option></select>
+        <select id="fCountry" title="Country"><option value="" data-i18n="countryAll">Країна: усі</option></select>
+        <select id="fDirector" title="Director"><option value="" data-i18n="directorAll">Режисер: усі</option></select>
         <select id="fSort" title="Sort">
-          <option value="date-desc">Newest watched</option>
-          <option value="date-asc">Oldest watched</option>
-          <option value="rate-desc">Rating high → low</option>
-          <option value="rate-asc">Rating low → high</option>
-          <option value="year-desc">Release year ↓</option>
-          <option value="year-asc">Release year ↑</option>
-          <option value="title-asc">Title A→Z</option>
+          <option value="date-desc" data-i18n="sortNewest">Найновіші переглянуті</option>
+          <option value="date-asc" data-i18n="sortOldest">Найстаріші переглянуті</option>
+          <option value="rate-desc" data-i18n="sortRateDesc">Оцінка: висока → низька</option>
+          <option value="rate-asc" data-i18n="sortRateAsc">Оцінка: низька → висока</option>
+          <option value="year-desc" data-i18n="sortYearDesc">Рік випуску ↓</option>
+          <option value="year-asc" data-i18n="sortYearAsc">Рік випуску ↑</option>
+          <option value="title-asc" data-i18n="sortTitle">Назва А→Я</option>
         </select>
         <div class="view-toggle" role="group" aria-label="View mode">
-          <button id="viewList" class="vt-btn active" title="List view (no posters)">List</button>
-          <button id="viewGrid" class="vt-btn" title="Grid view (with posters)">Grid</button>
+          <button id="viewList" class="vt-btn active" data-i18n="viewList">Список</button>
+          <button id="viewGrid" class="vt-btn" data-i18n="viewGrid">Сітка</button>
         </div>
       </div>
 
-      <!-- list view: original table, no posters -->
+      <!-- list view: table, no posters -->
       <div class="table-scroll" id="moviesList" hidden></div>
 
-      <!-- grid view: posters -->
+      <!-- grid view: poster cards -->
       <div class="grid" id="moviesGrid" hidden></div>
 
       <div class="empty" id="moviesEmpty" hidden>
-        <p>Nothing found.</p>
-        <button class="btn" id="emptyReset">Reset filters</button>
+        <p data-i18n="emptyText">Нічого не знайдено.</p>
+        <button class="btn" id="emptyReset" data-i18n="resetFilters">Скинути фільтри</button>
       </div>
     </section>
 
@@ -96,47 +102,83 @@
     <section id="tab-admin" class="tab-panel">
       <div class="admin-layout">
         <form class="panel form" id="movieForm">
-          <h2>Add movie</h2>
-          <p class="hint">Just enter the title and release year — original title, director, country, genre, IMDb/Wikipedia links and the poster are fetched automatically from Wikipedia / IMDb.</p>
+          <h2 data-i18n="formAddTitle">Додати фільм</h2>
+          <p class="hint" data-i18n="formAddHint">Введіть назву та рік випуску — решта підтягнеться автоматично з Wikipedia / IMDb. Усі поля можна редагувати вручну.</p>
           <input type="hidden" id="mId">
           <div class="form-row">
             <div class="form-field grow">
-              <label for="mTitle">Title *</label>
+              <label for="mTitle" data-i18n="fTitle">Назва *</label>
               <input id="mTitle" required placeholder="Фантазм 2">
             </div>
             <div class="form-field">
-              <label for="mYear">Release year *</label>
+              <label for="mYear" data-i18n="fYear">Рік випуску *</label>
               <input id="mYear" type="number" min="1895" max="2100" required placeholder="1988">
             </div>
             <div class="form-field">
-              <label for="mDate">Watched on *</label>
+              <label for="mDate" data-i18n="fDate">Дата перегляду *</label>
               <input id="mDate" type="date" required>
             </div>
           </div>
-          <div class="lookup" id="formLookup"></div>
+
+          <div class="section-label" data-i18n="detailsNote">Деталі — заповнюються автоматично, можна редагувати</div>
+          <div class="details-fields">
+            <div class="form-field">
+              <label for="mTitleEn" data-i18n="fTitleEn">Оригінальна назва</label>
+              <input id="mTitleEn" placeholder="Phantasm II">
+            </div>
+            <div class="form-field">
+              <label for="mDirector" data-i18n="fDirector">Режисер</label>
+              <input id="mDirector" placeholder="Дон Коскареллі">
+            </div>
+            <div class="form-field">
+              <label for="mCountry" data-i18n="fCountry">Країна</label>
+              <input id="mCountry" placeholder="США">
+            </div>
+            <div class="form-field">
+              <label for="mGenre" data-i18n="fGenre">Жанр</label>
+              <input id="mGenre" placeholder="Жахи, Фантастика">
+            </div>
+            <div class="form-field wide">
+              <label for="mWiki">Wikipedia URL</label>
+              <input id="mWiki" type="url" placeholder="https://uk.wikipedia.org/wiki/…">
+            </div>
+            <div class="form-field wide">
+              <label for="mImdb">IMDb URL</label>
+              <input id="mImdb" type="url" placeholder="https://www.imdb.com/title/…">
+            </div>
+            <div class="form-field wide">
+              <label for="mPoster" data-i18n="fPoster">Постер URL</label>
+              <input id="mPoster" type="url" placeholder="https://…">
+            </div>
+          </div>
+
+          <div class="lookup-bar">
+            <div class="lookup" id="formLookup"></div>
+            <button type="button" class="btn ghost sm" id="formFindBtn" data-i18n="btnFind">Знайти дані</button>
+          </div>
           <div class="form-row rates-row" id="ratesRow"></div>
           <div class="form-actions">
-            <button type="submit" class="btn primary" id="saveBtn">Save to Firebase</button>
-            <button type="button" class="btn" id="clearFormBtn">Clear</button>
+            <button type="submit" class="btn primary" id="saveBtn" data-i18n="btnSave">Зберегти у Firebase</button>
+            <button type="button" class="btn" id="clearFormBtn" data-i18n="btnClear">Очистити</button>
           </div>
         </form>
 
         <aside class="panel tools">
-          <h2>Data tools</h2>
-          <p class="hint">Firebase Realtime Database is the single source of truth. The browser keeps an automatic offline backup of the latest snapshot.</p>
+          <h2 data-i18n="toolsTitle">Інструменти даних</h2>
+          <p class="hint" data-i18n="toolsHint">Firebase Realtime Database — єдине джерело правди. Браузер автоматично тримає офлайн-копію останнього знімка даних.</p>
           <dl class="tool-status">
-            <div><dt>Source of truth</dt><dd class="ok">Firebase RTDB</dd></div>
-            <div><dt>Auto-save</dt><dd class="ok">always on</dd></div>
-            <div><dt>Live updates</dt><dd class="ok">always on</dd></div>
-            <div><dt>Local backup</dt><dd>auto (offline fallback)</dd></div>
+            <div><dt data-i18n="stSource">Джерело даних</dt><dd class="ok">Firebase RTDB</dd></div>
+            <div><dt data-i18n="stAuto">Автозбереження</dt><dd class="ok" data-i18n="stAlways">завжди увімкнено</dd></div>
+            <div><dt data-i18n="stLive">Живі оновлення</dt><dd class="ok" data-i18n="stAlways">завжди увімкнено</dd></div>
+            <div><dt data-i18n="stBackup">Локальна копія</dt><dd data-i18n="stBackupVal">авто (офлайн-запас)</dd></div>
           </dl>
           <div class="tools-actions">
-            <button class="btn" id="exportBtn">Export JSON backup</button>
-            <label class="btn" for="importFile">Import JSON backup</label>
+            <button class="btn" id="exportBtn" data-i18n="btnExport">Експорт JSON</button>
+            <label class="btn" for="importFile" data-i18n="btnImport">Імпорт JSON</label>
             <input type="file" id="importFile" accept="application/json" hidden>
-            <button class="btn danger" id="seedBtn">Restore seed data</button>
+            <button class="btn danger" id="seedBtn" data-i18n="btnSeed">Відновити початкові дані</button>
           </div>
-          <p class="hint">Export/import are backups only — normal saving always goes to Firebase. Import overwrites the Firebase database with the file content.</p>
+          <p class="hint" data-i18n="toolsHint2">Експорт/імпорт — лише резервні копії; звичайне збереження завжди йде у Firebase. Імпорт перезаписує базу Firebase вмістом файлу.</p>
         </aside>
       </div>
     </section>
@@ -165,7 +207,7 @@
 
   <footer class="footer">
     <div class="container">
-      <p>movie_base · data in Firebase Realtime Database · <span id="footerSync">syncing</span></p>
+      <p>movie_base · <span data-i18n="footerBase">дані у Firebase Realtime Database</span> · <span id="footerSync">syncing</span></p>
     </div>
   </footer>
 

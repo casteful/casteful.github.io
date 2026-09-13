@@ -7,14 +7,18 @@
 //   LIVE_UPDATES  = true   → onValue() keeps all open browsers in sync
 //   LOCAL_BACKUP  = true   → latest snapshot cached in localStorage
 //
-// Views: "list" (default — original table, no posters) | "grid" (posters).
+// Views: "list" (default — table, no posters) | "grid" (poster cards).
 // Click any movie (row or card) → details modal with poster, links, actions.
-// Theme: light by default (original design), dark optional.
+// Theme: light default, dark optional (icon toggle). UI language: Ukrainian
+// default, English optional (UA/EN toggle) — see js/i18n.js.
+// Add/edit forms: metadata is auto-fetched from Wikipedia/IMDb into EDITABLE
+// fields — anything typed by hand is never overwritten by the auto-lookup.
 // ============================================================
 import { db, ref, onValue, get, update, remove } from "./firebase-config.js";
 import { SEED_MOVIES, RATERS, avgRate, seasonFromDate, decadeOf, normalizeCountry } from "./data.js";
 import { renderStats } from "./stats.js";
 import { searchFilms, getFilmDetails } from "./lookup.js";
+import { initLang, setLang, getLang, t, pluralW, applyStaticLang } from "./i18n.js";
 
 const AUTO_SAVE    = true;   // hidden param — always true
 const LIVE_UPDATES = true;   // hidden param — always true
@@ -33,8 +37,10 @@ let VIEW = "list";         // "list" | "grid"
 let posterCache = {};      // "lang:Title" -> poster URL
 let posterInFlight = {};   // "lang:Title" -> Promise (dedupe parallel fetches)
 let currentSnapshot = null;
+let lastSyncState = null;         // { online, label } — re-applied after language switch
 let countryCleanupDone = false; // one-time DB normalization of country variants
 const autoHealTried = new Set();   // movie ids already auto-enriched this session
+const posterHealTried = new Set(); // movie ids whose poster was auto-repaired this session
 
 // ---------- helpers ----------
 const $ = (sel) => document.querySelector(sel);
@@ -149,21 +155,22 @@ function initSync() {
     }, (err) => {
       console.error("Firebase read error:", err);
       setSync(false, "read error");
-      useBackup("Firebase read failed — using local backup");
+      useBackup(t("tReadFail"));
     });
   }
 }
 
 function setSync(online, label) {
+  lastSyncState = { online, label }; // remember, so a language switch can re-render it
   const dot = $("#syncDot"), text = $("#syncText"), footer = $("#footerSync");
   if (online) {
     dot.className = "dot on";
-    text.textContent = "live";
-    footer.textContent = "live via Firebase";
+    text.textContent = t("syncLive");
+    footer.textContent = t("footerLive");
   } else {
     dot.className = "dot off";
-    text.textContent = label || "offline — backup";
-    footer.textContent = "offline — showing local backup";
+    text.textContent = label || t("syncOffline");
+    footer.textContent = t("footerOffline");
   }
 }
 
@@ -174,7 +181,7 @@ function useBackup(msg) {
     renderAll();
     toast(msg, "warn");
   } else {
-    toast(msg + " — no backup found, loading seed data", "warn");
+    toast(msg + t("tNoBackup"), "warn");
     MOVIES = Object.fromEntries(SEED_MOVIES.map((m) => [String(m.id), m]));
     renderAll();
   }
@@ -185,10 +192,10 @@ async function seedFirebase(manual = false) {
   SEED_MOVIES.forEach((m) => (payload[`${DB_PATH}/${m.id}`] = m));
   try {
     await update(ref(db), payload);
-    toast(manual ? "Seed data restored to Firebase" : "First run: movie base uploaded to Firebase", "ok");
+    toast(manual ? t("tSeeded") : t("tSeededAuto"), "ok");
   } catch (e) {
     console.error(e);
-    toast("Firebase write failed: " + e.message, "err");
+    toast(t("tFbFail", { msg: e.message }), "err");
   }
 }
 
@@ -197,10 +204,10 @@ async function saveMovie(movie) {
   if (!AUTO_SAVE) return;
   try {
     await update(ref(db, `${DB_PATH}/${movie.id}`), movie);
-    toast(`Saved: ${movie.title} (id ${movie.id})`, "ok");
+    toast(t("tSaved", { title: movie.title, id: movie.id }), "ok");
   } catch (e) {
     console.error(e);
-    toast("Save failed: " + e.message, "err");
+    toast(t("tSaveFail", { msg: e.message }), "err");
   }
 }
 
@@ -208,10 +215,10 @@ async function deleteMovie(id) {
   if (!AUTO_SAVE) return;
   try {
     await remove(ref(db, `${DB_PATH}/${id}`));
-    toast(`Deleted movie #${id}`, "ok");
+    toast(t("tDeleted", { id }), "ok");
   } catch (e) {
     console.error(e);
-    toast("Delete failed: " + e.message, "err");
+    toast(t("tDeleteFail", { msg: e.message }), "err");
   }
 }
 
@@ -260,12 +267,14 @@ function renderSummary() {
   const ms = allMovies();
   const best = ms.reduce((a, m) => (avgRate(m.rates) > avgRate(a?.rates || {}) ? m : a), null);
   const avg = ms.length ? ms.reduce((s, m) => s + avgRate(m.rates), 0) / ms.length : 0;
+  const nSeasons = new Set(ms.map((m) => m.season || seasonFromDate(m.date))).size;
+  const nCountries = new Set(ms.flatMap((m) => (m.country || "").split(",").map((c) => c.trim())).filter(Boolean)).size;
   $("#moviesStrip").innerHTML = `
-    <b>${ms.length}</b> movies ·
-    <b>${new Set(ms.map((m) => m.season || seasonFromDate(m.date))).size}</b> seasons ·
-    <b>${new Set(ms.flatMap((m) => (m.country || "").split(",").map((c) => c.trim())).filter(Boolean)).size}</b> countries ·
-    average rating <b>${avg.toFixed(1)}</b> ·
-    club favourite: <b>${best ? esc(best.title) : "—"}</b>
+    <b>${ms.length}</b> ${pluralW(ms.length, "movie")} ·
+    <b>${nSeasons}</b> ${pluralW(nSeasons, "season")} ·
+    <b>${nCountries}</b> ${pluralW(nCountries, "country")} ·
+    ${t("sumAvg")} <b>${avg.toFixed(1)}</b> ·
+    ${t("sumFav")} <b>${best ? esc(best.title) : "—"}</b>
   `;
 }
 
@@ -327,10 +336,10 @@ function renderMovies() {
 function listHTML(ms) {
   const head = `
     <thead><tr>
-      <th>id</th><th>title</th><th>year</th><th>director</th><th>country</th>
-      <th>season</th><th>watched</th>
+      <th>${t("thId")}</th><th>${t("thTitle")}</th><th>${t("thYear")}</th><th>${t("thDirector")}</th><th>${t("thCountry")}</th>
+      <th>${t("thSeason")}</th><th>${t("thWatched")}</th>
       ${RATERS.map((r) => `<th class="c-num">${r.name}</th>`).join("")}
-      <th class="c-num">avg</th>
+      <th class="c-num">${t("thAvg")}</th>
     </tr></thead>`;
   const rows = ms.map((m) => {
     const avg = avgRate(m.rates);
@@ -341,7 +350,7 @@ function listHTML(ms) {
         : `<td class="r-na">—</td>`;
     }).join("");
     return `
-    <tr data-open="${m.id}" title="Click for details">
+    <tr data-open="${m.id}" title="${esc(t("rowHint"))}">
       <td class="c-id">${m.id}</td>
       <td class="c-title"><span class="t">${esc(m.title)}</span>${m.titleEn ? `<br><span class="o">${esc(m.titleEn)}</span>` : ""}</td>
       <td class="c-num">${esc(m.year || "—")}</td>
@@ -361,13 +370,13 @@ function cardHTML(m) {
   const avg = avgRate(m.rates);
   const manualPoster = m.poster ? esc(m.poster) : "";
   return `
-  <article class="movie-card" data-open="${m.id}" title="Click for details">
+  <article class="movie-card" data-open="${m.id}" title="${esc(t("rowHint"))}">
     <div class="poster ${m.wiki || m.poster ? "" : "ph"}"
          ${m.wiki ? `data-wiki="${esc(m.wiki)}"` : ""}
          ${m.imdb ? `data-imdb="${esc(m.imdb)}"` : ""}
          ${m.year ? `data-year="${esc(m.year)}"` : ""}
          ${manualPoster ? `data-manual-poster="${manualPoster}"` : ""}>
-      <span class="ph-text">no poster</span>
+      <span class="ph-text">${t("noPoster")}</span>
       ${avg > 0 ? `<span class="p-avg ${avgClass(avg)}">${avg.toFixed(1)}</span>` : ""}
     </div>
     <div class="card-body">
@@ -386,6 +395,7 @@ function cardHTML(m) {
 function openDetails(id) {
   const m = MOVIES[String(id)];
   if (!m) return;
+  const show = { ...m, country: normalizeCountry(m.country) }; // one spelling per country in UI
   const avg = avgRate(m.rates);
 
   const ratesHTML = RATERS.map((r) => {
@@ -403,26 +413,26 @@ function openDetails(id) {
     <div class="d-poster ${m.wiki || m.poster ? "" : "ph"}" id="detailsPoster"
          ${m.wiki ? `data-wiki="${esc(m.wiki)}"` : ""}
          ${manualPoster ? `data-manual-poster="${manualPoster}"` : ""}>
-      <span class="ph-text">no poster</span>
+      <span class="ph-text">${t("noPoster")}</span>
     </div>
     <div class="d-info">
-      <h3>${esc(m.title)}</h3>
-      ${m.titleEn ? `<p class="d-orig">${esc(m.titleEn)}</p>` : `<p class="d-orig"></p>`}
+      <h3>${esc(show.title)}</h3>
+      ${show.titleEn ? `<p class="d-orig">${esc(show.titleEn)}</p>` : `<p class="d-orig"></p>`}
       <dl class="d-rows">
-        <dt>Release year</dt><dd>${esc(m.year || "—")}</dd>
-        <dt>Director</dt><dd>${esc(m.director || "—")}</dd>
-        <dt>Country</dt><dd>${esc(m.country || "—")}</dd>
-        <dt>Genre</dt><dd>${esc(m.genre || "—")}</dd>
-        <dt>Season</dt><dd>${esc(m.season || seasonFromDate(m.date) || "—")}</dd>
-        <dt>Watched on</dt><dd>${esc(m.date || "—")}</dd>
+        <dt>${t("dYear")}</dt><dd>${esc(show.year || "—")}</dd>
+        <dt>${t("dDirector")}</dt><dd>${esc(show.director || "—")}</dd>
+        <dt>${t("dCountry")}</dt><dd>${esc(show.country || "—")}</dd>
+        <dt>${t("dGenre")}</dt><dd>${esc(show.genre || "—")}</dd>
+        <dt>${t("dSeason")}</dt><dd>${esc(show.season || seasonFromDate(show.date) || "—")}</dd>
+        <dt>${t("dWatched")}</dt><dd>${esc(show.date || "—")}</dd>
       </dl>
       <div class="d-rates">${ratesHTML}</div>
-      <p class="d-avg">Average: <b class="${avg > 0 ? rateClass(avg) : "r-na"}">${avg > 0 ? avg.toFixed(1) : "—"} / 10</b></p>
+      <p class="d-avg">${t("dAvg")}: <b class="${avg > 0 ? rateClass(avg) : "r-na"}">${avg > 0 ? avg.toFixed(1) : "—"} / 10</b></p>
       ${links.length ? `<div class="d-links">${links.join("")}</div>` : ""}
       <div class="d-actions">
-        <button class="btn" id="dFetch" title="Fetch metadata from Wikipedia / IMDb">Fetch info</button>
-        <button class="btn" id="dEdit">Edit</button>
-        <button class="btn danger" id="dDelete">Delete</button>
+        <button class="btn" id="dFetch" title="Wikipedia / IMDb">${t("btnFetch")}</button>
+        <button class="btn" id="dEdit">${t("btnEdit")}</button>
+        <button class="btn danger" id="dDelete">${t("btnDelete")}</button>
       </div>
     </div>`;
 
@@ -451,9 +461,18 @@ function openDetails(id) {
       .catch(() => { /* stays manual — the Fetch info button is still there */ });
   }
 
+  // poster auto-heal: the record has links but no stored poster — resolve it
+  // in the background and patch the record (no button press needed)
+  if (!m.poster && (m.wiki || m.imdb) && !posterHealTried.has(String(id))) {
+    posterHealTried.add(String(id));
+    getPoster(m.wiki, "", m.imdb, m.year).then((url) => {
+      if (url && AUTO_SAVE) update(ref(db, `${DB_PATH}/${id}`), { poster: url }).catch(() => {});
+    });
+  }
+
   $("#dEdit").addEventListener("click", () => { closeDetails(); openEditor(id); });
   $("#dDelete").addEventListener("click", () => {
-    if (confirm(`Delete "${m.title}" (id ${id}) from the database?`)) {
+    if (confirm(t("confirmDelete", { title: m.title, id }))) {
       closeDetails();
       deleteMovie(id);
     }
@@ -461,16 +480,16 @@ function openDetails(id) {
   $("#dFetch").addEventListener("click", async () => {
     const btn = $("#dFetch");
     btn.disabled = true;
-    btn.textContent = "Fetching…";
+    btn.textContent = t("btnFetching");
     try {
       const info = await lookupForMovie(m);
-      await saveMovie({ ...m, ...info });
+      await saveMovie({ ...m, ...info, country: normalizeCountry(info.country) || m.country });
       closeDetails();
-      toast("Info updated from Wikipedia / IMDb", "ok");
+      toast(t("tInfoUpdated"), "ok");
     } catch (e) {
-      toast("Fetch failed: " + e.message, "err");
+      toast(t("tFetchFail", { msg: e.message }), "err");
       btn.disabled = false;
-      btn.textContent = "Fetch info";
+      btn.textContent = t("btnFetch");
     }
   });
 }
@@ -484,6 +503,54 @@ async function lookupForMovie(m) {
   return getFilmDetails(c);
 }
 
+// ---------- editable detail fields (custom edits always win) ----------
+// The automatic Wikipedia/IMDb lookup PRE-FILLS these inputs, but a field the
+// user has touched by hand (data-dirty) is NEVER overwritten — so a custom
+// Ukrainian title, corrected director, custom poster URL, etc. survives the
+// lookup and is exactly what gets saved.
+const DETAIL_INPUTS = ["#mTitle", "#mYear", "#mTitleEn", "#mDirector", "#mCountry", "#mGenre", "#mWiki", "#mImdb", "#mPoster"];
+
+function fillDetailFields(scope, info) {
+  if (!info || !scope) return;
+  const map = {
+    titleEn: "#mTitleEn", director: "#mDirector", country: "#mCountry",
+    genre: "#mGenre", wiki: "#mWiki", imdb: "#mImdb", poster: "#mPoster",
+  };
+  Object.entries(map).forEach(([key, sel]) => {
+    const el = scope.querySelector(sel);
+    if (!el || el.dataset.dirty) return;
+    let v = String(info[key] || "").trim();
+    if (key === "country") v = normalizeCountry(v);
+    if (v) el.value = v;
+  });
+  const y = scope.querySelector("#mYear");
+  if (y && !y.value && !y.dataset.dirty && info.year) y.value = info.year;
+}
+
+function wireDetailFields(scope) {
+  DETAIL_INPUTS.forEach((sel) => {
+    const el = scope.querySelector(sel);
+    if (el) el.addEventListener("input", () => { el.dataset.dirty = "1"; });
+  });
+}
+
+function clearDirty(scope) {
+  scope.querySelectorAll("[data-dirty]").forEach((el) => { delete el.dataset.dirty; });
+}
+
+// after a manual save, make sure a poster exists: resolve it from the wiki /
+// imdb links in the background and patch the record — no button press needed
+async function autoPoster(data) {
+  if (!AUTO_SAVE || !data?.id || data.poster || (!data.wiki && !data.imdb)) return;
+  try {
+    const url = await getPoster(data.wiki, "", data.imdb, data.year);
+    if (url) {
+      await update(ref(db, `${DB_PATH}/${data.id}`), { poster: url });
+      toast(t("tPosterAuto"), "ok");
+    }
+  } catch (e) { /* cosmetic — non-fatal */ }
+}
+
 // ---------- lookup UI inside add/edit forms ----------
 function pickInfoFields(m) {
   return {
@@ -493,7 +560,9 @@ function pickInfoFields(m) {
   };
 }
 
-function wireLookup(area, getQuery) {
+function wireLookup(area, getQuery, opts = {}) {
+  const auto = opts.auto !== false;   // false → never search on open (edit modal)
+  const scopeOf = () => area.closest("form") || area.closest(".modal-body") || document;
   let token = 0;
   let timer = null;
   let pending = null;   // resolves when the current lookup chain fully settles
@@ -516,10 +585,20 @@ function wireLookup(area, getQuery) {
     return Promise.race([pending || Promise.resolve(), new Promise((r) => setTimeout(r, 12000))]);
   };
 
+  const runNow = () => {
+    const { title, year } = getQuery();
+    if (title.length < 2 || !/^\d{4}$/.test(year)) {
+      area.innerHTML = `<p class="lookup-status">${esc(t("lkNeed"))}</p>`;
+      return;
+    }
+    clearTimeout(timer);
+    runSearch(++token);
+  };
+
   async function runSearch(tok) {
     const { title, year } = getQuery();
     area._fetched = null;
-    area.innerHTML = `<p class="lookup-status">Searching Wikipedia…</p>`;
+    area.innerHTML = `<p class="lookup-status">${esc(t("lkSearching"))}</p>`;
     try {
       const all = await searchFilms(title, year);
       if (tok !== token) return;
@@ -531,13 +610,13 @@ function wireLookup(area, getQuery) {
       } else if (all.length) {
         // only non-film pages matched — never auto-pick, let the user decide
         const pool = all.slice(0, 5);
-        renderCandidates(pool, "No exact film match — if one of these is the film, pick it; otherwise the info will stay empty:");
+        renderCandidates(pool, t("lkNoFilm"));
       } else {
-        area.innerHTML = `<p class="lookup-status">No Wikipedia match — extra info will stay empty (the movie can still be saved).</p>`;
+        area.innerHTML = `<p class="lookup-status">${esc(t("lkNone"))}</p>`;
       }
     } catch (e) {
       if (tok !== token) return;
-      area.innerHTML = `<p class="lookup-status">Lookup failed: ${esc(e.message)}</p>`;
+      area.innerHTML = `<p class="lookup-status">${esc(t("lkFail", { msg: e.message }))}</p>`;
     }
   }
 
@@ -551,7 +630,7 @@ function wireLookup(area, getQuery) {
       </button>`).join("");
     area.innerHTML = "";
     if (status) {
-      status.textContent = note || `${pool.length} match${pool.length > 1 ? "es" : ""} — pick one if it is not the right film:`;
+      status.textContent = note || t("lkPicks", { n: pool.length, word: pluralW(pool.length, "match") });
       area.appendChild(status);
     }
     area.appendChild(list);
@@ -571,24 +650,31 @@ function wireLookup(area, getQuery) {
       status.className = "lookup-status";
       area.prepend(status);
     }
-    status.textContent = "Loading film details…";
+    status.textContent = t("lkLoading");
     try {
       const info = await getFilmDetails(c);
       if (tok !== token) return;
       area._fetched = info;
-      renderFetched(area, info);
-      status.remove();
+      fillDetailFields(scopeOf(), info);   // editable inputs — dirty ones kept
+      renderFetched(area, info, t("lkFilled"));
     } catch (e) {
       if (tok !== token) return;
-      status.textContent = "Details failed: " + e.message;
+      status.textContent = t("lkDetailsFail", { msg: e.message });
     }
   }
 
-  schedule(); // initial trigger when fields are already valid (edit modal)
-  return { schedule, settled };
+  if (auto) schedule(); // add form: trigger when fields are already valid
+  return { schedule, settled, runNow };
 }
 
-function renderFetched(area, info) {
+function renderFetched(area, info, note) {
+  let status = area.querySelector(".lookup-status");
+  if (!status) {
+    status = document.createElement("p");
+    status.className = "lookup-status";
+    area.prepend(status);
+  }
+  if (note) status.textContent = note;
   const links = [];
   if (info.imdb) links.push(`<a href="${esc(info.imdb)}" target="_blank" rel="noopener">IMDb</a>`);
   if (info.wiki) links.push(`<a href="${esc(info.wiki)}" target="_blank" rel="noopener">Wikipedia</a>`);
@@ -596,7 +682,7 @@ function renderFetched(area, info) {
   if (!box) {
     box = document.createElement("div");
     box.className = "fetched";
-    area.prepend(box);
+    area.appendChild(box);
   }
   box.innerHTML = `
     <div class="fthumb" ${info.poster ? `style="background-image:url('${esc(info.poster)}')"` : ""}></div>
@@ -729,11 +815,24 @@ function buildForm(container, movie) {
   const m = movie || { title: "", year: "", date: new Date().toISOString().slice(0, 10), rates: {} };
   container.innerHTML = `
     <div class="form-row">
-      <div class="form-field grow"><label>Title *</label><input id="mTitle" required value="${esc(m.title)}" placeholder="Фантазм 2"></div>
-      <div class="form-field"><label>Release year *</label><input id="mYear" type="number" min="1895" max="2100" required value="${esc(m.year)}" placeholder="1988"></div>
-      <div class="form-field"><label>Watched on *</label><input id="mDate" type="date" required value="${esc(m.date)}"></div>
+      <div class="form-field grow"><label>${t("fTitle")} *</label><input id="mTitle" required value="${esc(m.title)}" placeholder="Фантазм 2"></div>
+      <div class="form-field"><label>${t("fYear")} *</label><input id="mYear" type="number" min="1895" max="2100" required value="${esc(m.year)}" placeholder="1988"></div>
+      <div class="form-field"><label>${t("fDate")} *</label><input id="mDate" type="date" required value="${esc(m.date)}"></div>
     </div>
-    <div class="lookup" id="lookupArea"></div>
+    <div class="section-label">${t("detailsNote")}</div>
+    <div class="details-fields">
+      <div class="form-field"><label>${t("fTitleEn")}</label><input id="mTitleEn" value="${esc(m.titleEn || "")}" placeholder="Phantasm II"></div>
+      <div class="form-field"><label>${t("fDirector")}</label><input id="mDirector" value="${esc(m.director || "")}"></div>
+      <div class="form-field"><label>${t("fCountry")}</label><input id="mCountry" value="${esc(m.country || "")}" placeholder="США"></div>
+      <div class="form-field"><label>${t("fGenre")}</label><input id="mGenre" value="${esc(m.genre || "")}"></div>
+      <div class="form-field wide"><label>Wikipedia URL</label><input id="mWiki" type="url" value="${esc(m.wiki || "")}" placeholder="https://uk.wikipedia.org/wiki/…"></div>
+      <div class="form-field wide"><label>IMDb URL</label><input id="mImdb" type="url" value="${esc(m.imdb || "")}" placeholder="https://www.imdb.com/title/…"></div>
+      <div class="form-field wide"><label>${t("fPoster")}</label><input id="mPoster" type="url" value="${esc(m.poster || "")}" placeholder="https://…"></div>
+    </div>
+    <div class="lookup-bar">
+      <div class="lookup" id="lookupArea"></div>
+      <button type="button" class="btn ghost sm" data-find>${t("btnFind")}</button>
+    </div>
     <div class="form-row rates-row">
       ${RATERS.map((r) => `
         <div class="form-field rate-field">
@@ -744,22 +843,25 @@ function buildForm(container, movie) {
         </div>`).join("")}
     </div>
     <div class="form-actions">
-      <button type="button" class="btn primary" id="modalSave">Save to Firebase</button>
-      <button type="button" class="btn" id="modalCancel">Cancel</button>
+      <button type="button" class="btn primary" id="modalSave">${t("btnSave")}</button>
+      <button type="button" class="btn" id="modalCancel">${t("btnCancel")}</button>
     </div>`;
 
-  // show already-known info immediately, then allow re-fetch by editing title/year
+  // show the stored metadata as a preview — the fields above are already
+  // filled from the record; the lookup only refreshes them when the user
+  // edits the title/year or presses "Find data". Manual edits always win.
   const area = container.querySelector("#lookupArea");
   if (movie && (movie.imdb || movie.wiki || movie.director || movie.titleEn)) {
-    area._fetched = pickInfoFields(movie);
-    renderFetched(area, area._fetched);
+    renderFetched(area, pickInfoFields(movie), t("lkCurrent"));
   }
+  wireDetailFields(container);
   const lookup = wireLookup(area, () => ({
     title: container.querySelector("#mTitle").value.trim(),
     year: container.querySelector("#mYear").value.trim(),
-  }));
+  }), { auto: false }); // edit modal: never auto-search/auto-pick on open
   container.querySelector("#mTitle").addEventListener("input", lookup.schedule);
   container.querySelector("#mYear").addEventListener("input", lookup.schedule);
+  container.querySelector("[data-find]").addEventListener("click", lookup.runNow);
 
   container.querySelector("#modalSave").addEventListener("click", async () => {
     await lookup.settled();
@@ -769,27 +871,25 @@ function buildForm(container, movie) {
 }
 
 // build the movie record from a form scope (add form or edit modal);
-// metadata (original title, director, country, genre, links, poster) comes
-// from the Wikipedia/IMDb lookup, not from manual inputs
+// the editable inputs are the single source — the Wikipedia/IMDb lookup only
+// pre-fills them, so any custom title / metadata the user typed is kept
 function movieFromForm(id, scope) {
   const get = (s) => scope.querySelector(s)?.value.trim() || "";
   const date = get("#mDate");
-  // the fetched metadata lives on the .lookup area INSIDE the form scope
-  // (add form: #formLookup, edit modal: #lookupArea)
-  const info = scope.querySelector(".lookup")?._fetched || scope._fetched || {};
+  const info = scope.querySelector(".lookup")?._fetched || {}; // fallback for year only
   return {
     id: Number(id),
     title: get("#mTitle"),
-    titleEn: info.titleEn || "",
-    year: Number(info.year || get("#mYear")) || null,
-    country: normalizeCountry(info.country || ""),
-    director: info.director || "",
-    genre: info.genre || "",
+    titleEn: get("#mTitleEn"),
+    year: Number(get("#mYear")) || Number(info.year) || null,
+    country: normalizeCountry(get("#mCountry")),
+    director: get("#mDirector"),
+    genre: get("#mGenre"),
     date,
     season: seasonFromDate(date),
-    imdb: info.imdb || "",
-    wiki: info.wiki || "",
-    poster: info.poster || "",
+    imdb: get("#mImdb"),
+    wiki: get("#mWiki"),
+    poster: get("#mPoster"),
     rates: currentRatesFromInputs(scope),
   };
 }
@@ -802,8 +902,9 @@ function collectAndSave(existingId) {
   const modal = $("#editModal");
   const id = modal.hidden ? Number($("#mId").value) : existingId;
   const data = modal.hidden ? collectData(id) : collectDataFromModal(id);
-  if (!data.title || !data.year || !data.date) { toast("Title, release year and watch date are required", "warn"); return; }
+  if (!data.title || !data.year || !data.date) { toast(t("tRequired"), "warn"); return; }
   saveMovie(data);
+  autoPoster(data); // background: resolve a poster if none is stored
   closeEditor();
 }
 
@@ -814,7 +915,7 @@ function collectDataFromModal(id) {
 function openEditor(id) {
   const m = MOVIES[String(id)];
   if (!m) return;
-  $("#editModalTitle").textContent = `Edit movie #${id} — ${m.title}`;
+  $("#editModalTitle").textContent = t("editTitle", { id, title: m.title });
   buildForm($("#editModalBody"), m);
   $("#editModal").hidden = false;
 }
@@ -822,18 +923,41 @@ function openEditor(id) {
 function closeEditor() { $("#editModal").hidden = true; }
 
 // ============================================================
-// Theme (light default — original design; dark optional)
+// Theme (light default; dark optional — icon toggle in the header)
 // ============================================================
 function applyTheme(theme) {
   document.documentElement.dataset.theme = theme;
   try { localStorage.setItem(THEME_KEY, theme); } catch (e) {}
-  $("#themeBtn").textContent = theme === "light" ? "Dark" : "Light";
+  const btn = $("#themeBtn");
+  if (btn) {
+    btn.title = t("themeToggle");
+    btn.setAttribute("aria-label", t("themeToggle"));
+  }
 }
 
 function toggleTheme() {
   const next = document.documentElement.dataset.theme === "light" ? "dark" : "light";
   applyTheme(next);
   renderStats(allMovies(), $("#chartsGrid"), $("#kpiGrid")); // re-theme charts
+}
+
+// ============================================================
+// Language (Ukrainian default; EN toggle in the header)
+// ============================================================
+function applyLangUI() {
+  const btn = $("#langBtn");
+  if (btn) btn.textContent = getLang() === "uk" ? "EN" : "UA";
+}
+
+function switchLang() {
+  setLang(getLang() === "uk" ? "en" : "uk");
+  applyStaticLang();          // static header/toolbar/forms
+  applyLangUI();              // button label shows the OTHER language
+  applyTheme(document.documentElement.dataset.theme); // refresh tooltip
+  if (lastSyncState) setSync(lastSyncState.online, lastSyncState.label); // re-render badge
+  closeDetails();
+  closeEditor();
+  renderAll();                // re-render table/cards/stats with new strings
 }
 
 // ============================================================
@@ -864,8 +988,9 @@ function bindEvents() {
   $("#viewList").addEventListener("click", () => applyView("list"));
   $("#viewGrid").addEventListener("click", () => applyView("grid"));
 
-  // theme
+  // theme + language
   $("#themeBtn").addEventListener("click", toggleTheme);
+  $("#langBtn").addEventListener("click", switchLang);
 
   // filters
   const bind = (sel, key) => $(sel).addEventListener("input", (e) => { FILTERS[key] = e.target.value; renderMovies(); });
@@ -896,13 +1021,17 @@ function bindEvents() {
   }));
   $("#mTitle").addEventListener("input", addLookup.schedule);
   $("#mYear").addEventListener("input", addLookup.schedule);
+  $("#formFindBtn").addEventListener("click", addLookup.runNow);
 
   $("#movieForm").addEventListener("submit", async (e) => {
     e.preventDefault();
     await addLookup.settled();
     const data = collectData(Number($("#mId").value) || nextFreeId());
+    if (!data.title || !data.year || !data.date) { toast(t("tRequired"), "warn"); return; }
     saveMovie(data);
+    autoPoster(data); // background: resolve a poster if none is stored
     e.target.reset();
+    clearDirty($("#movieForm"));
     addLookupArea._fetched = null;
     addLookupArea.innerHTML = "";
     $("#mDate").value = new Date().toISOString().slice(0, 10);
@@ -911,6 +1040,7 @@ function bindEvents() {
   $("#clearFormBtn").addEventListener("click", () => {
     $("#movieForm").reset();
     $("#mId").value = "";
+    clearDirty($("#movieForm"));
     addLookupArea._fetched = null;
     addLookupArea.innerHTML = "";
     $("#mDate").value = new Date().toISOString().slice(0, 10);
@@ -921,7 +1051,7 @@ function bindEvents() {
   $("#exportBtn").addEventListener("click", exportJSON);
   $("#importFile").addEventListener("change", importJSON);
   $("#seedBtn").addEventListener("click", () => {
-    if (confirm("Restore the built-in seed dataset to Firebase? Current Firebase content will be overwritten.")) seedFirebase(true);
+    if (confirm(t("confirmSeed"))) seedFirebase(true);
   });
 
   // modals
@@ -959,7 +1089,7 @@ function exportJSON() {
   a.download = `movie_base_backup_${new Date().toISOString().slice(0, 10)}.json`;
   a.click();
   URL.revokeObjectURL(a.href);
-  toast("Backup downloaded", "ok");
+  toast(t("tExported"), "ok");
 }
 
 async function importJSON(e) {
@@ -974,10 +1104,10 @@ async function importJSON(e) {
     const payload = {};
     Object.entries(movies).forEach(([id, m]) => (payload[`${DB_PATH}/${id}`] = m));
     await update(ref(db), payload);
-    toast("Backup imported into Firebase", "ok");
+    toast(t("tImported"), "ok");
   } catch (err) {
     console.error(err);
-    toast("Import failed: " + err.message, "err");
+    toast(t("tImportFail", { msg: err.message }), "err");
   }
 }
 
@@ -995,10 +1125,14 @@ async function importJSON(e) {
     MOVIES = Object.fromEntries(SEED_MOVIES.map((m) => [String(m.id), m]));
   }
 
+  initLang();          // uk is the default, stored choice persists
+  applyStaticLang();   // swap static texts if the stored language is EN
+  applyLangUI();
   applyTheme(document.documentElement.dataset.theme === "dark" ? "dark" : "light");
   applyView((() => { try { return localStorage.getItem(VIEW_KEY) === "grid" ? "grid" : "list"; } catch (e) { return "list"; } })());
 
   buildRatesRow();
+  wireDetailFields($("#movieForm")); // dirty-tracking for the static add form
   $("#mDate").value = new Date().toISOString().slice(0, 10);
   bindEvents();
   renderAll();

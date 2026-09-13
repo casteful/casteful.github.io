@@ -192,7 +192,9 @@ export async function getFilmDetails(cand) {
 
   const director = directorIds.map((id) => labels[id]).filter(Boolean).join(", ");
   const country = countryIds.map((id) => labels[id]).filter(Boolean).join(", ");
-  const genre = [...new Set(genreIds.map((id) => labels[id]).filter(Boolean).map(cleanGenre))].join(", ");
+  // Wikidata often lists 10+ genres for a film — keep the first three,
+  // matching the concise club style ("Жахи, Фантастика")
+  const genre = [...new Set(genreIds.map((id) => labels[id]).filter(Boolean).map(cleanGenre))].slice(0, 3).join(", ");
 
   const year = firstYear(claims, "P577") || cand.year || null;
   const imdbId = firstStr(claims, "P345");
