@@ -37,6 +37,14 @@
     $('expCsvIcon').innerHTML = MB.icon('download');
     $('impIcon').innerHTML = MB.icon('upload');
     $('ghSaveIcon').innerHTML = MB.icon('github');
+    $('cloudBtnIcon').innerHTML = MB.icon('cloud');
+    document.querySelector('#tabMovies .tab-ic').innerHTML = MB.icon('film', 15);
+    document.querySelector('#tabStats .tab-ic').innerHTML = MB.icon('chart', 15);
+    $('fbHeadIcon').innerHTML = MB.icon('cloud', 14);
+    $('fbPushIcon').innerHTML = MB.icon('upload');
+    $('fbPullIcon').innerHTML = MB.icon('download');
+    $('statsHintIcon') && ($('statsHintIcon').innerHTML = MB.icon('alert', 16));
+    $('chartsFallbackIcon') && ($('chartsFallbackIcon').innerHTML = MB.icon('alert', 16));
     $('searchInput').setAttribute('aria-label', t('searchPlaceholder'));
   };
 
@@ -123,6 +131,7 @@
     state.editingId = movie ? movie.id : null;
     $('movieModalTitle').textContent = movie ? t('editMovie') : t('newMovie');
     $('movieTitle').value = movie ? movie.title : '';
+    $('movieYear').value = movie && movie.year ? movie.year : '';
     $('movieDate').value = movie && movie.date_created ? movie.date_created : store.todayISO();
     $('titleErr').hidden = true;
     $('movieDeleteBtn').hidden = !movie;
@@ -137,6 +146,8 @@
       title: $('movieTitle').value.trim(),
       date_created: $('movieDate').value || store.todayISO()
     };
+    var yr = parseInt($('movieYear').value, 10);
+    if (!isNaN(yr) && yr >= 1870 && yr <= 2100) movie.year = yr;
     document.querySelectorAll('#rateRows .rate-row').forEach(function (row) {
       var key = row.getAttribute('data-key');
       var seen = row.querySelector('.seen-cb').checked;
@@ -196,6 +207,7 @@
     var b = $('dataSource');
     if (state.source === 'local') { b.textContent = t('sourceLocal'); b.className = 'badge warn'; }
     else if (state.source === 'file') { b.textContent = t('sourceFile'); b.className = 'badge ok'; }
+    else if (state.source === 'firebase') { b.textContent = t('sourceFirebase'); b.className = 'badge accent'; }
     else { b.textContent = t('sourceSeed'); b.className = 'badge accent'; }
   }
   function syncBadge() {
@@ -210,9 +222,16 @@
       ? MB.render.fmtDate(String(state.data.updatedAt).slice(0, 10)) + ' ' + String(state.data.updatedAt).slice(11, 16)
       : '—';
     fillGhForm();
+    fillFbForm();
+    refreshFbUi();
   }
 
   $('dataBtn').addEventListener('click', function () { refreshDataModal(); openModal($('dataModal')); });
+  $('cloudBtn').addEventListener('click', function () {
+    refreshDataModal();
+    openModal($('dataModal'));
+    if (MB.firebase.status === 'off') MB.firebase.ensureInit().catch(function () { /* status shown */ });
+  });
 
   /* export / import */
   $('exportJsonBtn').addEventListener('click', function () {
@@ -326,6 +345,144 @@
     }
   });
 
+  /* ================= Firebase sync UI ================= */
+  function refreshFbUi() {
+    var st = MB.firebase.status;
+    var b = $('fbStatus');
+    var btn = $('cloudBtn');
+    var label = st === 'ready' ? t('cloudReady')
+      : st === 'loading' ? t('fbTesting')
+      : st === 'error' ? t('cloudError')
+      : t('cloudOff');
+    b.textContent = label;
+    b.className = 'badge' + (st === 'ready' ? ' ok' : st === 'loading' ? ' warn' : st === 'error' ? ' accent' : '');
+    btn.className = 'icon-btn cloud-btn st-' + st;
+    btn.title = label + (MB.firebase.statusMsg && st === 'error' ? ' — ' + MB.firebase.statusMsg : '');
+    btn.setAttribute('aria-label', 'Firebase — ' + label);
+  }
+  function fbMsg(msg, cls) {
+    var el = $('fbMsg');
+    el.hidden = !msg;
+    el.textContent = msg || '';
+    el.className = 'gh-status' + (cls ? ' ' + cls : '');
+  }
+  function fillFbForm() {
+    var p = MB.firebase.prefs;
+    $('fbPath').value = p.path;
+    $('fbAuto').checked = p.autoPush;
+    $('fbLive').checked = p.live;
+  }
+  function adoptRemote(ds) {
+    state.data = ds;
+    state.source = 'firebase';
+    store.markSynced();
+    MB.render.renderAll();
+    if (!$('dataModal').hidden) refreshDataModal();
+  }
+  function fbErrText(e) {
+    var code = (e && e.code) || '';
+    if (code.indexOf('permission_denied') >= 0 || /permission_denied/.test(e && e.message || '')) return t('fbDenied');
+    return t('errGeneric', { msg: (e && e.message) || String(e) });
+  }
+
+  $('fbPath').addEventListener('change', function () {
+    var v = this.value.trim().replace(/^\/+|\/+$/g, '');
+    MB.firebase.prefs.path = v || MB.firebase.DEFAULT_PATH;
+    this.value = MB.firebase.prefs.path;
+    MB.firebase.savePrefs();
+    MB.firebase.applyAuto();
+  });
+  $('fbAuto').addEventListener('change', function () {
+    MB.firebase.prefs.autoPush = this.checked;
+    MB.firebase.savePrefs();
+    MB.firebase.applyAuto();
+  });
+  $('fbLive').addEventListener('change', function () {
+    MB.firebase.prefs.live = this.checked;
+    MB.firebase.savePrefs();
+    if (this.checked) {
+      MB.firebase.ensureInit().then(function () { MB.firebase.applyAuto(); }).catch(function () { /* shown */ });
+    } else {
+      MB.firebase.applyAuto();
+    }
+  });
+  $('fbTestBtn').addEventListener('click', async function () {
+    fbMsg(t('fbTesting'), 'busy');
+    try {
+      var r = await MB.firebase.test();
+      if (!r.exists) { fbMsg(t('fbEmpty'), 'ok'); return; }
+      var n = (r.val && r.val.meta && r.val.meta.movies) != null ? r.val.meta.movies
+        : (r.val && r.val.movies ? Object.keys(r.val.movies).length : '—');
+      fbMsg(t('fbOk', { n: n }), 'ok');
+    } catch (e) {
+      fbMsg(fbErrText(e), 'err');
+    }
+  });
+  $('fbPushBtn').addEventListener('click', async function () {
+    var btn = this;
+    btn.disabled = true;
+    fbMsg(t('fbPushing'), 'busy');
+    try {
+      await MB.firebase.push();
+      store.markSynced();
+      MB.updateUnsyncedDot();
+      syncBadge();
+      fbMsg(t('fbPushed'), 'ok');
+      toast(t('fbPushed'));
+    } catch (e) {
+      fbMsg(fbErrText(e), 'err');
+    } finally {
+      btn.disabled = false;
+    }
+  });
+  $('fbPullBtn').addEventListener('click', async function () {
+    var btn = this;
+    btn.disabled = true;
+    fbMsg(t('fbPulling'), 'busy');
+    try {
+      var ds = await MB.firebase.pull();
+      if (!ds) { fbMsg(t('fbEmpty'), 'ok'); return; }
+      var remoteT = MB.firebase.dsTime(ds);
+      var localT = Date.parse(state.data.updatedAt) || 0;
+      if (remoteT >= localT) {
+        adoptRemote(ds);
+        fbMsg(t('fbPulled'), 'ok');
+        toast(t('fbPulled'));
+      } else {
+        fbMsg(t('fbLocalNewer'), 'ok');
+      }
+    } catch (e) {
+      fbMsg(fbErrText(e), 'err');
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
+  /* ================= tabs (Movies / Stats) ================= */
+  function setTab(tab, fromHash) {
+    state.tab = tab;
+    store.savePrefs();
+    $('pageMovies').hidden = tab !== 'movies';
+    $('pageStats').hidden = tab !== 'stats';
+    $('tabMovies').classList.toggle('active', tab === 'movies');
+    $('tabStats').classList.toggle('active', tab === 'stats');
+    $('tabMovies').setAttribute('aria-selected', String(tab === 'movies'));
+    $('tabStats').setAttribute('aria-selected', String(tab === 'stats'));
+    if (tab === 'stats') MB.stats.render();
+    if (!fromHash) {
+      var h = tab === 'stats' ? '#stats' : '#movies';
+      if (location.hash !== h) {
+        try { history.replaceState(null, '', h); } catch (e) { location.hash = h; }
+      }
+    }
+  }
+  $('tabMovies').addEventListener('click', function () { setTab('movies'); });
+  $('tabStats').addEventListener('click', function () { setTab('stats'); });
+  window.addEventListener('hashchange', function () {
+    var want = location.hash === '#stats' ? 'stats' : 'movies';
+    if (want !== state.tab) setTab(want, true);
+  });
+
   /* ================= toolbar events ================= */
   var searchTimer = null;
   $('searchInput').addEventListener('input', function () {
@@ -402,6 +559,7 @@
     document.documentElement.dataset.theme = state.theme;
     store.savePrefs();
     MB.applyI18n();
+    if (state.tab === 'stats') MB.stats.render();   /* re-theme charts */
   });
   $('langUa').addEventListener('click', function () { setLang('uk'); });
   $('langEn').addEventListener('click', function () { setLang('en'); });
@@ -445,12 +603,28 @@
     MB.applyI18n();
     MB.render.renderAll();
 
+    /* tabs: hash wins over saved pref */
+    var wantTab = location.hash === '#stats' ? 'stats' : (state.tab === 'stats' ? 'stats' : 'movies');
+    setTab(wantTab, true);
+
     if (state.source === 'seed') {
       var banner = $('sourceBanner');
       banner.innerHTML = MB.icon('alert', 16) + '<span></span>';
       banner.querySelector('span').textContent = t('sourceBannerSeed');
       banner.hidden = false;
     }
+
+    /* Firebase cloud sync (non-blocking) */
+    MB.firebase.onRemote = function (ds) {
+      adoptRemote(ds);
+      toast(t('fbNewerRemote'));
+    };
+    MB.firebase.onChange = function () { refreshFbUi(); };
+    MB.firebase.onLocalSaved = function () {
+      MB.updateUnsyncedDot();
+      if (!$('dataModal').hidden) syncBadge();
+    };
+    MB.firebase.autoBoot().catch(function () { /* status visible in UI */ });
   }
 
   if (document.readyState === 'loading') {

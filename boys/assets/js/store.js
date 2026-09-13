@@ -20,6 +20,7 @@
     search: '',
     sort: 'date_desc',
     reviewer: 'all',
+    tab: 'movies',     /* 'movies' | 'stats' */
     editingId: null    /* movie being edited (null = new) */
   };
 
@@ -38,11 +39,12 @@
       if (p.theme === 'dark' || p.theme === 'light') state.theme = p.theme;
       if (p.lang === 'uk' || p.lang === 'en') state.lang = p.lang;
       if (p.view === 'auto' || p.view === 'table' || p.view === 'cards') state.view = p.view;
+      if (p.tab === 'movies' || p.tab === 'stats') state.tab = p.tab;
     } catch (e) { /* ignore */ }
   }
   function savePrefs() {
     try {
-      localStorage.setItem(LS_PREFS, JSON.stringify({ theme: state.theme, lang: state.lang, view: state.view }));
+      localStorage.setItem(LS_PREFS, JSON.stringify({ theme: state.theme, lang: state.lang, view: state.view, tab: state.tab }));
     } catch (e) { /* ignore */ }
   }
   function loadLocalData() {
@@ -174,6 +176,8 @@
       m[k + '_rate'] = isNaN(v) ? 0 : Math.min(10, Math.max(0, v));
     });
     m.date_created = String(raw.date_created || '').slice(0, 10) || '';
+    var yr = parseInt(raw.year, 10);
+    if (!isNaN(yr) && yr >= 1870 && yr <= 2100) m.year = yr;
     return m;
   }
 
@@ -208,11 +212,12 @@
     return s;
   }
   function exportCSVText() {
-    var head = ['id', 'title'].concat(REVIEWER_KEYS.map(function (k) { return k + '_rate'; })).concat(['date_created']);
+    var head = ['id', 'title'].concat(REVIEWER_KEYS.map(function (k) { return k + '_rate'; })).concat(['year', 'date_created']);
     var lines = [head.join(',')];
     state.data.movies.forEach(function (m) {
       var row = [m.id, csvEscape(m.title)];
       REVIEWER_KEYS.forEach(function (k) { row.push(m[k + '_rate'] || 0); });
+      row.push(m.year || '');
       row.push(m.date_created || '');
       lines.push(row.join(','));
     });

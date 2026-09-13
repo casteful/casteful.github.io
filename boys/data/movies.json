@@ -1,9 +1,9 @@
 {
   "name": "movie_base",
   "version": 2,
-  "updatedAt": "2025-10-01T22:19:13Z",
+  "updatedAt": "2026-09-13T12:00:00Z",
   "source": "DBeaver HTML export, 2025-10-01",
-  "note": "rate 0 = not rated (reviewer did not watch); kept for DB fidelity",
+  "note": "rate 0 = not rated (reviewer did not watch); kept for DB fidelity; year = optional release year (0/absent = unknown, used for decade stats)",
   "reviewers": [
     {
       "key": "dima",
@@ -30,6 +30,7 @@
       "deni_rate": 7,
       "yura_rate": 9,
       "ihor_rate": 7,
+      "year": 1988,
       "date_created": "2025-08-30"
     },
     {
@@ -39,6 +40,7 @@
       "deni_rate": 6,
       "yura_rate": 6,
       "ihor_rate": 6,
+      "year": 1988,
       "date_created": "2025-08-29"
     },
     {
@@ -48,6 +50,7 @@
       "deni_rate": 8,
       "yura_rate": 8,
       "ihor_rate": 7,
+      "year": 1997,
       "date_created": "2025-08-29"
     },
     {
@@ -57,6 +60,7 @@
       "deni_rate": 8,
       "yura_rate": 9,
       "ihor_rate": 10,
+      "year": 2021,
       "date_created": "2021-09-19"
     },
     {
@@ -66,6 +70,7 @@
       "deni_rate": 7,
       "yura_rate": 6,
       "ihor_rate": 6,
+      "year": 1981,
       "date_created": "2021-08-08"
     },
     {
@@ -75,6 +80,7 @@
       "deni_rate": 7,
       "yura_rate": 7,
       "ihor_rate": 0,
+      "year": 1985,
       "date_created": "2021-04-17"
     },
     {
@@ -84,6 +90,7 @@
       "deni_rate": 7,
       "yura_rate": 6,
       "ihor_rate": 7,
+      "year": 1990,
       "date_created": "2021-04-10"
     },
     {
@@ -93,6 +100,7 @@
       "deni_rate": 4,
       "yura_rate": 4,
       "ihor_rate": 0,
+      "year": 1989,
       "date_created": "2021-04-10"
     },
     {
@@ -102,6 +110,7 @@
       "deni_rate": 6,
       "yura_rate": 6,
       "ihor_rate": 0,
+      "year": 1999,
       "date_created": "2021-04-10"
     },
     {
@@ -111,6 +120,7 @@
       "deni_rate": 7,
       "yura_rate": 8,
       "ihor_rate": 0,
+      "year": 1997,
       "date_created": "2021-04-10"
     },
     {
@@ -120,6 +130,7 @@
       "deni_rate": 6,
       "yura_rate": 4,
       "ihor_rate": 5,
+      "year": 1988,
       "date_created": "2021-03-07"
     },
     {
@@ -129,6 +140,7 @@
       "deni_rate": 5,
       "yura_rate": 5,
       "ihor_rate": 2,
+      "year": 1993,
       "date_created": "2021-03-07"
     },
     {
@@ -138,6 +150,7 @@
       "deni_rate": 6,
       "yura_rate": 6,
       "ihor_rate": 0,
+      "year": 1971,
       "date_created": "2021-01-23"
     },
     {
@@ -147,6 +160,7 @@
       "deni_rate": 5,
       "yura_rate": 4,
       "ihor_rate": 6,
+      "year": 1986,
       "date_created": "2021-01-23"
     },
     {
@@ -165,6 +179,7 @@
       "deni_rate": 8,
       "yura_rate": 10,
       "ihor_rate": 6,
+      "year": 1994,
       "date_created": "2020-12-05"
     },
     {
@@ -183,6 +198,7 @@
       "deni_rate": 3,
       "yura_rate": 3,
       "ihor_rate": 0,
+      "year": 1990,
       "date_created": "2020-11-21"
     },
     {
@@ -201,6 +217,7 @@
       "deni_rate": 7,
       "yura_rate": 7,
       "ihor_rate": 0,
+      "year": 1988,
       "date_created": "2020-11-14"
     },
     {
@@ -210,6 +227,7 @@
       "deni_rate": 7,
       "yura_rate": 10,
       "ihor_rate": 5,
+      "year": 1986,
       "date_created": "2020-09-05"
     },
     {
@@ -228,6 +246,7 @@
       "deni_rate": 7,
       "yura_rate": 6,
       "ihor_rate": 0,
+      "year": 1981,
       "date_created": "2020-08-23"
     },
     {
@@ -237,6 +256,7 @@
       "deni_rate": 5,
       "yura_rate": 5,
       "ihor_rate": 0,
+      "year": 1983,
       "date_created": "2020-08-23"
     },
     {
@@ -246,6 +266,7 @@
       "deni_rate": 5,
       "yura_rate": 6,
       "ihor_rate": 4,
+      "year": 2018,
       "date_created": "2020-07-18"
     },
     {
@@ -255,6 +276,7 @@
       "deni_rate": 4,
       "yura_rate": 5,
       "ihor_rate": 3,
+      "year": 1979,
       "date_created": "2020-06-13"
     },
     {
@@ -264,6 +286,7 @@
       "deni_rate": 8,
       "yura_rate": 10,
       "ihor_rate": 8,
+      "year": 1997,
       "date_created": "2020-06-13"
     },
     {
@@ -291,6 +314,7 @@
       "deni_rate": 4,
       "yura_rate": 5,
       "ihor_rate": 4,
+      "year": 1995,
       "date_created": "2020-01-25"
     },
     {
@@ -300,6 +324,7 @@
       "deni_rate": 6,
       "yura_rate": 7,
       "ihor_rate": 0,
+      "year": 1980,
       "date_created": "2020-01-18"
     },
     {
@@ -309,6 +334,7 @@
       "deni_rate": 7,
       "yura_rate": 7,
       "ihor_rate": 8,
+      "year": 2012,
       "date_created": "2019-12-28"
     },
     {
@@ -318,6 +344,7 @@
       "deni_rate": 7,
       "yura_rate": 6,
       "ihor_rate": 7,
+      "year": 2012,
       "date_created": "2019-12-28"
     },
     {
@@ -336,6 +363,7 @@
       "deni_rate": 5,
       "yura_rate": 6,
       "ihor_rate": 3,
+      "year": 1983,
       "date_created": "2019-12-14"
     },
     {
@@ -345,6 +373,7 @@
       "deni_rate": 6,
       "yura_rate": 8,
       "ihor_rate": 8,
+      "year": 1994,
       "date_created": "2019-12-14"
     },
     {
@@ -354,6 +383,7 @@
       "deni_rate": 7,
       "yura_rate": 5,
       "ihor_rate": 0,
+      "year": 1999,
       "date_created": "2019-12-14"
     },
     {
@@ -363,6 +393,7 @@
       "deni_rate": 7,
       "yura_rate": 8,
       "ihor_rate": 5,
+      "year": 1984,
       "date_created": "2019-12-14"
     },
     {
@@ -372,6 +403,7 @@
       "deni_rate": 7,
       "yura_rate": 7,
       "ihor_rate": 8,
+      "year": 1985,
       "date_created": "2019-11-23"
     },
     {
@@ -390,6 +422,7 @@
       "deni_rate": 7,
       "yura_rate": 6,
       "ihor_rate": 7,
+      "year": 1990,
       "date_created": "2019-10-05"
     },
     {
@@ -399,6 +432,7 @@
       "deni_rate": 5,
       "yura_rate": 6,
       "ihor_rate": 2,
+      "year": 1986,
       "date_created": "2019-10-05"
     },
     {
@@ -408,6 +442,7 @@
       "deni_rate": 7,
       "yura_rate": 7,
       "ihor_rate": 6,
+      "year": 1985,
       "date_created": "2019-09-29"
     },
     {
@@ -417,6 +452,7 @@
       "deni_rate": 6,
       "yura_rate": 6,
       "ihor_rate": 5,
+      "year": 2001,
       "date_created": "2019-09-28"
     },
     {
@@ -426,6 +462,7 @@
       "deni_rate": 4,
       "yura_rate": 10,
       "ihor_rate": 0,
+      "year": 1997,
       "date_created": "2019-09-28"
     },
     {
@@ -435,6 +472,7 @@
       "deni_rate": 2,
       "yura_rate": 4,
       "ihor_rate": 8,
+      "year": 1990,
       "date_created": "2019-09-28"
     },
     {
@@ -444,6 +482,7 @@
       "deni_rate": 7,
       "yura_rate": 7,
       "ihor_rate": 0,
+      "year": 1986,
       "date_created": "2019-08-28"
     },
     {
@@ -462,6 +501,7 @@
       "deni_rate": 6,
       "yura_rate": 5,
       "ihor_rate": 0,
+      "year": 1986,
       "date_created": "2019-08-28"
     },
     {
@@ -471,6 +511,7 @@
       "deni_rate": 3,
       "yura_rate": 5,
       "ihor_rate": 0,
+      "year": 1987,
       "date_created": "2019-08-28"
     },
     {
@@ -480,6 +521,7 @@
       "deni_rate": 7,
       "yura_rate": 7,
       "ihor_rate": 0,
+      "year": 1993,
       "date_created": "2019-08-28"
     },
     {
@@ -489,6 +531,7 @@
       "deni_rate": 5,
       "yura_rate": 6,
       "ihor_rate": 0,
+      "year": 1995,
       "date_created": "2019-08-28"
     },
     {
@@ -498,6 +541,7 @@
       "deni_rate": 5,
       "yura_rate": 3,
       "ihor_rate": 0,
+      "year": 1994,
       "date_created": "2019-08-28"
     }
   ]

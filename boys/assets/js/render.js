@@ -190,6 +190,10 @@
     return movies.sort(cmp);
   }
 
+  function yearTag(m) {
+    return m.year ? ' <span class="year-tag">' + m.year + '</span>' : '';
+  }
+
   function renderList() {
     var d = state.data;
     var wrap = document.getElementById('listWrap');
@@ -216,7 +220,7 @@
             return '<span class="mini-rate"><span class="mr-name">' + esc(names[k]) + '</span>' +
               '<span class="rate ' + rateClass(v) + '">' + (v > 0 ? v : '—') + '</span></span>';
           }).join('') + '</div>' +
-          '<div class="card-meta"><span>' + fmtDate(m.date_created) + '</span><span>#' + m.id + '</span></div>' +
+          '<div class="card-meta"><span>' + fmtDate(m.date_created) + (m.year ? ' · ' + m.year : '') + '</span><span>#' + m.id + '</span></div>' +
           '<div class="card-actions">' + actionButtons() + '</div></article>';
       }).join('') + '</div>';
       return;
@@ -254,7 +258,7 @@
         var avg = store.movieAvg(m);
         return '<tr data-id="' + m.id + '">' +
           '<td class="td-id">' + m.id + '</td>' +
-          '<td class="td-title"><span class="title-text">' + esc(m.title) + '</span></td>' +
+          '<td class="td-title"><span class="title-text">' + esc(m.title) + '</span>' + yearTag(m) + '</td>' +
           keys.map(function (k) {
             var v = m[k + '_rate'] || 0;
             return '<td><span class="rate ' + rateClass(v) + '" title="' + esc(names[k]) + (v > 0 ? ': ' + v : ' — ' + t('notWatched')) + '">' + (v > 0 ? v : '—') + '</span></td>';
@@ -278,6 +282,7 @@
     renderToolbar();
     renderList();
     MB.updateUnsyncedDot();
+    if (MB.stats) MB.stats.onDataChange();
   }
 
   window.MB.render = {

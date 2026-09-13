@@ -505,3 +505,127 @@ a{ color:var(--accent-hover); }
   .table-card, .card-soft, .rev-card{ border-color:#ccc; box-shadow:none; }
   .table-scroll{ max-height:none; overflow:visible; }
 }
+
+/* ============================================================
+   Tabs · Stats tab · Firebase (v3)
+   ============================================================ */
+
+/* ---------------- Tabs under header ---------------- */
+.tabs-bar{
+  position:sticky; top:var(--header-h); z-index:45;
+  background:color-mix(in srgb, var(--bg) 82%, transparent);
+  backdrop-filter:blur(12px); -webkit-backdrop-filter:blur(12px);
+  border-bottom:1px solid var(--border);
+}
+.tabs-inner{ display:flex; gap:6px; }
+.tab-btn{
+  display:inline-flex; align-items:center; gap:8px;
+  background:transparent; border:0; border-bottom:2px solid transparent;
+  color:var(--muted); font-size:14px; font-weight:600;
+  padding:13px 14px 11px; cursor:pointer; margin-bottom:-1px;
+  transition:color .15s, border-color .15s;
+}
+.tab-btn .tab-ic{ display:inline-flex; }
+.tab-btn .tab-ic svg{ width:15px; height:15px; }
+.tab-btn:hover{ color:var(--text); }
+.tab-btn.active{ color:var(--text); border-bottom-color:var(--accent); }
+
+/* ---------------- Cloud status button ---------------- */
+.cloud-btn{ position:relative; }
+.cloud-btn.st-off{ color:var(--muted); }
+.cloud-btn.st-loading{ color:var(--warn); }
+.cloud-btn.st-loading svg{ animation:cloudPulse 1.2s ease-in-out infinite; }
+.cloud-btn.st-ready{ color:var(--ok); }
+.cloud-btn.st-error{ color:var(--accent); }
+@keyframes cloudPulse{ 50%{ opacity:.35; } }
+
+/* ---------------- Year tag ---------------- */
+.year-tag{
+  display:inline-block; margin-left:8px; padding:1px 7px;
+  border-radius:999px; border:1px solid var(--border);
+  color:var(--muted); font-size:11px; font-weight:600; vertical-align:1px;
+  font-variant-numeric:tabular-nums; white-space:nowrap;
+}
+
+/* ---------------- Editor: year + date row ---------------- */
+.field-row{ display:grid; grid-template-columns:130px 1fr; gap:12px; }
+.field-row-hint{ margin:6px 0 0; }
+
+/* ---------------- Stats tab ---------------- */
+.stats-hint{ margin-top:22px; }
+.kpi-grid{
+  display:grid; gap:14px; margin:14px 0;
+  grid-template-columns:repeat(auto-fit,minmax(160px,1fr));
+}
+.kpi-card{
+  background:var(--surface); border:1px solid var(--border); border-radius:var(--radius);
+  padding:13px 16px;
+}
+.kpi-card .ms-label{ font-size:12px; color:var(--muted); margin-bottom:3px; }
+.kpi-card .ms-value{
+  font-size:22px; font-weight:700; font-variant-numeric:tabular-nums;
+  display:flex; align-items:center; gap:8px; line-height:1.2;
+}
+.kpi-card .ms-value svg{ color:var(--gold); flex:none; }
+.kpi-sub{ font-size:12px; color:var(--muted); margin-top:3px; }
+
+.chart-grid{
+  display:grid; gap:14px;
+  grid-template-columns:repeat(2, 1fr);
+}
+.chart-card{ display:flex; flex-direction:column; }
+.chart-card-wide{ grid-column:1 / -1; }
+.chart-box{ position:relative; height:230px; }
+.chart-box-radar{ height:300px; }
+.chart-box-top{ height:330px; }
+#chartArea.no-charts .chart-card{ display:none; }
+#chartArea.no-charts .hl-card{ display:block; }
+
+.hl-card{ grid-column:1 / -1; display:grid; gap:18px; grid-template-columns:1fr 1fr; align-content:start; }
+.list-sub{
+  font-size:13px; font-weight:600; text-transform:uppercase; letter-spacing:.8px;
+  color:var(--muted); margin:0 0 8px;
+}
+.hl-item{ padding:9px 0; border-bottom:1px solid var(--border); }
+.hl-item:last-child{ border-bottom:0; }
+.hl-top{ display:flex; justify-content:space-between; align-items:center; gap:10px; }
+.hl-title{ font-weight:600; font-size:14px; overflow-wrap:anywhere; }
+.hl-chips{ display:flex; gap:12px; margin-top:7px; flex-wrap:wrap; }
+.hl-chips .mr-name{ font-size:10px; }
+.hl-date{ font-size:12px; color:var(--muted); margin-top:3px; }
+.spread-pill{
+  flex:none; font-size:11.5px; font-weight:700; color:var(--warn);
+  background:rgba(245,181,68,.12); border-radius:999px; padding:2px 9px;
+  white-space:nowrap;
+}
+.hl-empty{ color:var(--muted); font-size:13px; margin:0; }
+
+/* ---------------- Firebase card in data modal ---------------- */
+.fb-card{ grid-column:1 / -1; }
+.fb-head{ display:flex; align-items:center; justify-content:space-between; gap:10px; }
+.fb-title{ display:flex; align-items:center; gap:7px; }
+.fb-title .fb-ic{ display:inline-flex; color:var(--gold); }
+.fb-title .fb-ic svg{ width:15px; height:15px; }
+.fb-grid{
+  display:grid; grid-template-columns:1fr 1fr; gap:0 14px;
+  align-items:end; margin-top:4px;
+}
+.fb-toggles{ display:flex; flex-direction:column; gap:9px; padding-bottom:4px; }
+.fb-toggles .radio{ font-size:13.5px; }
+
+@media (max-width: 860px){
+  .chart-grid{ grid-template-columns:1fr; }
+  .hl-card{ grid-template-columns:1fr; }
+  .fb-grid{ grid-template-columns:1fr; }
+}
+@media (max-width: 720px){
+  .tabs-inner{ gap:2px; }
+  .tab-btn{ padding:11px 12px 9px; font-size:13.5px; }
+  .toolbar{ top:calc(var(--header-h) + 45px); }
+  .chart-box{ height:200px; }
+  .chart-box-top{ height:280px; }
+  .field-row{ grid-template-columns:1fr; gap:0; }
+}
+@media print{
+  .tabs-bar{ display:none !important; }
+}

@@ -25,7 +25,11 @@
     grid: '<rect x="3" y="3" width="7" height="7" rx="1.2"/><rect x="14" y="3" width="7" height="7" rx="1.2"/><rect x="14" y="14" width="7" height="7" rx="1.2"/><rect x="3" y="14" width="7" height="7" rx="1.2"/>',
     reset: '<path d="M1 4v6h6"/><path d="M3.5 15a9 9 0 1 0 2.1-9.4L1 10"/>',
     check: '<path d="m20 6-11 11-5-5"/>',
-    globe: '<circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>'
+    globe: '<circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>',
+    cloud: '<path d="M17.5 19a4.5 4.5 0 1 0-.44-8.98 6.5 6.5 0 0 0-12.4 2.2A3.5 3.5 0 0 0 5.5 19z"/>',
+    chart: '<path d="M3 3v16a2 2 0 0 0 2 2h16"/><path d="M7 15.5v-4M12 15.5v-8M17 15.5v-6"/>',
+    zap: '<path d="M13 2 3 14h7l-1 8L21 9h-7z"/>',
+    trophy: '<path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0z"/><path d="M7 6H4a1 1 0 0 0-1 1c0 2.2 1.8 4 4 4M17 6h3a1 1 0 0 1 1 1c0 2.2-1.8 4-4 4"/>'
   };
 
   function icon(name, size) {
