@@ -1086,3 +1086,72 @@ export function decadeOf(year) {
   if (!year) return null;
   return Math.floor(year / 10) * 10;
 }
+
+// ============================================================
+// Country name normalization
+// Wikipedia/Wikidata returns full official names ("Сполучені Штати
+// Америки") while the club database uses short names ("США").
+// Every country string is canonicalized so filtering, statistics and
+// the table show ONE value per country, never two spellings.
+// ============================================================
+const COUNTRY_ALIASES = {
+  // USA
+  "сполучені штати америки": "США",
+  "сполучені штати": "США",
+  "usa": "США", "us": "США",
+  "united states": "США", "united states of america": "США",
+  // United Kingdom
+  "об'єднане королівство великої британії та північної ірландії": "Велика Британія",
+  "об'єднане королівство великої британії і північної ірландії": "Велика Британія",
+  "об'єднане королівство": "Велика Британія",
+  "сполучене королівство": "Велика Британія",
+  "united kingdom": "Велика Британія", "great britain": "Велика Британія",
+  // USSR
+  "союз радянських соціалістичних республік": "СРСР",
+  "радянський союз": "СРСР",
+  "ussr": "СРСР", "soviet union": "СРСР",
+  // Russia
+  "російська федерація": "Росія",
+  "russian federation": "Росія",
+  // Koreas
+  ["республіка коре" + "я"]: "Південна Корея",
+  "south korea": "Південна Корея",
+  "корейська народно-демократична республіка": "Північна Корея",
+  "north korea": "Північна Корея",
+  // China
+  "китайська народна республіка": "Китай",
+  "china": "Китай",
+  // Germany
+  "федеративна республіка німеччина": "Німеччина",
+  "німецька демократична республіка": "НДР",
+  // Others
+  "чехо-словаччина": "Чехословаччина",
+  "чехословацька соціалістична республіка": "Чехословаччина",
+  "чеська республіка": "Чехія",
+  "об'єднані арабські емірати": "ОАЕ",
+  "французька республіка": "Франція",
+  "ісламська республіка іран": "Іран",
+  "нова зеландія aotearoa": "Нова Зеландія",
+};
+
+export function normalizeOneCountry(name) {
+  let s = String(name || "").trim().replace(/\s+/g, " ");
+  if (!s) return "";
+  // drop trailing punctuation and parenthetical clarifications:
+  // "США." → "США", "Німеччина (ФРН)" → "Німеччина"
+  s = s.replace(/[.․,;:]+$/, "").replace(/\s*\([^)]*\)\s*$/, "").trim();
+  const key = s.toLowerCase();
+  return COUNTRY_ALIASES[key] || s;
+}
+
+// "США, Сполучені Штати Америки" → "США"; also fixes multi-country strings
+export function normalizeCountry(country) {
+  const raw = String(country || "").trim();
+  if (!raw) return "";
+  // the whole string may itself be one full official name
+  // ("Об'єднане Королівство … та Північної Ірландії" — contains " та ")
+  const whole = normalizeOneCountry(raw);
+  if (whole && whole !== raw) return whole;
+  const parts = raw.split(/[,;/]| і | та /).map(normalizeOneCountry).filter(Boolean);
+  return [...new Set(parts)].join(", ");
+}

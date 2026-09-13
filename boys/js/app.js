@@ -12,7 +12,7 @@
 // Theme: light by default (original design), dark optional.
 // ============================================================
 import { db, ref, onValue, get, update, remove } from "./firebase-config.js";
-import { SEED_MOVIES, RATERS, avgRate, seasonFromDate, decadeOf } from "./data.js";
+import { SEED_MOVIES, RATERS, avgRate, seasonFromDate, decadeOf, normalizeCountry } from "./data.js";
 import { renderStats } from "./stats.js";
 import { searchFilms, getFilmDetails } from "./lookup.js";
 
@@ -22,7 +22,7 @@ const LOCAL_BACKUP = true;   // hidden param — offline fallback
 
 const DB_PATH = "movies";
 const CACHE_KEY = "movieclub_cache_v1";
-const POSTER_CACHE_KEY = "movieclub_posters_v1";
+const POSTER_CACHE_KEY = "movieclub_posters_v2";
 const VIEW_KEY = "movieclub_view_v1";
 const THEME_KEY = "movieclub_theme";
 
@@ -30,8 +30,11 @@ const THEME_KEY = "movieclub_theme";
 let MOVIES = {};           // { "<id>": movie }
 let FILTERS = { q: "", season: "", decade: "", country: "", director: "", sort: "date-desc" };
 let VIEW = "list";         // "list" | "grid"
-let posterCache = {};      // wikiTitle -> poster URL
+let posterCache = {};      // "lang:Title" -> poster URL
+let posterInFlight = {};   // "lang:Title" -> Promise (dedupe parallel fetches)
 let currentSnapshot = null;
+let countryCleanupDone = false; // one-time DB normalization of country variants
+const autoHealTried = new Set();   // movie ids already auto-enriched this session
 
 // ---------- helpers ----------
 const $ = (sel) => document.querySelector(sel);
@@ -76,7 +79,31 @@ function normalizeMovies(val) {
 }
 
 function allMovies() {
-  return Object.values(MOVIES).map((m) => ({ ...m, id: Number(m.id) }));
+  // country is normalized on the fly so the table, grid, details, filters
+  // and statistics always show ONE spelling per country (e.g. only "США",
+  // never also "Сполучені Штати Америки") regardless of what is stored.
+  return Object.values(MOVIES).map((m) => ({
+    ...m,
+    id: Number(m.id),
+    country: normalizeCountry(m.country),
+  }));
+}
+
+// one-time repair: rewrite Firebase records whose stored country is a
+// variant spelling, so the database itself becomes consistent too
+async function cleanupCountryVariants() {
+  if (countryCleanupDone || !AUTO_SAVE) return;
+  countryCleanupDone = true;
+  const payload = {};
+  Object.entries(MOVIES).forEach(([key, m]) => {
+    const fixed = normalizeCountry(m.country);
+    if (fixed && fixed !== m.country) payload[`${DB_PATH}/${key}/country`] = fixed;
+  });
+  if (!Object.keys(payload).length) return;
+  try {
+    await update(ref(db), payload);
+    console.info(`country normalization: repaired ${Object.keys(payload).length} record(s)`);
+  } catch (e) { /* cosmetic fix — non-fatal */ }
 }
 
 // ---------- localStorage backup (offline fallback only) ----------
@@ -118,6 +145,7 @@ function initSync() {
       currentSnapshot = MOVIES;
       saveCache(MOVIES);
       renderAll();
+      cleanupCountryVariants();
     }, (err) => {
       console.error("Firebase read error:", err);
       setSync(false, "read error");
@@ -283,7 +311,7 @@ function renderMovies() {
     listEl.innerHTML = "";
     gridEl.innerHTML = ms.map(cardHTML).join("");
     gridEl.querySelectorAll(".poster[data-wiki]").forEach(async (el) => {
-      const url = await getPoster(el.dataset.wiki, el.dataset.manualPoster);
+      const url = await getPoster(el.dataset.wiki, el.dataset.manualPoster, el.dataset.imdb, el.dataset.year);
       el.style.backgroundImage = url ? `url("${url}")` : "";
       el.classList.toggle("ph", !url);
     });
@@ -332,13 +360,15 @@ function listHTML(ms) {
 function cardHTML(m) {
   const avg = avgRate(m.rates);
   const manualPoster = m.poster ? esc(m.poster) : "";
-  const wikiTitle = m.wiki ? m.wiki.split("/wiki/")[1] || "" : "";
   return `
   <article class="movie-card" data-open="${m.id}" title="Click for details">
-    <div class="poster ${wikiTitle || manualPoster ? "" : "ph"}"
-         ${wikiTitle ? `data-wiki="${esc(decodeURIComponent(wikiTitle))}"` : ""}
+    <div class="poster ${m.wiki || m.poster ? "" : "ph"}"
+         ${m.wiki ? `data-wiki="${esc(m.wiki)}"` : ""}
+         ${m.imdb ? `data-imdb="${esc(m.imdb)}"` : ""}
+         ${m.year ? `data-year="${esc(m.year)}"` : ""}
          ${manualPoster ? `data-manual-poster="${manualPoster}"` : ""}>
       <span class="ph-text">no poster</span>
+      ${avg > 0 ? `<span class="p-avg ${avgClass(avg)}">${avg.toFixed(1)}</span>` : ""}
     </div>
     <div class="card-body">
       <span class="t">${esc(m.title)}</span>
@@ -368,11 +398,10 @@ function openDetails(id) {
   if (m.wiki) links.push(`<a href="${esc(m.wiki)}" target="_blank" rel="noopener">Wikipedia</a>`);
 
   const manualPoster = m.poster ? esc(m.poster) : "";
-  const wikiTitle = m.wiki ? m.wiki.split("/wiki/")[1] || "" : "";
 
   $("#detailsBody").innerHTML = `
-    <div class="d-poster ${wikiTitle || manualPoster ? "" : "ph"}" id="detailsPoster"
-         ${wikiTitle ? `data-wiki="${esc(decodeURIComponent(wikiTitle))}"` : ""}
+    <div class="d-poster ${m.wiki || m.poster ? "" : "ph"}" id="detailsPoster"
+         ${m.wiki ? `data-wiki="${esc(m.wiki)}"` : ""}
          ${manualPoster ? `data-manual-poster="${manualPoster}"` : ""}>
       <span class="ph-text">no poster</span>
     </div>
@@ -399,15 +428,27 @@ function openDetails(id) {
 
   $("#detailsModal").hidden = false;
 
-  // async poster
+  // async poster (language-aware: works for uk / en / ru wiki links alike)
   const pEl = $("#detailsPoster");
-  if (wikiTitle || manualPoster) {
-    getPoster(wikiTitle, manualPoster).then((url) => {
+  if (m.wiki || m.poster) {
+    getPoster(m.wiki, m.poster, m.imdb, m.year).then((url) => {
       if (url && document.body.contains(pEl)) {
         pEl.style.backgroundImage = `url("${url}")`;
         pEl.classList.remove("ph");
       }
     });
+  }
+
+  // auto-heal: if this record still has no poster / links / metadata, fetch
+  // everything in the background — no manual "Fetch info" press needed
+  if (!m.poster && !m.wiki && !m.imdb && !autoHealTried.has(String(id))) {
+    autoHealTried.add(String(id));
+    lookupForMovie(m)
+      .then(async (info) => {
+        if (!info.poster && !info.imdb && !info.wiki) return;
+        await saveMovie({ ...m, ...info, country: normalizeCountry(info.country) || m.country });
+      })
+      .catch(() => { /* stays manual — the Fetch info button is still there */ });
   }
 
   $("#dEdit").addEventListener("click", () => { closeDetails(); openEditor(id); });
@@ -455,12 +496,24 @@ function pickInfoFields(m) {
 function wireLookup(area, getQuery) {
   let token = 0;
   let timer = null;
+  let pending = null;   // resolves when the current lookup chain fully settles
 
   const schedule = () => {
     clearTimeout(timer);
     const { title, year } = getQuery();
-    if (title.length < 2 || !/^\d{4}$/.test(year)) return;
-    timer = setTimeout(() => runSearch(++token), 600);
+    if (title.length < 2 || !/^\d{4}$/.test(year)) { pending = null; return; }
+    let done;
+    pending = new Promise((r) => (done = r));
+    timer = setTimeout(() => runSearch(++token).then(done, done), 600);
+  };
+
+  // wait (max 12 s) for an in-flight lookup so Save never persists
+  // empty metadata just because the user clicked before fetch finished
+  const settled = () => {
+    const { title, year } = getQuery();
+    const valid = title.length >= 2 && /^\d{4}$/.test(year);
+    if (!pending && valid && !area._fetched) schedule(); // saved right after typing
+    return Promise.race([pending || Promise.resolve(), new Promise((r) => setTimeout(r, 12000))]);
   };
 
   async function runSearch(tok) {
@@ -505,7 +558,7 @@ function wireLookup(area, getQuery) {
     list.querySelectorAll(".cand").forEach((btn) =>
       btn.addEventListener("click", () => {
         const c = pool.find((x) => x.qid === btn.dataset.qid);
-        if (c) pick(c, token);
+        if (c) pick(c, token).catch(() => {});
       })
     );
   }
@@ -532,7 +585,7 @@ function wireLookup(area, getQuery) {
   }
 
   schedule(); // initial trigger when fields are already valid (edit modal)
-  return { schedule };
+  return { schedule, settled };
 }
 
 function renderFetched(area, info) {
@@ -556,25 +609,108 @@ function renderFetched(area, info) {
 
 function closeDetails() { $("#detailsModal").hidden = true; }
 
-// ---------- posters from Wikipedia (auto) ----------
-async function getPoster(wikiTitle, manual) {
-  if (manual) return manual;
-  if (!wikiTitle) return null;
-  if (posterCache[wikiTitle] !== undefined) return posterCache[wikiTitle];
+// ---------- posters from Wikipedia (auto, language-aware) ----------
+// The wiki link may point to uk / en / ru Wikipedia. The poster is resolved
+// on THAT wiki first, then cross-checked on en/uk, then via Wikidata P18 —
+// so posters load automatically without the manual Fetch button.
+function wikiRef(wikiUrl) {
+  const m = String(wikiUrl || "").match(/^https?:\/\/([a-z-]+)\.wikipedia\.org\/wiki\/(.+)$/i);
+  if (!m) return null;
+  let title;
+  try { title = decodeURIComponent(m[2]); } catch (e) { title = m[2]; }
+  return { lang: m[1].toLowerCase(), title: title.replace(/_/g, " ") };
+}
+
+async function fetchJson(url) {
+  const res = await fetch(url, { headers: { Accept: "application/json" } });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+
+async function posterFromWiki(lang, title) {
+  // 1) page image on this language wiki (REST summary)
   try {
-    const url = `https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(wikiTitle)}?redirect=true`;
-    const res = await fetch(url, { headers: { Accept: "application/json" } });
-    if (!res.ok) throw new Error(String(res.status));
-    const data = await res.json();
+    const data = await fetchJson(`https://${lang}.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(title)}?redirect=true`);
+    if (data?.type === "disambiguation") return null; // disambig pages have no poster
     let src = data?.originalimage?.source || data?.thumbnail?.source || null;
-    if (src && data.thumbnail?.source) src = data.thumbnail.source.replace(/\/\d+px-/, "/500px-");
-    posterCache[wikiTitle] = src;
+    if (src) {
+      if (data.thumbnail?.source) src = src.replace(/\/\d+px-/, "/500px-");
+      src = src.replace(/([?&])utm_[^&]*/g, "$1").replace(/[?&]+$/, ""); // drop tracking params
+    }
+    if (src) return src;
+  } catch (e) { /* fall through to Wikidata */ }
+
+  // 2) resolve the page → Wikidata item → P18 image on Commons
+  try {
+    const d = await fetchJson(`https://${lang}.wikipedia.org/w/api.php?action=query&prop=pageprops&ppprop=wikibase_item&redirects=1&titles=${encodeURIComponent(title)}&format=json&origin=*`);
+    const page = Object.values(d?.query?.pages || {})[0];
+    const qid = page?.pageprops?.wikibase_item;
+    if (qid) {
+      const ent = await fetchJson(`https://www.wikidata.org/wiki/Special:EntityData/${qid}.json`);
+      const img = ent?.entities?.[qid]?.claims?.P18?.[0]?.mainsnak?.datavalue?.value;
+      if (img) return `https://commons.wikimedia.org/wiki/Special:FilePath/${encodeURIComponent(String(img).replace(/ /g, "_"))}?width=500`;
+    }
+  } catch (e) { /* give up for this wiki */ }
+  return null;
+}
+
+async function getPoster(wikiUrl, manual, imdb, year) {
+  if (manual) return manual;
+  const w = wikiRef(wikiUrl);
+  if (!w) return null;
+  const key = `${w.lang}:${w.title}`;
+  if (posterCache[key] !== undefined) return posterCache[key];
+  if (posterInFlight[key]) return posterInFlight[key];
+
+  posterInFlight[key] = (async () => {
+    let src = await posterFromWiki(w.lang, w.title);
+    if (!src && w.lang !== "en") src = await posterFromWiki("en", w.title);
+    if (!src && w.lang !== "uk") src = await posterFromWiki("uk", w.title);
+    // wiki link points at a disambiguation page or an imageless article —
+    // search this wiki for the film article (title + release year) with an image
+    if (!src) src = await posterFromWikiSearch(w.lang, w.title, year);
+    // last resort: identify the film by its IMDb ID (P345) on Wikidata → P18
+    if (!src) src = await posterFromImdb(imdb);
+    posterCache[key] = src;
     try { localStorage.setItem(POSTER_CACHE_KEY, JSON.stringify(posterCache)); } catch (e) {}
     return src;
-  } catch (e) {
-    posterCache[wikiTitle] = null;
-    return null;
+  })();
+
+  try {
+    return await posterInFlight[key];
+  } finally {
+    delete posterInFlight[key];
   }
+}
+
+// wiki search restricted to pages that actually have an image —
+// disambiguation pages never do, so this skips them naturally.
+// pilicense=any is required: film posters are fair-use (non-free) images.
+async function posterFromWikiSearch(lang, title, year) {
+  try {
+    const q = [title, year ? String(year) : ""].filter(Boolean).join(" ");
+    const d = await fetchJson(`https://${lang}.wikipedia.org/w/api.php?action=query&generator=search&gsrsearch=${encodeURIComponent(q)}&gsrlimit=6&prop=pageimages&piprop=thumbnail&pithumbsize=500&pilicense=any&redirects=1&format=json&origin=*`);
+    const pages = Object.values(d?.query?.pages || {})
+      .filter((p) => p.thumbnail?.source)
+      .sort((a, b) => (a.index || 99) - (b.index || 99));
+    if (pages.length) return pages[0].thumbnail.source.replace(/([?&])utm_[^&]*/g, "$1");
+  } catch (e) { /* no match */ }
+  return null;
+}
+
+// identify the film by IMDb ID (Wikidata P345) and take its P18 poster
+async function posterFromImdb(imdb) {
+  const tt = (String(imdb || "").match(/tt\d{6,}/) || [])[0];
+  if (!tt) return null;
+  try {
+    const d = await fetchJson(`https://www.wikidata.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(`haswbstatement:P345=${tt}`)}&format=json&origin=*`);
+    const qid = d?.query?.search?.[0]?.title;
+    if (!qid || !/^Q\d+$/.test(qid)) return null;
+    const ent = await fetchJson(`https://www.wikidata.org/wiki/Special:EntityData/${qid}.json`);
+    const img = ent?.entities?.[qid]?.claims?.P18?.[0]?.mainsnak?.datavalue?.value;
+    if (img) return `https://commons.wikimedia.org/wiki/Special:FilePath/${encodeURIComponent(String(img).replace(/ /g, "_"))}?width=500`;
+  } catch (e) { /* not on Wikidata */ }
+  return null;
 }
 
 // ============================================================
@@ -625,7 +761,10 @@ function buildForm(container, movie) {
   container.querySelector("#mTitle").addEventListener("input", lookup.schedule);
   container.querySelector("#mYear").addEventListener("input", lookup.schedule);
 
-  container.querySelector("#modalSave").addEventListener("click", () => collectAndSave(movie?.id));
+  container.querySelector("#modalSave").addEventListener("click", async () => {
+    await lookup.settled();
+    collectAndSave(movie?.id);
+  });
   container.querySelector("#modalCancel").addEventListener("click", closeEditor);
 }
 
@@ -635,13 +774,15 @@ function buildForm(container, movie) {
 function movieFromForm(id, scope) {
   const get = (s) => scope.querySelector(s)?.value.trim() || "";
   const date = get("#mDate");
-  const info = scope._fetched || {};
+  // the fetched metadata lives on the .lookup area INSIDE the form scope
+  // (add form: #formLookup, edit modal: #lookupArea)
+  const info = scope.querySelector(".lookup")?._fetched || scope._fetched || {};
   return {
     id: Number(id),
     title: get("#mTitle"),
     titleEn: info.titleEn || "",
     year: Number(info.year || get("#mYear")) || null,
-    country: info.country || "",
+    country: normalizeCountry(info.country || ""),
     director: info.director || "",
     genre: info.genre || "",
     date,
@@ -756,8 +897,9 @@ function bindEvents() {
   $("#mTitle").addEventListener("input", addLookup.schedule);
   $("#mYear").addEventListener("input", addLookup.schedule);
 
-  $("#movieForm").addEventListener("submit", (e) => {
+  $("#movieForm").addEventListener("submit", async (e) => {
     e.preventDefault();
+    await addLookup.settled();
     const data = collectData(Number($("#mId").value) || nextFreeId());
     saveMovie(data);
     e.target.reset();

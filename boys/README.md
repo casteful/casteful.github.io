@@ -7,10 +7,12 @@ Modern rebuild of the movie club site (`movie_base`), hosted on **GitHub Pages**
 | Feature | Details |
 |---|---|
 | Full original data preserved | All 53 movies (ids 3–55) with Dima / Deni / Yura / Ihor ratings and watch dates |
-| Original design | Light theme by default, styled after the source table: white background, blue borders, zebra rows |
-| List & Grid views | **List** (default) — the original table look, no posters. **Grid** — compact poster cards |
+| Modern design | Light theme by default — soft neutral canvas, floating cards, pill navigation, tinted rating chips, blurred sticky header. Dark theme optional |
+| List & Grid views | **List** (default) — clean borderless data table, no posters. **Grid** — poster cards with floating rating badges |
 | Details on click | Click any movie (row or card) — poster, full info, IMDb/Wikipedia links, Fetch info / Edit / Delete |
-| Minimal add flow | Enter **only the title and release year** — original title, director, country, genre, IMDb/Wikipedia links and poster are fetched automatically from Wikipedia / Wikidata (IMDb ID comes from Wikidata) |
+| Minimal add flow | Enter **only the title and release year** — original title, director, country, genre, IMDb/Wikipedia links and poster are fetched automatically from Wikipedia / Wikidata (IMDb ID comes from Wikidata). Saving waits for the lookup to finish, so records are never stored half-empty |
+| One country spelling | Country names are normalized on display **and** in the database — e.g. "Сполучені Штати Америки" and "США" both become **США**, so filters and statistics never split a country in two |
+| Reliable auto posters | Posters resolve automatically through a fallback chain: the linked wiki (any language) → en/uk wiki → year-based wiki search (skips disambiguation pages) → IMDb-ID→Wikidata lookup. The manual **Fetch info** button stays as a last resort |
 | Minimal UI | Plain text tabs and buttons, no decorative icons — all info kept |
 | Firebase Realtime Database | **Single source of truth** — every add/edit/delete is written to Firebase instantly |
 | Auto-save | Always on (hidden param in `js/app.js`, no toggle UI) |
@@ -31,14 +33,15 @@ In the **Manage** tab you only type:
 - **Watched on** — club data (fills the season/stats)
 - the four raters' scores
 
-Everything else happens automatically: the app searches Ukrainian/English Wikipedia and Wikidata labels, shows the matching films (pick one if several), and fills in the original title, director, country, genre, release year, IMDb link, Wikipedia link and poster. If several films match, a small list appears — click the right one.
+Everything else happens automatically: the app searches Ukrainian/English Wikipedia and Wikidata labels, shows the matching films (pick one if several), and fills in the original title, director, country, genre, release year, IMDb link, Wikipedia link and poster. If several films match, a small list appears — click the right one. **Save waits for the lookup to finish**, so clicking *Save to Firebase* quickly still stores the full metadata.
 
-Already-added movies can be enriched the same way: open a movie → **Fetch info** (or open **Edit** and re-trigger the search by editing the title/year).
+Already-added movies can be enriched the same way: open a movie → **Fetch info** (or open **Edit** and re-trigger the search by editing the title/year). Movies opened with no metadata at all are auto-enriched once in the background — no button press needed.
 
 The lookup uses free public APIs — no keys:
 - Wikipedia Action API (uk + en) — page search, thumbnails
 - Wikidata `wbsearchentities` — label search (finds Ukrainian film titles)
 - Wikidata claims — P577 year, P57 directors, P495 country, P136 genres, P345 IMDb ID, P18 poster
+- Country names are canonicalized on save (`normalizeCountry()` in `js/data.js`); a one-time cleanup also rewrites old records that still hold variant spellings
 
 ## Deploy to GitHub Pages
 
@@ -103,8 +106,8 @@ python3 -m http.server 8080
 - Vanilla ES modules (no build step) — works out of the box on GitHub Pages
 - Firebase JS SDK v10 (modular, loaded from gstatic CDN)
 - Chart.js 4 (CDN)
-- Posters via Wikipedia REST API (`page/summary`), cached in `localStorage`
+- Posters: language-aware chain (Wikipedia REST `page/summary` → Action API `pageimages` with `pilicense=any` → Wikidata P18), cached in `localStorage` with in-flight deduplication
 
 ## Metadata note
 
-Metadata is fetched automatically from Wikipedia / Wikidata (IMDb ID comes from Wikidata's P345 property). If something is off for a specific movie — open the movie, press **Fetch info** to try again, or use **Edit** and re-run the lookup by adjusting the title/year.
+Metadata is fetched automatically from Wikipedia / Wikidata (IMDb ID comes from Wikidata's P345 property). Posters resolve even when the wiki link points to a disambiguation page or the poster lives on another language wiki. If something is still off for a specific movie — open it and press **Fetch info** to retry, or use **Edit** and re-run the lookup by adjusting the title/year.
