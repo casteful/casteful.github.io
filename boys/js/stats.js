@@ -6,11 +6,19 @@ import { RATERS, avgRate, seasonFromDate, decadeOf } from "./data.js";
 
 let charts = [];
 
-const THEME = {
-  text: "#9aa4b2",
-  grid: "rgba(255,255,255,.06)",
-  palette: ["#e63946", "#f9a620", "#4cc9f0", "#90be6d", "#f72585", "#7209b7", "#2ec4b6", "#ff7043", "#ffd166", "#8ecae6"],
-};
+// theme-aware chart colors — follows <html data-theme="light|dark">
+function getTheme() {
+  const dark = document.documentElement.dataset.theme === "dark";
+  return {
+    text: dark ? "#93a0b4" : "#647083",
+    grid: dark ? "rgba(255,255,255,.07)" : "rgba(29,39,51,.09)",
+    tooltipBg: dark ? "#1c2230" : "#ffffff",
+    tooltipBorder: dark ? "#2a3242" : "#d9e1ec",
+    tooltipTitle: dark ? "#fff" : "#1d2733",
+    sliceBorder: dark ? "#141926" : "#ffffff",
+    palette: ["#e05c66", "#e89518", "#3d90d0", "#5f9e4a", "#d4217a", "#6d21a8", "#22a094", "#e06235", "#d9a916", "#5a97c9"],
+  };
+}
 
 function destroyCharts() {
   charts.forEach((c) => { try { c.destroy(); } catch (e) {} });
@@ -18,17 +26,18 @@ function destroyCharts() {
 }
 
 function baseOpts(extra = {}) {
+  const T = getTheme();
   return {
     responsive: true,
     maintainAspectRatio: false,
     plugins: {
-      legend: { labels: { color: THEME.text, boxWidth: 12 } },
-      tooltip: { backgroundColor: "#1c2230", borderColor: "#2a3242", borderWidth: 1, titleColor: "#fff", bodyColor: THEME.text },
+      legend: { labels: { color: T.text, boxWidth: 12 } },
+      tooltip: { backgroundColor: T.tooltipBg, borderColor: T.tooltipBorder, borderWidth: 1, titleColor: T.tooltipTitle, bodyColor: T.text },
       ...extra.plugins,
     },
     scales: {
-      x: { ticks: { color: THEME.text }, grid: { color: THEME.grid } },
-      y: { ticks: { color: THEME.text }, grid: { color: THEME.grid }, beginAtZero: true },
+      x: { ticks: { color: T.text }, grid: { color: T.grid } },
+      y: { ticks: { color: T.text }, grid: { color: T.grid }, beginAtZero: true },
     },
     ...extra,
   };
@@ -64,19 +73,18 @@ function renderKPIs(ms, kpiGrid) {
   const directors = countBy(ms, (m) => (m.director || "").split(",")[0].trim());
   const topDirector = [...directors.entries()].sort((a, b) => b[1] - a[1])[0];
 
-  const kpi = (icon, label, value, sub = "") => `
+  const kpi = (label, value, sub = "") => `
     <div class="kpi">
-      <span class="kpi-icon">${icon}</span>
       <div><b>${value}</b><span>${label}</span>${sub ? `<em>${sub}</em>` : ""}</div>
     </div>`;
 
   kpiGrid.innerHTML = [
-    kpi("🎬", "Movies watched", ms.length, `${seasons.size} seasons · 2019–${thisSeason || "now"}`),
-    kpi("⭐", "Average rating", avg.toFixed(2), "all movies, all raters"),
-    kpi("🏆", "Club favourite", best ? `${avgRate(best.rates).toFixed(1)} · ${best.title}` : "—", "highest rated movie"),
-    kpi("📅", "This season", `${thisSeasonCount} movies`, `season ${thisSeason || "—"}`),
-    kpi("🎞️", "Top decade", topDecade ? `${topDecade[0]} (${topDecade[1]})` : "—", "most watched"),
-    kpi("🎥", "Top director", topDirector ? `${topDirector[0]} (${topDirector[1]})` : "—", "most watched"),
+    kpi("Movies watched", ms.length, `${seasons.size} seasons · 2019–${thisSeason || "now"}`),
+    kpi("Average rating", avg.toFixed(2), "all movies, all raters"),
+    kpi("Club favourite", best ? `${avgRate(best.rates).toFixed(1)} · ${best.title}` : "—", "highest rated movie"),
+    kpi("This season", `${thisSeasonCount} movies`, `season ${thisSeason || "—"}`),
+    kpi("Top decade", topDecade ? `${topDecade[0]} (${topDecade[1]})` : "—", "most watched"),
+    kpi("Top director", topDirector ? `${topDirector[0]} (${topDirector[1]})` : "—", "most watched"),
   ].join("");
 }
 
@@ -84,6 +92,7 @@ function renderKPIs(ms, kpiGrid) {
 function renderCharts(ms, grid) {
   destroyCharts();
   grid.innerHTML = "";
+  const T = getTheme();
 
   const add = (title, span, canvasId) => {
     const wrap = document.createElement("div");
@@ -102,35 +111,35 @@ function renderCharts(ms, grid) {
     return list.length ? list.reduce((s, m) => s + avgRate(m.rates), 0) / list.length : 0;
   });
 
-  charts.push(new Chart(add("🎬 Movies by release decade", "", "chDecade"), {
+  charts.push(new Chart(add("Movies by release decade", "", "chDecade"), {
     type: "bar",
     data: {
       labels: decades,
-      datasets: [{ data: decadeCounts, backgroundColor: "#4cc9f0cc", borderColor: "#4cc9f0", borderWidth: 1, borderRadius: 6 }],
+      datasets: [{ data: decadeCounts, backgroundColor: "#6495edcc", borderColor: "#6495ed", borderWidth: 1, borderRadius: 4 }],
     },
     options: baseOpts({ plugins: { legend: { display: false } } }),
   }));
 
-  charts.push(new Chart(add("⭐ Average rating by decade", "", "chDecadeAvg"), {
+  charts.push(new Chart(add("Average rating by decade", "", "chDecadeAvg"), {
     type: "bar",
     data: {
       labels: decades,
-      datasets: [{ data: decadeAvg.map((v) => +v.toFixed(2)), backgroundColor: "#f9a620cc", borderColor: "#f9a620", borderWidth: 1, borderRadius: 6 }],
+      datasets: [{ data: decadeAvg.map((v) => +v.toFixed(2)), backgroundColor: "#e89518cc", borderColor: "#e89518", borderWidth: 1, borderRadius: 4 }],
     },
     options: baseOpts({
       plugins: { legend: { display: false }, tooltip: { callbacks: { afterLabel: (c) => `${decadeCounts[c.dataIndex]} movies` } } },
-      scales: { x: { ticks: { color: THEME.text }, grid: { color: THEME.grid } }, y: { suggestedMin: 0, suggestedMax: 10, ticks: { color: THEME.text }, grid: { color: THEME.grid } } },
+      scales: { x: { ticks: { color: T.text }, grid: { color: T.grid } }, y: { suggestedMin: 0, suggestedMax: 10, ticks: { color: T.text }, grid: { color: T.grid } } },
     }),
   }));
 
   // 3) Movies by club season
   const seasonMap = countBy(ms, (m) => m.season || seasonFromDate(m.date));
   const seasons = [...seasonMap.keys()].sort();
-  charts.push(new Chart(add("🗓️ Movies by season", "", "chSeason"), {
+  charts.push(new Chart(add("Movies by season", "", "chSeason"), {
     type: "bar",
     data: {
       labels: seasons,
-      datasets: [{ data: seasons.map((s) => seasonMap.get(s)), backgroundColor: "#7209b7cc", borderColor: "#9d4edd", borderWidth: 1, borderRadius: 6 }],
+      datasets: [{ data: seasons.map((s) => seasonMap.get(s)), backgroundColor: "#9d4eddcc", borderColor: "#9d4edd", borderWidth: 1, borderRadius: 4 }],
     },
     options: baseOpts({ plugins: { legend: { display: false } } }),
   }));
@@ -138,14 +147,14 @@ function renderCharts(ms, grid) {
   // 4) Watched per year (timeline from watch dates)
   const yearMap = countBy(ms, (m) => (m.date || "").slice(0, 4));
   const watchYears = [...yearMap.keys()].sort();
-  charts.push(new Chart(add("📈 Watching activity (per year)", "", "chActivity"), {
+  charts.push(new Chart(add("Watching activity (per year)", "", "chActivity"), {
     type: "line",
     data: {
       labels: watchYears,
       datasets: [{
         data: watchYears.map((y) => yearMap.get(y)),
-        borderColor: "#2ec4b6", backgroundColor: "#2ec4b633", fill: true, tension: 0.35,
-        pointBackgroundColor: "#2ec4b6", pointRadius: 4,
+        borderColor: "#22a094", backgroundColor: "#22a09433", fill: true, tension: 0.35,
+        pointBackgroundColor: "#22a094", pointRadius: 4,
       }],
     },
     options: baseOpts({ plugins: { legend: { display: false } } }),
@@ -157,35 +166,35 @@ function renderCharts(ms, grid) {
   const othersCount = [...countryMap.values()].reduce((a, b) => a + b, 0) - countries.reduce((a, [, v]) => a + v, 0);
   const cLabels = countries.map(([k]) => k).concat(othersCount > 0 ? ["Other"] : []);
   const cData = countries.map(([, v]) => v).concat(othersCount > 0 ? [othersCount] : []);
-  charts.push(new Chart(add("🌍 Countries", "", "chCountry"), {
+  charts.push(new Chart(add("Countries", "", "chCountry"), {
     type: "doughnut",
-    data: { labels: cLabels, datasets: [{ data: cData, backgroundColor: THEME.palette, borderColor: "#141926", borderWidth: 2 }] },
-    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: "right", labels: { color: THEME.text, boxWidth: 12 } } }, cutout: "58%" },
+    data: { labels: cLabels, datasets: [{ data: cData, backgroundColor: T.palette, borderColor: T.sliceBorder, borderWidth: 2 }] },
+    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: "right", labels: { color: T.text, boxWidth: 12 } } }, cutout: "58%" },
   }));
 
   // 6) Top directors
   const dirMap = countBy(ms, (m) => (m.director || "").split(",")[0].trim());
   const dirs = topEntries(dirMap, 10);
-  charts.push(new Chart(add("🎥 Top directors", "wide", "chDirectors"), {
+  charts.push(new Chart(add("Top directors", "wide", "chDirectors"), {
     type: "bar",
     data: {
       labels: dirs.map(([k]) => k),
-      datasets: [{ data: dirs.map(([, v]) => v), backgroundColor: "#f72585cc", borderColor: "#f72585", borderWidth: 1, borderRadius: 6 }],
+      datasets: [{ data: dirs.map(([, v]) => v), backgroundColor: "#d4217acc", borderColor: "#d4217a", borderWidth: 1, borderRadius: 4 }],
     },
     options: baseOpts({
       indexAxis: "y",
       plugins: { legend: { display: false } },
-      scales: { x: { ticks: { color: THEME.text, precision: 0 }, grid: { color: THEME.grid }, beginAtZero: true }, y: { ticks: { color: THEME.text }, grid: { display: false } } },
+      scales: { x: { ticks: { color: T.text, precision: 0 }, grid: { color: T.grid }, beginAtZero: true }, y: { ticks: { color: T.text }, grid: { display: false } } },
     }),
   }));
 
   // 7) Genres
   const genreMap = countBy(ms, (m) => (m.genre || "").split(",").map((g) => g.trim()));
   const genres = topEntries(genreMap, 8);
-  charts.push(new Chart(add("🎭 Genres", "", "chGenres"), {
+  charts.push(new Chart(add("Genres", "", "chGenres"), {
     type: "doughnut",
-    data: { labels: genres.map(([k]) => k), datasets: [{ data: genres.map(([, v]) => v), backgroundColor: THEME.palette, borderColor: "#141926", borderWidth: 2 }] },
-    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: "right", labels: { color: THEME.text, boxWidth: 12 } } }, cutout: "58%" },
+    data: { labels: genres.map(([k]) => k), datasets: [{ data: genres.map(([, v]) => v), backgroundColor: T.palette, borderColor: T.sliceBorder, borderWidth: 2 }] },
+    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: "right", labels: { color: T.text, boxWidth: 12 } } }, cutout: "58%" },
   }));
 
   // 8) Rating distribution (avg movie ratings 1..10)
@@ -194,11 +203,11 @@ function renderCharts(ms, grid) {
     const a = avgRate(m.rates);
     if (a > 0) dist[Math.min(9, Math.max(0, Math.round(a) - 1))]++;
   });
-  charts.push(new Chart(add("📊 Rating distribution", "", "chDist"), {
+  charts.push(new Chart(add("Rating distribution", "", "chDist"), {
     type: "bar",
     data: {
       labels: dist.map((_, i) => `${i + 1}`),
-      datasets: [{ data: dist, backgroundColor: dist.map((_, i) => i < 3 ? "#e63946cc" : i < 6 ? "#f9a620cc" : "#90be6dcc"), borderColor: "#ffffff22", borderWidth: 1, borderRadius: 6 }],
+      datasets: [{ data: dist, backgroundColor: dist.map((_, i) => i < 3 ? "#e05c66cc" : i < 6 ? "#e89518cc" : "#5f9e4acc"), borderWidth: 0, borderRadius: 4 }],
     },
     options: baseOpts({ plugins: { legend: { display: false } } }),
   }));
@@ -209,32 +218,32 @@ function renderCharts(ms, grid) {
     return vals.length ? vals.reduce((a, b) => a + Number(b), 0) / vals.length : 0;
   });
   const raterCount = RATERS.map((r) => ms.filter((m) => Number(m.rates?.[r.key]) > 0).length);
-  charts.push(new Chart(add("👥 Raters comparison", "", "chRaters"), {
+  charts.push(new Chart(add("Raters comparison", "", "chRaters"), {
     type: "bar",
     data: {
       labels: RATERS.map((r) => r.name),
       datasets: [
-        { label: "avg rating", data: raterAvg.map((v) => +v.toFixed(2)), backgroundColor: RATERS.map((r) => r.color + "cc"), borderRadius: 6, borderWidth: 1 },
+        { label: "avg rating", data: raterAvg.map((v) => +v.toFixed(2)), backgroundColor: RATERS.map((r) => r.color + "cc"), borderRadius: 4, borderWidth: 1 },
       ],
     },
     options: baseOpts({
       plugins: { legend: { display: false }, tooltip: { callbacks: { afterLabel: (c) => `rated ${raterCount[c.dataIndex]} movies` } } },
-      scales: { x: { ticks: { color: THEME.text }, grid: { display: false } }, y: { suggestedMin: 0, suggestedMax: 10, ticks: { color: THEME.text }, grid: { color: THEME.grid } } },
+      scales: { x: { ticks: { color: T.text }, grid: { display: false } }, y: { suggestedMin: 0, suggestedMax: 10, ticks: { color: T.text }, grid: { color: T.grid } } },
     }),
   }));
 
   // 10) Top 10 movies
   const top = ms.filter((m) => avgRate(m.rates) > 0).sort((a, b) => avgRate(b.rates) - avgRate(a.rates)).slice(0, 10).reverse();
-  charts.push(new Chart(add("🏆 Top 10 movies", "wide", "chTop"), {
+  charts.push(new Chart(add("Top 10 movies", "wide", "chTop"), {
     type: "bar",
     data: {
       labels: top.map((m) => `${m.title}${m.year ? ` (${m.year})` : ""}`),
-      datasets: [{ data: top.map((m) => +avgRate(m.rates).toFixed(2)), backgroundColor: "#ffd166cc", borderColor: "#ffd166", borderWidth: 1, borderRadius: 6 }],
+      datasets: [{ data: top.map((m) => +avgRate(m.rates).toFixed(2)), backgroundColor: "#d9a916cc", borderColor: "#d9a916", borderWidth: 1, borderRadius: 4 }],
     },
     options: baseOpts({
       indexAxis: "y",
       plugins: { legend: { display: false } },
-      scales: { x: { suggestedMin: 0, suggestedMax: 10, ticks: { color: THEME.text }, grid: { color: THEME.grid } }, y: { ticks: { color: THEME.text, font: { size: 11 } }, grid: { display: false } } },
+      scales: { x: { suggestedMin: 0, suggestedMax: 10, ticks: { color: T.text }, grid: { color: T.grid } }, y: { ticks: { color: T.text, font: { size: 11 } }, grid: { display: false } } },
     }),
   }));
 }

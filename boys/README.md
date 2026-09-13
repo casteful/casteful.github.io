@@ -1,4 +1,4 @@
-# 🎬 Movie Club — Modern Movie Base
+# movie_base — Movie Club
 
 Modern rebuild of the movie club site (`movie_base`), hosted on **GitHub Pages** with all data stored in **Firebase Realtime Database**.
 
@@ -6,15 +6,20 @@ Modern rebuild of the movie club site (`movie_base`), hosted on **GitHub Pages**
 
 | Feature | Details |
 |---|---|
-| ✅ Full original data preserved | All 53 movies (ids 3–55) with Dima / Deni / Yura / Ihor ratings and watch dates |
-| ✅ Firebase Realtime Database | **Single source of truth** — every add/edit/delete is written to Firebase instantly |
-| ✅ Auto-save | Always on (hidden param in `js/app.js`, no toggle UI) |
-| ✅ Live updates | Always on — all open browser tabs/windows update in real time via `onValue()` |
-| ✅ Offline backup | Latest Firebase snapshot is cached in `localStorage` automatically (read-only fallback when offline) |
-| ✅ JSON backup tools | Export / Import JSON in the **Manage** tab (backup only, not the primary store) |
-| ✅ Rich movie info | Title (UA + original), **release year**, **country**, **director**, genre, **club season**, watch date |
-| ✅ Links & posters | IMDb + Wikipedia links, poster auto-fetched from Wikipedia (or set a manual poster URL) |
-| ✅ Stats tab | KPIs + 10 charts: movies & avg rating by decade, movies by season, activity per year, countries, top directors, genres, rating distribution, raters comparison, top 10 movies |
+| Full original data preserved | All 53 movies (ids 3–55) with Dima / Deni / Yura / Ihor ratings and watch dates |
+| Original design | Light theme by default, styled after the source table: white background, blue borders, zebra rows |
+| List & Grid views | **List** (default) — the original table look, no posters. **Grid** — compact poster cards |
+| Details on click | Click any movie (row or card) — poster, full info, IMDb/Wikipedia links, Edit / Delete |
+| Minimal UI | Plain text tabs and buttons, no decorative icons — all info kept |
+| Firebase Realtime Database | **Single source of truth** — every add/edit/delete is written to Firebase instantly |
+| Auto-save | Always on (hidden param in `js/app.js`, no toggle UI) |
+| Live updates | Always on — all open browser tabs/windows update in real time via `onValue()` |
+| Offline backup | Latest Firebase snapshot is cached in `localStorage` automatically (read-only fallback when offline) |
+| JSON backup tools | Export / Import JSON in the **Manage** tab (backup only, not the primary store) |
+| Rich movie info | Title (UA + original), **release year**, **country**, **director**, genre, **club season**, watch date |
+| Links & posters | IMDb + Wikipedia links, poster auto-fetched from Wikipedia (or set a manual poster URL) |
+| Stats tab | KPIs + 10 charts: movies & avg rating by decade, movies by season, activity per year, countries, top directors, genres, rating distribution, raters comparison, top 10 movies |
+| Dark theme | Optional — toggle in the header; light stays the default |
 
 ## Deploy to GitHub Pages
 
@@ -35,7 +40,7 @@ Modern rebuild of the movie club site (`movie_base`), hosted on **GitHub Pages**
    }
    ```
 
-   ⚠️ **Note:** these rules are open (fine for a private hobby tracker). If you want to restrict writes later, look at Firebase Auth-based rules — the code is ready for it.
+   Note: these rules are open (fine for a private hobby tracker). If you want to restrict writes later, look at Firebase Auth-based rules — the code is ready for it.
 
 4. **Enable GitHub Pages** — repo *Settings* → *Pages* → Source: `main` branch, `/ (root)` (or `/docs` if you keep the site there). Open `https://<username>.github.io/<repo>/`.
 
@@ -83,4 +88,4 @@ python3 -m http.server 8080
 
 ## Metadata note
 
-Release year / country / director / links were researched from the original Ukrainian titles (verified via Wikipedia). If any field is off for a specific movie — just click ✏️ on the card, fix it, and it saves to Firebase instantly.
+Release year / country / director / links were researched from the original Ukrainian titles (verified via Wikipedia). If any field is off for a specific movie — click the movie, press **Edit** in the details panel, fix it, and it saves to Firebase instantly.
