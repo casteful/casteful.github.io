@@ -437,6 +437,12 @@
       "content": "Шинка, шинка",
       "anas_rate": 6,
       "dima_rate": 6
+    },
+    {
+      "id": 74,
+      "content": "Друге життя Уве",
+      "anas_rate": 7,
+      "dima_rate": 0
     }
   ],
   "watchlist": []
