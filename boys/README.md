@@ -9,7 +9,8 @@ Modern rebuild of the movie club site (`movie_base`), hosted on **GitHub Pages**
 | Full original data preserved | All 53 movies (ids 3–55) with Dima / Deni / Yura / Ihor ratings and watch dates |
 | Original design | Light theme by default, styled after the source table: white background, blue borders, zebra rows |
 | List & Grid views | **List** (default) — the original table look, no posters. **Grid** — compact poster cards |
-| Details on click | Click any movie (row or card) — poster, full info, IMDb/Wikipedia links, Edit / Delete |
+| Details on click | Click any movie (row or card) — poster, full info, IMDb/Wikipedia links, Fetch info / Edit / Delete |
+| Minimal add flow | Enter **only the title and release year** — original title, director, country, genre, IMDb/Wikipedia links and poster are fetched automatically from Wikipedia / Wikidata (IMDb ID comes from Wikidata) |
 | Minimal UI | Plain text tabs and buttons, no decorative icons — all info kept |
 | Firebase Realtime Database | **Single source of truth** — every add/edit/delete is written to Firebase instantly |
 | Auto-save | Always on (hidden param in `js/app.js`, no toggle UI) |
@@ -20,6 +21,24 @@ Modern rebuild of the movie club site (`movie_base`), hosted on **GitHub Pages**
 | Links & posters | IMDb + Wikipedia links, poster auto-fetched from Wikipedia (or set a manual poster URL) |
 | Stats tab | KPIs + 10 charts: movies & avg rating by decade, movies by season, activity per year, countries, top directors, genres, rating distribution, raters comparison, top 10 movies |
 | Dark theme | Optional — toggle in the header; light stays the default |
+
+## Adding movies
+
+In the **Manage** tab you only type:
+
+- **Title** — as the club knows it (Ukrainian or original)
+- **Release year** — helps pick the right film
+- **Watched on** — club data (fills the season/stats)
+- the four raters' scores
+
+Everything else happens automatically: the app searches Ukrainian/English Wikipedia and Wikidata labels, shows the matching films (pick one if several), and fills in the original title, director, country, genre, release year, IMDb link, Wikipedia link and poster. If several films match, a small list appears — click the right one.
+
+Already-added movies can be enriched the same way: open a movie → **Fetch info** (or open **Edit** and re-trigger the search by editing the title/year).
+
+The lookup uses free public APIs — no keys:
+- Wikipedia Action API (uk + en) — page search, thumbnails
+- Wikidata `wbsearchentities` — label search (finds Ukrainian film titles)
+- Wikidata claims — P577 year, P57 directors, P495 country, P136 genres, P345 IMDb ID, P18 poster
 
 ## Deploy to GitHub Pages
 
@@ -74,9 +93,9 @@ python3 -m http.server 8080
 }
 ```
 
-- `season` = club season (defaults to the year of the watch date, editable)
+- `season` = club season (auto-filled from the watch date)
 - `rates` value `0` = not rated (excluded from averages, shown as `—`)
-- `poster` empty → auto-fetched from the Wikipedia page of the movie
+- `poster` / `imdb` / `wiki` / `director` / `country` / `genre` / `titleEn` — filled automatically from Wikipedia / Wikidata when adding a movie or pressing **Fetch info**
 - `original/movie_base_20251001.html` — archived copy of the old site for reference
 
 ## Tech stack
@@ -88,4 +107,4 @@ python3 -m http.server 8080
 
 ## Metadata note
 
-Release year / country / director / links were researched from the original Ukrainian titles (verified via Wikipedia). If any field is off for a specific movie — click the movie, press **Edit** in the details panel, fix it, and it saves to Firebase instantly.
+Metadata is fetched automatically from Wikipedia / Wikidata (IMDb ID comes from Wikidata's P345 property). If something is off for a specific movie — open the movie, press **Fetch info** to try again, or use **Edit** and re-run the lookup by adjusting the title/year.

@@ -227,6 +227,25 @@ input[type="search"] { width: 100%; }
 .rate-field select { width: 72px; }
 .form-actions { display: flex; gap: 10px; margin-top: 4px; }
 
+/* ---------- wikipedia/IMDb lookup in add/edit forms ---------- */
+.lookup { margin: 0 0 12px; }
+.lookup-status { font-size: .78rem; color: var(--muted); margin: 0 0 6px; }
+.cand-list { display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+.cand {
+  text-align: left; background: var(--panel); color: var(--text);
+  border: 0; border-bottom: 1px solid var(--line);
+  padding: 7px 10px; font: 400 .82rem "Inter", sans-serif; cursor: pointer;
+}
+.cand:last-child { border-bottom: 0; }
+.cand:hover { background: var(--hover); }
+.cand.sel { background: var(--zebra); font-weight: 600; }
+.fetched { display: flex; gap: 12px; border: 1px solid var(--line); border-radius: 6px; padding: 10px; align-items: flex-start; background: var(--panel2); }
+.fthumb { flex: 0 0 60px; width: 60px; aspect-ratio: 2 / 3; background: var(--panel) center / cover no-repeat; border: 1px solid var(--line); border-radius: 4px; }
+.fmeta { font-size: .8rem; line-height: 1.55; min-width: 0; }
+.fmeta b { font-size: .88rem; }
+.fmeta a { color: var(--link); text-decoration: none; margin-right: 10px; }
+.fmeta a:hover { text-decoration: underline; }
+
 .tools { padding: 18px 20px; position: sticky; top: 76px; }
 .tool-status { margin: 0 0 12px; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
 .tool-status > div { display: flex; justify-content: space-between; padding: 7px 11px; font-size: .8rem; border-bottom: 1px solid var(--line); }

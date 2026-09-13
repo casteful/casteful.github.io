@@ -14,6 +14,7 @@
 import { db, ref, onValue, get, update, remove } from "./firebase-config.js";
 import { SEED_MOVIES, RATERS, avgRate, seasonFromDate, decadeOf } from "./data.js";
 import { renderStats } from "./stats.js";
+import { searchFilms, getFilmDetails } from "./lookup.js";
 
 const AUTO_SAVE    = true;   // hidden param — always true
 const LIVE_UPDATES = true;   // hidden param — always true
@@ -194,7 +195,6 @@ function renderAll() {
   renderSummary();
   renderMovies();
   renderStats(allMovies(), $("#chartsGrid"), $("#kpiGrid"));
-  fillDatalists();
 }
 
 function fillFilterOptions() {
@@ -226,21 +226,6 @@ function fillSelect(sel, values) {
     o.value = v; o.textContent = v;
     sel.appendChild(o);
   });
-}
-
-function fillDatalists() {
-  const ms = allMovies();
-  const uniq = (arr) => [...new Set(arr.filter(Boolean))].sort((a, b) => String(a).localeCompare(String(b), "uk"));
-  const countries = uniq(ms.flatMap((m) => (m.country || "").split(",").map((c) => c.trim())));
-  const directors = uniq(ms.flatMap((m) => (m.director || "").split(",").map((c) => c.trim())));
-  const genres = uniq(ms.flatMap((m) => (m.genre || "").split(",").map((c) => c.trim())));
-  const fill = (id, vals) => {
-    const dl = $(id); if (!dl) return;
-    dl.innerHTML = vals.map((v) => `<option value="${esc(v)}">`).join("");
-  };
-  fill("#countryList", countries);
-  fill("#directorList", directors);
-  fill("#genreList", genres);
 }
 
 function renderSummary() {
@@ -406,6 +391,7 @@ function openDetails(id) {
       <p class="d-avg">Average: <b class="${avg > 0 ? rateClass(avg) : "r-na"}">${avg > 0 ? avg.toFixed(1) : "—"} / 10</b></p>
       ${links.length ? `<div class="d-links">${links.join("")}</div>` : ""}
       <div class="d-actions">
+        <button class="btn" id="dFetch" title="Fetch metadata from Wikipedia / IMDb">Fetch info</button>
         <button class="btn" id="dEdit">Edit</button>
         <button class="btn danger" id="dDelete">Delete</button>
       </div>
@@ -431,6 +417,141 @@ function openDetails(id) {
       deleteMovie(id);
     }
   });
+  $("#dFetch").addEventListener("click", async () => {
+    const btn = $("#dFetch");
+    btn.disabled = true;
+    btn.textContent = "Fetching…";
+    try {
+      const info = await lookupForMovie(m);
+      await saveMovie({ ...m, ...info });
+      closeDetails();
+      toast("Info updated from Wikipedia / IMDb", "ok");
+    } catch (e) {
+      toast("Fetch failed: " + e.message, "err");
+      btn.disabled = false;
+      btn.textContent = "Fetch info";
+    }
+  });
+}
+
+// search Wikipedia/Wikidata for a movie record and return the enriched fields
+async function lookupForMovie(m) {
+  const cands = await searchFilms(m.title, m.year || "");
+  const films = cands.filter((c) => c.isFilm);
+  if (!films.length) throw new Error("no film match on Wikipedia");
+  const c = films.find((x) => m.year && String(x.year || "") === String(m.year)) || films[0];
+  return getFilmDetails(c);
+}
+
+// ---------- lookup UI inside add/edit forms ----------
+function pickInfoFields(m) {
+  return {
+    titleEn: m.titleEn || "", year: m.year || null,
+    country: m.country || "", director: m.director || "", genre: m.genre || "",
+    imdb: m.imdb || "", wiki: m.wiki || "", poster: m.poster || "",
+  };
+}
+
+function wireLookup(area, getQuery) {
+  let token = 0;
+  let timer = null;
+
+  const schedule = () => {
+    clearTimeout(timer);
+    const { title, year } = getQuery();
+    if (title.length < 2 || !/^\d{4}$/.test(year)) return;
+    timer = setTimeout(() => runSearch(++token), 600);
+  };
+
+  async function runSearch(tok) {
+    const { title, year } = getQuery();
+    area._fetched = null;
+    area.innerHTML = `<p class="lookup-status">Searching Wikipedia…</p>`;
+    try {
+      const all = await searchFilms(title, year);
+      if (tok !== token) return;
+      const films = all.filter((c) => c.isFilm);
+      if (films.length) {
+        const pool = films.slice(0, 5);
+        renderCandidates(pool, "");
+        await pick(pool.find((c) => String(c.year || "") === year) || pool[0], tok);
+      } else if (all.length) {
+        // only non-film pages matched — never auto-pick, let the user decide
+        const pool = all.slice(0, 5);
+        renderCandidates(pool, "No exact film match — if one of these is the film, pick it; otherwise the info will stay empty:");
+      } else {
+        area.innerHTML = `<p class="lookup-status">No Wikipedia match — extra info will stay empty (the movie can still be saved).</p>`;
+      }
+    } catch (e) {
+      if (tok !== token) return;
+      area.innerHTML = `<p class="lookup-status">Lookup failed: ${esc(e.message)}</p>`;
+    }
+  }
+
+  function renderCandidates(pool, note = "") {
+    const status = area.querySelector(".lookup-status");
+    const list = document.createElement("div");
+    list.className = "cand-list";
+    list.innerHTML = pool.map((c) => `
+      <button type="button" class="cand" data-qid="${esc(c.qid)}">
+        ${esc(c.pageTitle)}${c.year ? ` (${c.year})` : ""}${c.desc && c.desc !== c.pageTitle ? ` — <span class="muted">${esc(c.desc)}</span>` : ""}
+      </button>`).join("");
+    area.innerHTML = "";
+    if (status) {
+      status.textContent = note || `${pool.length} match${pool.length > 1 ? "es" : ""} — pick one if it is not the right film:`;
+      area.appendChild(status);
+    }
+    area.appendChild(list);
+    list.querySelectorAll(".cand").forEach((btn) =>
+      btn.addEventListener("click", () => {
+        const c = pool.find((x) => x.qid === btn.dataset.qid);
+        if (c) pick(c, token);
+      })
+    );
+  }
+
+  async function pick(c, tok) {
+    area.querySelectorAll(".cand").forEach((el) => el.classList.toggle("sel", el.dataset.qid === c.qid));
+    let status = area.querySelector(".lookup-status");
+    if (!status) {
+      status = document.createElement("p");
+      status.className = "lookup-status";
+      area.prepend(status);
+    }
+    status.textContent = "Loading film details…";
+    try {
+      const info = await getFilmDetails(c);
+      if (tok !== token) return;
+      area._fetched = info;
+      renderFetched(area, info);
+      status.remove();
+    } catch (e) {
+      if (tok !== token) return;
+      status.textContent = "Details failed: " + e.message;
+    }
+  }
+
+  schedule(); // initial trigger when fields are already valid (edit modal)
+  return { schedule };
+}
+
+function renderFetched(area, info) {
+  const links = [];
+  if (info.imdb) links.push(`<a href="${esc(info.imdb)}" target="_blank" rel="noopener">IMDb</a>`);
+  if (info.wiki) links.push(`<a href="${esc(info.wiki)}" target="_blank" rel="noopener">Wikipedia</a>`);
+  let box = area.querySelector(".fetched");
+  if (!box) {
+    box = document.createElement("div");
+    box.className = "fetched";
+    area.prepend(box);
+  }
+  box.innerHTML = `
+    <div class="fthumb" ${info.poster ? `style="background-image:url('${esc(info.poster)}')"` : ""}></div>
+    <div class="fmeta">
+      <b>${esc(info.titleEn || "")}</b>${info.year ? ` (${esc(info.year)})` : ""}<br>
+      ${info.director ? `${esc(info.director)}` : ""}${info.country ? ` · ${esc(info.country)}` : ""}${info.genre ? ` · ${esc(info.genre)}` : ""}<br>
+      ${links.join("")}
+    </div>`;
 }
 
 function closeDetails() { $("#detailsModal").hidden = true; }
@@ -469,22 +590,14 @@ function currentRatesFromInputs(scope = document) {
 }
 
 function buildForm(container, movie) {
-  const m = movie || { title: "", titleEn: "", year: "", country: "", director: "", genre: "", date: new Date().toISOString().slice(0, 10), season: "", imdb: "", wiki: "", poster: "", rates: {} };
+  const m = movie || { title: "", year: "", date: new Date().toISOString().slice(0, 10), rates: {} };
   container.innerHTML = `
     <div class="form-row">
-      <div class="form-field grow"><label>Title (UA) *</label><input id="mTitle" required value="${esc(m.title)}"></div>
-      <div class="form-field grow"><label>Original title</label><input id="mTitleEn" value="${esc(m.titleEn || "")}"></div>
-    </div>
-    <div class="form-row">
-      <div class="form-field"><label>Release year *</label><input id="mYear" type="number" min="1895" max="2100" required value="${esc(m.year)}"></div>
-      <div class="form-field grow"><label>Country</label><input id="mCountry" value="${esc(m.country || "")}" list="countryList"></div>
+      <div class="form-field grow"><label>Title *</label><input id="mTitle" required value="${esc(m.title)}" placeholder="Фантазм 2"></div>
+      <div class="form-field"><label>Release year *</label><input id="mYear" type="number" min="1895" max="2100" required value="${esc(m.year)}" placeholder="1988"></div>
       <div class="form-field"><label>Watched on *</label><input id="mDate" type="date" required value="${esc(m.date)}"></div>
     </div>
-    <div class="form-row">
-      <div class="form-field grow"><label>Director</label><input id="mDirector" value="${esc(m.director || "")}" list="directorList"></div>
-      <div class="form-field grow"><label>Genre</label><input id="mGenre" value="${esc(m.genre || "")}" list="genreList"></div>
-      <div class="form-field"><label>Season</label><input id="mSeason" value="${esc(m.season || "")}" placeholder="${esc(seasonFromDate(m.date))}"></div>
-    </div>
+    <div class="lookup" id="lookupArea"></div>
     <div class="form-row rates-row">
       ${RATERS.map((r) => `
         <div class="form-field rate-field">
@@ -494,40 +607,54 @@ function buildForm(container, movie) {
           </select>
         </div>`).join("")}
     </div>
-    <div class="form-row">
-      <div class="form-field grow"><label>IMDb link</label><input id="mImdb" type="url" value="${esc(m.imdb || "")}"></div>
-      <div class="form-field grow"><label>Wikipedia link</label><input id="mWiki" type="url" value="${esc(m.wiki || "")}"></div>
-    </div>
-    <div class="form-row">
-      <div class="form-field grow"><label>Poster URL (auto if empty)</label><input id="mPoster" type="url" value="${esc(m.poster || "")}"></div>
-    </div>
     <div class="form-actions">
       <button type="button" class="btn primary" id="modalSave">Save to Firebase</button>
       <button type="button" class="btn" id="modalCancel">Cancel</button>
     </div>`;
 
+  // show already-known info immediately, then allow re-fetch by editing title/year
+  const area = container.querySelector("#lookupArea");
+  if (movie && (movie.imdb || movie.wiki || movie.director || movie.titleEn)) {
+    area._fetched = pickInfoFields(movie);
+    renderFetched(area, area._fetched);
+  }
+  const lookup = wireLookup(area, () => ({
+    title: container.querySelector("#mTitle").value.trim(),
+    year: container.querySelector("#mYear").value.trim(),
+  }));
+  container.querySelector("#mTitle").addEventListener("input", lookup.schedule);
+  container.querySelector("#mYear").addEventListener("input", lookup.schedule);
+
   container.querySelector("#modalSave").addEventListener("click", () => collectAndSave(movie?.id));
   container.querySelector("#modalCancel").addEventListener("click", closeEditor);
 }
 
-function collectData(id) {
-  const get = (s) => $(s)?.value.trim() || "";
+// build the movie record from a form scope (add form or edit modal);
+// metadata (original title, director, country, genre, links, poster) comes
+// from the Wikipedia/IMDb lookup, not from manual inputs
+function movieFromForm(id, scope) {
+  const get = (s) => scope.querySelector(s)?.value.trim() || "";
   const date = get("#mDate");
+  const info = scope._fetched || {};
   return {
     id: Number(id),
     title: get("#mTitle"),
-    titleEn: get("#mTitleEn"),
-    year: Number(get("#mYear")) || null,
-    country: get("#mCountry"),
-    director: get("#mDirector"),
-    genre: get("#mGenre"),
+    titleEn: info.titleEn || "",
+    year: Number(info.year || get("#mYear")) || null,
+    country: info.country || "",
+    director: info.director || "",
+    genre: info.genre || "",
     date,
-    season: get("#mSeason") || seasonFromDate(date),
-    imdb: get("#mImdb"),
-    wiki: get("#mWiki"),
-    poster: get("#mPoster"),
-    rates: currentRatesFromInputs(),
+    season: seasonFromDate(date),
+    imdb: info.imdb || "",
+    wiki: info.wiki || "",
+    poster: info.poster || "",
+    rates: currentRatesFromInputs(scope),
   };
+}
+
+function collectData(id) {
+  return movieFromForm(id, $("#movieForm"));
 }
 
 function collectAndSave(existingId) {
@@ -540,24 +667,7 @@ function collectAndSave(existingId) {
 }
 
 function collectDataFromModal(id) {
-  const scope = $("#editModalBody");
-  const get = (s) => scope.querySelector(s)?.value.trim() || "";
-  const date = get("#mDate");
-  return {
-    id: Number(id),
-    title: get("#mTitle"),
-    titleEn: get("#mTitleEn"),
-    year: Number(get("#mYear")) || null,
-    country: get("#mCountry"),
-    director: get("#mDirector"),
-    genre: get("#mGenre"),
-    date,
-    season: get("#mSeason") || seasonFromDate(date),
-    imdb: get("#mImdb"),
-    wiki: get("#mWiki"),
-    poster: get("#mPoster"),
-    rates: currentRatesFromInputs(scope),
-  };
+  return movieFromForm(id, $("#editModalBody"));
 }
 
 function openEditor(id) {
@@ -638,17 +748,29 @@ function bindEvents() {
   $("#emptyReset").addEventListener("click", resetFilters);
 
   // admin add form
+  const addLookupArea = $("#formLookup");
+  const addLookup = wireLookup(addLookupArea, () => ({
+    title: $("#mTitle").value.trim(),
+    year: $("#mYear").value.trim(),
+  }));
+  $("#mTitle").addEventListener("input", addLookup.schedule);
+  $("#mYear").addEventListener("input", addLookup.schedule);
+
   $("#movieForm").addEventListener("submit", (e) => {
     e.preventDefault();
     const data = collectData(Number($("#mId").value) || nextFreeId());
     saveMovie(data);
     e.target.reset();
+    addLookupArea._fetched = null;
+    addLookupArea.innerHTML = "";
     $("#mDate").value = new Date().toISOString().slice(0, 10);
     buildRatesRow();
   });
   $("#clearFormBtn").addEventListener("click", () => {
     $("#movieForm").reset();
     $("#mId").value = "";
+    addLookupArea._fetched = null;
+    addLookupArea.innerHTML = "";
     $("#mDate").value = new Date().toISOString().slice(0, 10);
     buildRatesRow();
   });

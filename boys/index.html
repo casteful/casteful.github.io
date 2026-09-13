@@ -95,66 +95,24 @@
       <div class="admin-layout">
         <form class="panel form" id="movieForm">
           <h2>Add movie</h2>
-          <p class="hint">Saved to Firebase instantly — auto-save is always on.</p>
+          <p class="hint">Just enter the title and release year — original title, director, country, genre, IMDb/Wikipedia links and the poster are fetched automatically from Wikipedia / IMDb.</p>
           <input type="hidden" id="mId">
           <div class="form-row">
             <div class="form-field grow">
-              <label for="mTitle">Title (UA) *</label>
+              <label for="mTitle">Title *</label>
               <input id="mTitle" required placeholder="Фантазм 2">
             </div>
-            <div class="form-field grow">
-              <label for="mTitleEn">Original title</label>
-              <input id="mTitleEn" placeholder="Phantasm II">
-            </div>
-          </div>
-          <div class="form-row">
             <div class="form-field">
               <label for="mYear">Release year *</label>
               <input id="mYear" type="number" min="1895" max="2100" required placeholder="1988">
-            </div>
-            <div class="form-field grow">
-              <label for="mCountry">Country</label>
-              <input id="mCountry" placeholder="США" list="countryList">
-              <datalist id="countryList"></datalist>
             </div>
             <div class="form-field">
               <label for="mDate">Watched on *</label>
               <input id="mDate" type="date" required>
             </div>
           </div>
-          <div class="form-row">
-            <div class="form-field grow">
-              <label for="mDirector">Director</label>
-              <input id="mDirector" placeholder="Дон Коскареллі" list="directorList">
-              <datalist id="directorList"></datalist>
-            </div>
-            <div class="form-field grow">
-              <label for="mGenre">Genre</label>
-              <input id="mGenre" placeholder="Жахи, Фантастика" list="genreList">
-              <datalist id="genreList"></datalist>
-            </div>
-            <div class="form-field">
-              <label for="mSeason">Season</label>
-              <input id="mSeason" placeholder="2025" title="Club season. Auto-fills from watch date if left empty.">
-            </div>
-          </div>
+          <div class="lookup" id="formLookup"></div>
           <div class="form-row rates-row" id="ratesRow"></div>
-          <div class="form-row">
-            <div class="form-field grow">
-              <label for="mImdb">IMDb link</label>
-              <input id="mImdb" type="url" placeholder="https://www.imdb.com/title/tt0098173/">
-            </div>
-            <div class="form-field grow">
-              <label for="mWiki">Wikipedia link</label>
-              <input id="mWiki" type="url" placeholder="https://en.wikipedia.org/wiki/Phantasm_II">
-            </div>
-          </div>
-          <div class="form-row">
-            <div class="form-field grow">
-              <label for="mPoster">Poster URL <span class="opt">(optional — auto-fetched from Wikipedia if empty)</span></label>
-              <input id="mPoster" type="url" placeholder="https://…jpg">
-            </div>
-          </div>
           <div class="form-actions">
             <button type="submit" class="btn primary" id="saveBtn">Save to Firebase</button>
             <button type="button" class="btn" id="clearFormBtn">Clear</button>
