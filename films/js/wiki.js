@@ -4,15 +4,15 @@
 //
 // Використовується, коли IMDb Suggestion API недоступний (CORS,
 // блокування мережі) або не знайшов фільм (наприклад, українська
-// назва). Пайплайн:
-//   1) Пошук статей у Вікіпедії -> назва, мініатюра (постер),
-//      вступний текст, QID елемента Вікіданих
-//   2) wbgetentities за всіма QID одразу -> P31/P345/P57/P577/
-//      P2047/P136 -> рік, режисер, жанри, тривалість, IMDb ID,
-//      українська/англійська назви (другий швидкий виклик для
-//      міток режисера й жанрів)
-// Усе fail-safe: будь-яка помилка лишає список порожнім або
-// з базовими даними (назва/постер/опис).
+// назва). Пайплайн (усе ПАРАЛЕЛЬНО, де можливо — задля швидкості):
+//   1) Пошук статей у Вікіпедії (префіксний + повнотекстовий, uk+en)
+//      -> назва, мініатюра (постер), вступний текст, QID Вікіданих
+//   2) wbgetentities: claims + мітки фільмів одним викликом;
+//      другим швидким викликом — мітки режисерів і жанрів
+//      -> P31/P345/P57/P577/P2047/P136
+// Пакети результатів малюються поступово (onPartial) — не чекаємо
+// найповільніше джерело. Усе fail-safe: будь-яка помилка лишає
+// список порожнім або з базовими даними (назва/постер/опис).
 // ============================================================
 
 const WD_API = 'https://www.wikidata.org/w/api.php';
@@ -31,14 +31,14 @@ async function fetchJSON(url, timeoutMs = 8000, headers = {}) {
 
 // ---------- Пошук статей у розділі Вікіпедії ----------
 
-async function wikiSearch(lang, query, limit = 10) {
+async function wikiSearch(lang, query, limit = 8) {
   const url =
     `https://${lang}.wikipedia.org/w/api.php?action=query&format=json&origin=*` +
     `&generator=search&gsrlimit=${limit}&gsrsearch=${encodeURIComponent(query)}` +
     '&prop=pageimages|pageprops|extracts&exintro=1&explaintext=1&exlimit=max' +
     '&piprop=thumbnail&pithumbsize=400';
 
-  const data = await fetchJSON(url, 8000);
+  const data = await fetchJSON(url, 6000);
   const pages = data && data.query ? Object.values(data.query.pages || {}) : [];
   // index = релевантність видачі
   return pages
@@ -46,17 +46,37 @@ async function wikiSearch(lang, query, limit = 10) {
     .sort((a, b) => (a.index || 999) - (b.index || 999));
 }
 
-// ---------- Wikidata: твердження (claims) за списком QID ----------
+// Швидкий ПРЕФІКСНИЙ пошук (тільки за назвами статей) — легкий і
+// зазвичай вдвічі-втричі швидший за повнотекстовий; дає найперші підказки
+async function wikiPrefix(lang, query, limit = 4) {
+  const url =
+    `https://${lang}.wikipedia.org/w/api.php?action=query&format=json&origin=*` +
+    `&generator=prefixsearch&gpslimit=${limit}&gpssearch=${encodeURIComponent(query)}` +
+    '&prop=pageimages|pageprops|extracts&exintro=1&explaintext=1&exlimit=max' +
+    '&piprop=thumbnail&pithumbsize=400';
 
-async function wdClaims(qids) {
+  const data = await fetchJSON(url, 4000);
+  const pages = data && data.query ? Object.values(data.query.pages || {}) : [];
+  return pages
+    .map(p => ({ ...p, _lang: lang }))
+    .sort((a, b) => (a.index || 999) - (b.index || 999));
+}
+
+// ---------- Wikidata: claims + мітки фільмів ОДНИМ викликом ----------
+// (швидше, ніж два окремі запити claims і labels)
+
+async function wdEntities(qids) {
   if (!qids.length) return {};
-  const url = `${WD_API}?action=wbgetentities&format=json&origin=*&props=claims&ids=${encodeURIComponent(qids.join('|'))}`;
-  const data = await fetchJSON(url, 6000);
+  const url = `${WD_API}?action=wbgetentities&format=json&origin=*` +
+    `&props=claims%7Clabels&languages=uk%7Cen&ids=${encodeURIComponent(qids.join('|'))}`;
+  const data = await fetchJSON(url, 5000);
 
   const out = {};
   const entities = (data && data.entities) || {};
   for (const qid of Object.keys(entities)) {
-    const claims = entities[qid].claims || {};
+    const ent = entities[qid] || {};
+    const claims = ent.claims || {};
+    const labels = ent.labels || {};
     const e = { classes: [], genreQids: [] };
 
     for (const c of claims.P31 || []) {
@@ -86,17 +106,19 @@ async function wdClaims(qids) {
       const v = c.mainsnak && c.mainsnak.datavalue && c.mainsnak.datavalue.value;
       if (v && v.id) e.genreQids.push(v.id);
     }
+    e.labelUk = (labels.uk && labels.uk.value) || null;
+    e.labelEn = (labels.en && labels.en.value) || null;
     out[qid] = e;
   }
   return out;
 }
 
-// ---------- Wikidata: українські/англійські мітки ----------
+// ---------- Wikidata: українські/англійські мітки (для режисерів і жанрів) ----------
 
 async function wdLabels(qids) {
   if (!qids.length) return {};
   const url = `${WD_API}?action=wbgetentities&format=json&origin=*&props=labels&languages=uk%7Cen&ids=${encodeURIComponent(qids.slice(0, 50).join('|'))}`;
-  const data = await fetchJSON(url, 6000);
+  const data = await fetchJSON(url, 5000);
 
   const out = {};
   const entities = (data && data.entities) || {};
@@ -134,38 +156,38 @@ const NOT_FILM_CLASSES = new Set([
 async function wikidataByQids(qids) {
   if (!qids.length) return { map: {}, ok: true };
 
-  let claims;
+  // claims + мітки самих фільмів — ОДНИМ викликом (швидше, ніж два)
+  let ents;
   try {
-    claims = await wdClaims(qids);
+    ents = await wdEntities(qids);
   } catch (e) {
     return { map: {}, ok: false }; // Wikidata недоступна
   }
 
-  // Мітки для самих фільмів + режисерів + жанрів (до 50 id за виклик)
+  // Мітки режисерів + жанрів — другим швидким викликом (до 50 id)
   const extra = new Set();
-  for (const e of Object.values(claims)) {
+  for (const e of Object.values(ents)) {
     if (e.directorQid) extra.add(e.directorQid);
     for (const g of e.genreQids) extra.add(g);
   }
   let labels = {};
-  try {
-    labels = await wdLabels([...new Set(qids), ...extra]);
-  } catch (e) { /* мітки не критичні */ }
+  if (extra.size) {
+    try { labels = await wdLabels([...extra]); } catch (e) { /* мітки не критичні */ }
+  }
 
   const map = {};
   for (const qid of qids) {
-    const c = claims[qid];
+    const c = ents[qid];
     if (!c) continue;
     if ((c.classes || []).some(cl => NOT_FILM_CLASSES.has(cl))) continue;
     // Фільтр «це точно кіно/серіал»: IMDb ID, режисер або (рік і жанр)
     const filmLike = c.imdbId || c.directorQid || (c.year && c.genreQids.length);
     if (!filmLike) continue;
 
-    const lab = labels[qid] || {};
     const dirLab = c.directorQid ? (labels[c.directorQid] || {}) : {};
     map[qid] = {
-      titleUk: lab.uk || null,
-      titleEn: lab.en || null,
+      titleUk: c.labelUk || null,
+      titleEn: c.labelEn || null,
       imdbId: c.imdbId || null,
       director: dirLab.uk || dirLab.en || null,
       genres: c.genreQids.map(g => (labels[g] ? (labels[g].uk || labels[g].en) : null)).filter(Boolean).slice(0, 6),
@@ -269,28 +291,15 @@ async function collectItems(pages, seen) {
 }
 
 // ---------- Головна функція пошуку ----------
+//
+// Прогресивна видача (якомога швидший перший малюнок):
+//   1) префіксний пошук мовою запиту — найлегший запит, малюється першим;
+//   2) повнотекстовий пошук мовою запиту + другою мовою — паралельно,
+//      добирають глибину, коли відповідять.
+// Кожен готовий пакет одразу йде в callback onPartial. Фінальний
+// список — злиття всіх пакетів без дублікатів (спільний seen + назви).
 
-export async function searchWikiFilms(query) {
-  const q = String(query || '').trim();
-  if (q.length < 2) return [];
-
-  const hasCyrillic = /[а-яіїєґ]/i.test(q);
-  const langs = hasCyrillic ? ['uk', 'en'] : ['en', 'uk'];
-
-  const seen = new Set();
-  let items = [];
-
-  // Спершу розділ мовою запиту...
-  try { items = await collectItems(await wikiSearch(langs[0], q), seen); }
-  catch (e) { /* спробуємо другий розділ */ }
-
-  // ...і якщо фільмів майже не знайшлось — добираємо з другого розділу
-  if (items.length < 2) {
-    try { items = items.concat(await collectItems(await wikiSearch(langs[1], q), seen)); }
-    catch (e) { /* лишаємо те, що є */ }
-  }
-
-  // Прибираємо дублікати за назвою (укр. та англ. статті того самого фільму)
+function dedupeItems(items) {
   const out = [];
   const tSeen = new Set();
   for (const it of items) {
@@ -299,7 +308,43 @@ export async function searchWikiFilms(query) {
     if (k) tSeen.add(k);
     out.push(it);
   }
-  return out.slice(0, 8);
+  return out;
+}
+
+export async function searchWikiFilms(query, onPartial) {
+  const q = String(query || '').trim();
+  if (q.length < 2) return [];
+
+  const hasCyrillic = /[а-яіїєґ]/i.test(q);
+  const langs = hasCyrillic ? ['uk', 'en'] : ['en', 'uk'];
+
+  const seen = new Set(); // спільна дедуплікація QID/назв між пакетами
+  const all = [];
+
+  const emit = (batch) => {
+    if (!batch.length) return;
+    all.push(...batch);
+    const merged = dedupeItems(all).slice(0, 8);
+    if (typeof onPartial === 'function' && merged.length) onPartial(merged);
+  };
+
+  const runLang = async (lang, { prefix = false } = {}) => {
+    let pages = [];
+    try {
+      pages = prefix ? await wikiPrefix(lang, q) : await wikiSearch(lang, q);
+    } catch (e) { return; }
+    let batch = [];
+    try { batch = await collectItems(pages.slice(0, prefix ? 4 : 8), seen); } catch (e) { return; }
+    emit(batch);
+  };
+
+  await Promise.allSettled([
+    runLang(langs[0], { prefix: true }), // найшвидший пакет — перший на екрані
+    runLang(langs[0]),
+    runLang(langs[1])
+  ]);
+
+  return dedupeItems(all).slice(0, 8);
 }
 
 // ---------- Добір даних за QID (коли фільм обрано з Вікіпедії) ----------

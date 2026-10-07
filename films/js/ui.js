@@ -24,6 +24,8 @@ export const icons = {
   alert: I(`<circle cx="12" cy="12" r="9"/><path d="M12 8v5"/><path d="M12 16.5v.5"/>`),
   check: I(`<path d="M20 6L9 17l-5-5"/>`),
   users: I(`<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.8-3.2 3.4-5 6.5-5s5.7 1.8 6.5 5"/><circle cx="17.5" cy="9" r="2.5"/><path d="M16.5 15.2c2.4.4 4.3 1.9 5 4.3"/>`),
+  grid: I(`<rect x="3" y="3" width="7.5" height="7.5" rx="1.5"/><rect x="13.5" y="3" width="7.5" height="7.5" rx="1.5"/><rect x="3" y="13.5" width="7.5" height="7.5" rx="1.5"/><rect x="13.5" y="13.5" width="7.5" height="7.5" rx="1.5"/>`),
+  table: I(`<rect x="3" y="4.5" width="18" height="15" rx="2"/><path d="M3 9.5h18"/><path d="M9.5 9.5V19.5"/>`),
   clapper: I(`<rect x="2.5" y="8.5" width="19" height="12" rx="2.5"/><path d="M2.5 8.5l1.6-4.4L9 5.3"/><path d="M8.4 5l1.6-1 2.6 3.3"/><path d="M12 3.9l2.7.9 2 2.6"/><path d="M17 4.9l2.5.9 1.7 2.7"/>`)
 };
 

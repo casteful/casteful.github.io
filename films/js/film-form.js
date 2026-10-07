@@ -1,6 +1,6 @@
 // ============================================================
 // Модальне вікно «Додати / Редагувати фільм»:
-//  - автозаповнення через IMDb Suggestion API
+//  - швидке автозаповнення: IMDb і Вікіпедія шукають ПАРАЛЕЛЬНО
 //  - автоматичне підтягування деталей (Wikidata + Вікіпедія)
 //  - збереження в Firebase
 // ============================================================
@@ -12,6 +12,59 @@ import { toast, openModal, confirmDialog, icons } from './ui.js';
 import { suggestFilms, typeLabel, imdbTemporarilyDown } from './imdb.js';
 import { searchWikiFilms, enrichByQid } from './wiki.js';
 import { enrichFilm } from './enrich.js';
+
+// ============================================================
+// Швидкий пошук для автозаповнення (спільний між відкриттями).
+//
+// Стратегія «пріоритет швидкості»:
+//   1. IMDb стартує одразу; Вікіпедія — із мікрозатримкою 450 мс.
+//   2. На IMDb чекаємо максимум IMDB_CAP_MS: встиг із результатами
+//      — показуємо їх (вікі-запит ігноруємо).
+//   3. Не встиг / порожньо / вимкнений — беремо вже готові (або
+//      майже готові) результати Вікіпедії, які йшли паралельно.
+//   4. Усе кешується: повторний запит тієї ж назви — миттєвий.
+// ============================================================
+
+const IMDB_CAP_MS = 2800;   // стільки даємо IMDb, потім показуємо Вікіпедію
+const WIKI_DELAY_MS = 800;  // фори IMDb; якщо він не встиг — стартує вікі-пошук
+const SUG_CACHE_MAX = 60;
+
+const sugCache = new Map(); // ключ запиту -> Promise зі списком підказок
+
+function searchFilmsFast(q, onPartial) {
+  const imdbDown = imdbTemporarilyDown();
+  const imdbP = imdbDown
+    ? Promise.resolve([])
+    : suggestFilms(q).catch(() => []);
+
+  // Вікіпедія: стартуємо із мікрозатримкою (0, якщо IMDb уже вимкнений),
+  // АЛЕ тільки якщо IMDb ще не встиг відповести результатом —
+  // тоді на щасливому шляху займі запити не летять узагалі
+  const wikiP = Promise.race([
+    new Promise(res => setTimeout(res, imdbDown ? 0 : WIKI_DELAY_MS)),
+    imdbP.then(list => (list && list.length ? 'imdb-won' : 'wiki-go'))
+  ]).then(out => out === 'imdb-won'
+    ? []
+    : searchWikiFilms(q, onPartial).catch(() => []));
+
+  return Promise.race([
+    imdbP.then(list => (list && list.length ? list : null)),
+    new Promise(res => setTimeout(() => res(null), IMDB_CAP_MS))
+  ]).then(imdbRes => imdbRes || wikiP);
+}
+
+function cachedSearch(q, onPartial) {
+  const key = q.trim().toLowerCase().replace(/\s+/g, ' ');
+  let p = sugCache.get(key);
+  if (!p) {
+    p = searchFilmsFast(q, onPartial);
+    sugCache.set(key, p);
+    if (sugCache.size > SUG_CACHE_MAX) {
+      sugCache.delete(sugCache.keys().next().value);
+    }
+  }
+  return p;
+}
 
 export function openFormModal({ film = null, currentUserId, allFilms = [] }) {
   const isEdit = !!film;
@@ -53,38 +106,38 @@ export function openFormModal({ film = null, currentUserId, allFilms = [] }) {
       if (q.length < 2) { hideSug(); return; }
       const gen = ++searchGen;
       sugList.hidden = false;
+      sugList.innerHTML = note(icons.search, 'Шукаю…');
 
-      // Спершу IMDb; якщо він недоступний або не знайшов — Вікіпедія
+      const renderItems = (list) => {
+        sugItems = list;
+        sugIndex = -1;
+        sugList.innerHTML = list.map((s, i) => `
+          <button type="button" class="s-item" data-i="${i}">
+            <span class="s-thumb">${s.poster ? `<img src="${U.escapeHtml(U.posterUrl(s.poster, 100))}" alt="" referrerpolicy="no-referrer" loading="lazy" onerror="this.remove()">` : ''}</span>
+            <span class="s-text">
+              <span class="s-name">${U.escapeHtml(s.titleUk || s.title)}</span>
+              <span class="s-year">${[s.year || '', typeLabel(s.type), s.source === 'wiki' ? 'Вікіпедія' : ''].filter(Boolean).join(' · ')}</span>
+            </span>
+          </button>`).join('');
+      };
+
       let items = [];
-      if (imdbTemporarilyDown()) {
-        sugList.innerHTML = note(icons.search, 'Шукаю у Вікіпедії…');
-        items = await searchWikiFilms(q);
-      } else {
-        sugList.innerHTML = note(icons.search, 'Шукаю на IMDb…');
-        items = await suggestFilms(q);
-        if (!items.length) {
-          if (gen !== searchGen) return; // вже розпочато новий пошук
-          sugList.innerHTML = note(icons.search, 'На IMDb нічого не знайшлось — шукаю у Вікіпедії…');
-          items = await searchWikiFilms(q);
-        }
-      }
+      try {
+        items = await cachedSearch(q, (partial) => {
+          // Прогресивний малюнок: перші вікі-результати — одразу,
+          // поки другий розділ Вікіпедії ще відповідає
+          if (gen !== searchGen || sugList.hidden || !partial.length) return;
+          renderItems(partial);
+        });
+      } catch (e) { items = []; }
 
       if (gen !== searchGen) return; // застарілий результат — ігноруємо
-      sugItems = items;
-      sugIndex = -1;
-      if (!sugItems.length) {
+      if (!items.length) {
         sugList.innerHTML = note(icons.alert, 'Нічого не знайдено ні на IMDb, ні у Вікіпедії. Спробуйте іншу назву або заповніть поля вручну.');
         return;
       }
-      sugList.innerHTML = sugItems.map((s, i) => `
-        <button type="button" class="s-item" data-i="${i}">
-          <span class="s-thumb">${s.poster ? `<img src="${U.escapeHtml(U.posterUrl(s.poster, 100))}" alt="" referrerpolicy="no-referrer" loading="lazy" onerror="this.remove()">` : ''}</span>
-          <span class="s-text">
-            <span class="s-name">${U.escapeHtml(s.titleUk || s.title)}</span>
-            <span class="s-year">${[s.year || '', typeLabel(s.type), s.source === 'wiki' ? 'Вікіпедія' : ''].filter(Boolean).join(' · ')}</span>
-          </span>
-        </button>`).join('');
-    }, 350));
+      renderItems(items);
+    }, 220));
 
     searchInput.addEventListener('keydown', (e) => {
       if (sugList.hidden) return;
@@ -318,7 +371,7 @@ function formHTML(isEdit, film) {
                placeholder="Почніть вводити назву — українською або англійською…">
       </div>
       <div class="suggest-list" id="suggestList" hidden></div>
-      <span class="hint">Оберіть фільм зі списку — постер, рік і деталі підтягнуться автоматично. Шукаємо на IMDb, а якщо він недоступний — у Вікіпедії. Або просто заповніть поля нижче вручну.</span>
+      <span class="hint">Оберіть фільм зі списку — постер, рік і деталі підтягнуться автоматично. Шукаємо одночасно на IMDb і у Вікіпедії, тож результати зʼявляються швидко. Або просто заповніть поля нижче вручну.</span>
     </label>`}
 
     <div class="form-grid">

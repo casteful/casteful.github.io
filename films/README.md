@@ -6,6 +6,7 @@ light/dark theme, built as a **zero-build static site** — perfect for GitHub P
 ## Features
 
 - **Easy rating** — open any film and tap one of ten color-coded chips (1–10, red → green). Tap the same chip again to remove your rating.
+- **Two list views** — poster cards (grid) or a compact **table** with year, director, genres, runtime, average and a separate rating column per friend; switch with the icons next to the sort selector, the choice is remembered. Click any column header (Фільм / Рік / Сер.) to sort.
 - **Smart adding** — start typing a film name (Ukrainian or English) and pick it from live suggestions; poster, year, Ukrainian title, director, genres, runtime and plot are fetched automatically. Everything stays manually editable.
 - **Editing & deleting** — any member can edit or remove any film (pencil icon on the card or inside the film window).
 - **Profiles** — on first visit everyone picks their name (surguy, q1oob, dimyeah, burlaka21, oddfriend); it's remembered on that device.
@@ -66,8 +67,8 @@ error, open **Firebase Console → Realtime Database → Rules** and publish:
 - **Add / remove friends**: edit the `USERS` array in `js/config.js`
   (id, display name, avatar color).
 - **Change Firebase project**: edit `firebaseConfig` in `js/config.js`.
-- Profile choice and theme are stored in each browser's `localStorage`
-  (`films_user`, `films_theme`).
+- Profile choice, theme, list view and sorting are stored in each browser's
+  `localStorage` (`films_user`, `films_theme`, `films_view`, `films_sort`).
 
 ## Data model (Realtime Database)
 
@@ -95,14 +96,20 @@ films/
 
 - Vanilla JavaScript ES modules, no frameworks, no build tools.
 - Firebase JS SDK v10 loaded from the official CDN.
-- Film autocomplete, two sources:
-  1. Public IMDb suggestion endpoint (`v3.sg.media-imdb.com` / `v2` mirror).
+- **Fast autocomplete** — IMDb and Wikipedia are queried in parallel with short
+  timeouts; results are cached per query, so repeating a name is instant.
+  Typical first suggestions appear in well under a second.
+- Film sources:
+  1. Public IMDb suggestion endpoint (`v3.sg.media-imdb.com` / `v2` mirror,
+     raced in parallel, 3 s cap).
   2. **Wikipedia fallback** (`js/wiki.js`) — used automatically when IMDb is
      unreachable (CORS / network block) or finds nothing (e.g. a Ukrainian
-     title). Searches Ukrainian and English Wikipedia, resolves each article's
-     Wikidata item via the fast `wbgetentities` API and keeps only real films
-     (books, actors, episodes etc. are filtered out). Results are marked with
-     a «Вікіпедія» badge in the dropdown.
+     title). Searches Ukrainian and English Wikipedia (fast prefix search
+     first, full-text on top), resolves each article's Wikidata item via the
+     fast `wbgetentities` API and keeps only real films (books, actors,
+     episodes etc. are filtered out). Results are painted progressively —
+     whichever source answers first is shown immediately — and marked with a
+     «Вікіпедія» badge in the dropdown.
 - If IMDb fails, the app remembers it for 10 minutes (sessionStorage) and
   searches Wikipedia first — no timeout waiting on every keystroke. The flag
   clears itself as soon as IMDb answers again.

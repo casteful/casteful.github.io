@@ -1,6 +1,6 @@
 // ============================================================
-// Вкладка «Фільми»: сітка карток, пошук/сортування, модальне
-// вікно фільму з оцінками 1–10
+// Вкладка «Фільми»: сітка карток АБО таблиця, пошук/сортування,
+// модальне вікно фільму з оцінками 1–10
 // ============================================================
 
 import { USERS } from './config.js';
@@ -16,6 +16,7 @@ let isLoading = true;
 let loadError = null;
 let query = '';
 let sort = localStorage.getItem('films_sort') || 'new';
+let view = localStorage.getItem('films_view') === 'table' ? 'table' : 'grid'; // сітка або таблиця
 let currentUserId = null;
 let detailState = null; // { overlay, box, filmId, close }
 
@@ -70,9 +71,13 @@ function buildSkeleton() {
         <option value="year">За роком</option>
         <option value="title">За назвою (А–Я)</option>
       </select>
+      <div class="view-toggle" role="group" aria-label="Вигляд списку">
+        <button type="button" data-view-btn="grid" class="${view === 'grid' ? 'active' : ''}" title="Сітка" aria-label="Вигляд: сітка">${icons.grid}</button>
+        <button type="button" data-view-btn="table" class="${view === 'table' ? 'active' : ''}" title="Таблиця" aria-label="Вигляд: таблиця">${icons.table}</button>
+      </div>
       <button class="btn primary add-btn" id="addBtn">${icons.plus}<span>Додати фільм</span></button>
     </div>
-    <div id="filmsGrid" class="grid"></div>`;
+    <div id="filmsGrid" class="${view === 'table' ? 'table-wrap' : 'grid'}"></div>`;
 
   gridEl = container.querySelector('#filmsGrid');
   const sortEl = container.querySelector('#filmSort');
@@ -88,11 +93,34 @@ function buildSkeleton() {
   }, 200));
   container.querySelector('#addBtn').addEventListener('click', openAdd);
 
+  // Перемикання сітка ⇄ таблиця (запам'ятовується між сесіями)
+  container.querySelectorAll('[data-view-btn]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const v = btn.dataset.viewBtn;
+      if (v === view) return;
+      view = v;
+      try { localStorage.setItem('films_view', view); } catch (e) {}
+      buildSkeleton(); // перебудовує каркас (зберігає фокус пошуку)
+      refreshGrid();
+    });
+  });
+
+  // Кліки: заголовки-сортування в таблиці, кнопка «редагувати»,
+  // відкриття картки/рядка
   gridEl.addEventListener('click', (e) => {
+    const th = e.target.closest('th[data-sort]');
+    if (th) {
+      sort = th.dataset.sort;
+      localStorage.setItem('films_sort', sort);
+      const sel = container.querySelector('#filmSort');
+      if (sel) sel.value = sort;
+      refreshGrid();
+      return;
+    }
     const editBtn = e.target.closest('[data-edit]');
-    const card = e.target.closest('.card');
-    if (!card) return;
-    const film = filmsList.find(f => f.id === card.dataset.id);
+    const row = e.target.closest('.card, .t-row');
+    if (!row) return;
+    const film = filmsList.find(f => f.id === row.dataset.id);
     if (!film) return;
     if (editBtn) {
       openFormModal({ film, currentUserId, allFilms: filmsList });
@@ -102,8 +130,8 @@ function buildSkeleton() {
   });
   gridEl.addEventListener('keydown', (e) => {
     if (e.key !== 'Enter') return;
-    const card = e.target.closest('.card');
-    if (card && e.target === card) openDetail(card.dataset.id);
+    const row = e.target.closest('.card, .t-row');
+    if (row && e.target === row) openDetail(row.dataset.id);
   });
 
   if (wasSearchFocused) {
@@ -149,16 +177,7 @@ function refreshGrid() {
   }
 
   if (isLoading) {
-    gridEl.innerHTML = Array.from({ length: 6 }, () => `
-      <div class="card skeleton-card">
-        <div class="poster skeleton"></div>
-        <div class="card-body">
-          <div class="skeleton sk-line w-70"></div>
-          <div class="skeleton sk-line w-45"></div>
-          <div class="skeleton sk-line w-55"></div>
-          <div class="skeleton sk-line w-80"></div>
-        </div>
-      </div>`).join('');
+    renderSkeleton();
     return;
   }
 
@@ -185,7 +204,103 @@ function refreshGrid() {
     return;
   }
 
-  gridEl.innerHTML = list.map(cardHTML).join('');
+  gridEl.innerHTML = view === 'table'
+    ? tableHTML(list)
+    : list.map(cardHTML).join('');
+}
+
+// ---------- Скелетон завантаження (під поточний вигляд) ----------
+
+function renderSkeleton() {
+  if (view === 'table') {
+    const cols = 6 + USERS.length + 1;
+    const line = i => `<div class="skeleton sk-line ${['w-70', 'w-45', 'w-55', 'w-80'][i % 4]}"></div>`;
+    gridEl.innerHTML = `
+      <table class="films-table">
+        <thead><tr>${'<th></th>'.repeat(cols)}</tr></thead>
+        <tbody>${Array.from({ length: 5 }, () =>
+          `<tr class="skeleton-row">${Array.from({ length: cols }, (_, i) => `<td>${line(i)}</td>`).join('')}</tr>`
+        ).join('')}</tbody>
+      </table>`;
+    return;
+  }
+  gridEl.innerHTML = Array.from({ length: 6 }, () => `
+    <div class="card skeleton-card">
+      <div class="poster skeleton"></div>
+      <div class="card-body">
+        <div class="skeleton sk-line w-70"></div>
+        <div class="skeleton sk-line w-45"></div>
+        <div class="skeleton sk-line w-55"></div>
+        <div class="skeleton sk-line w-80"></div>
+      </div>
+    </div>`).join('');
+}
+
+// ---------- Табличний вигляд ----------
+
+function tableHTML(list) {
+  const thSort = (key, label, extra = '') =>
+    `<th class="sortable ${sort === key ? 'active' : ''} ${extra}" data-sort="${key}" scope="col" title="Сортувати">${label}</th>`;
+
+  const userHeads = USERS.map(u => `
+    <th class="u-col" scope="col" aria-label="Оцінки ${U.escapeHtml(u.name)}">
+      <span class="u-head ${u.id === currentUserId ? 'mine' : ''}" style="background:${u.color}" title="${U.escapeHtml(u.name)}">${U.escapeHtml(U.initial(u.name))}</span>
+    </th>`).join('');
+
+  return `
+  <table class="films-table">
+    <thead><tr>
+      ${thSort('title', 'Фільм')}
+      ${thSort('year', 'Рік')}
+      <th scope="col">Режисер</th>
+      <th scope="col">Жанри</th>
+      <th scope="col" class="t-num">Хв</th>
+      ${thSort('rating', 'Сер.')}
+      ${userHeads}
+      <th scope="col" aria-hidden="true"></th>
+    </tr></thead>
+    <tbody>${list.map(rowHTML).join('')}</tbody>
+  </table>`;
+}
+
+function rowHTML(f) {
+  const a = U.avg(f.ratings);
+  const mainTitle = f.titleUk || f.title || 'Без назви';
+  const orig = (f.titleUk && f.title && f.titleUk !== f.title) ? f.title : '';
+
+  const userCells = USERS.map(u => {
+    const v = (f.ratings || {})[u.id];
+    return `<td class="u-col ${u.id === currentUserId ? 'mine' : ''}">${v != null
+      ? `<span class="t-score" style="background:${U.ratingColor(v)}" title="${U.escapeHtml(u.name)}: ${v}">${v}</span>`
+      : `<span class="t-score empty" title="${U.escapeHtml(u.name)}: без оцінки">—</span>`}
+    </td>`;
+  }).join('');
+
+  return `
+  <tr class="t-row" data-id="${f.id}" tabindex="0" aria-label="${U.escapeHtml(mainTitle)}">
+    <td>
+      <div class="t-film">
+        <span class="t-poster">${f.poster
+          ? `<img src="${U.escapeHtml(U.posterUrl(f.poster, 80))}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">`
+          : icons.film}</span>
+        <span class="t-titles">
+          <span class="t-name">${U.escapeHtml(mainTitle)}</span>
+          ${orig ? `<span class="t-orig">${U.escapeHtml(orig)}</span>` : ''}
+        </span>
+      </div>
+    </td>
+    <td class="t-num t-muted">${f.year || '—'}</td>
+    <td class="t-muted" title="${U.escapeHtml(f.director || '')}">${f.director ? U.escapeHtml(U.trunc(f.director, 28)) : '—'}</td>
+    <td class="t-muted t-genres" title="${U.escapeHtml((f.genres || []).join(', '))}">${f.genres && f.genres.length ? U.escapeHtml(U.trunc(f.genres.join(', '), 32)) : '—'}</td>
+    <td class="t-num t-muted">${f.runtime || '—'}</td>
+    <td>${a != null
+      ? `<span class="avg-badge sm" style="background:${U.ratingColor(a)}" title="Середня оцінка">${U.fmtAvg(a)}</span>`
+      : `<span class="t-muted">—</span>`}</td>
+    ${userCells}
+    <td>
+      <button class="icon-btn t-edit" data-edit aria-label="Редагувати фільм" title="Редагувати">${icons.edit}</button>
+    </td>
+  </tr>`;
 }
 
 function cardHTML(f) {
