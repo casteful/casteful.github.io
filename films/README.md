@@ -6,7 +6,7 @@ light/dark theme, built as a **zero-build static site** — perfect for GitHub P
 ## Features
 
 - **Easy rating** — open any film and tap one of ten color-coded chips (1–10, red → green). Tap the same chip again to remove your rating.
-- **Smart adding** — start typing a film name and pick it from live IMDb suggestions; poster, year, Ukrainian title, director, genres, runtime and plot are fetched automatically (IMDb suggestion API + Wikidata + Ukrainian Wikipedia). Everything stays manually editable.
+- **Smart adding** — start typing a film name (Ukrainian or English) and pick it from live suggestions; poster, year, Ukrainian title, director, genres, runtime and plot are fetched automatically. Everything stays manually editable.
 - **Editing & deleting** — any member can edit or remove any film (pencil icon on the card or inside the film window).
 - **Profiles** — on first visit everyone picks their name (surguy, q1oob, dimyeah, burlaka21, oddfriend); it's remembered on that device.
 - **Statistics tab** — total films/ratings, average score, top-rated films, rating distribution histogram, films by decade, top directors, and a per-viewer profile (average, favorite film, "strictest critic" vs "most generous viewer").
@@ -95,7 +95,17 @@ films/
 
 - Vanilla JavaScript ES modules, no frameworks, no build tools.
 - Firebase JS SDK v10 loaded from the official CDN.
-- Film autocomplete: public IMDb suggestion endpoint (`v3.sg.media-imdb.com`).
-- Details enrichment: Wikidata SPARQL (queried by IMDb ID `P345`) with a
-  Ukrainian Wikipedia fallback for plot text — all optional and fail-safe.
-- Poster images are hot-linked from the IMDb/Amazon image CDN.
+- Film autocomplete, two sources:
+  1. Public IMDb suggestion endpoint (`v3.sg.media-imdb.com` / `v2` mirror).
+  2. **Wikipedia fallback** (`js/wiki.js`) — used automatically when IMDb is
+     unreachable (CORS / network block) or finds nothing (e.g. a Ukrainian
+     title). Searches Ukrainian and English Wikipedia, resolves each article's
+     Wikidata item via the fast `wbgetentities` API and keeps only real films
+     (books, actors, episodes etc. are filtered out). Results are marked with
+     a «Вікіпедія» badge in the dropdown.
+- If IMDb fails, the app remembers it for 10 minutes (sessionStorage) and
+  searches Wikipedia first — no timeout waiting on every keystroke. The flag
+  clears itself as soon as IMDb answers again.
+- Details enrichment: Wikidata (queried by IMDb ID `P345` or Wikidata `QID`)
+  with a Ukrainian Wikipedia fallback for plot text — all optional and fail-safe.
+- Poster images are hot-linked from the IMDb/Amazon image CDN or Wikimedia.

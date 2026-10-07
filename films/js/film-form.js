@@ -9,7 +9,8 @@ import { USERS } from './config.js';
 import * as store from './store.js';
 import * as U from './utils.js';
 import { toast, openModal, confirmDialog, icons } from './ui.js';
-import { suggestFilms, typeLabel } from './imdb.js';
+import { suggestFilms, typeLabel, imdbTemporarilyDown } from './imdb.js';
+import { searchWikiFilms, enrichByQid } from './wiki.js';
 import { enrichFilm } from './enrich.js';
 
 export function openFormModal({ film = null, currentUserId, allFilms = [] }) {
@@ -44,23 +45,43 @@ export function openFormModal({ film = null, currentUserId, allFilms = [] }) {
   let sugIndex = -1;
 
   if (searchInput) {
+    const note = (icon, text) => `<div class="s-note">${icon}<span>${text}</span></div>`;
+    let searchGen = 0; // захист від перегонів повільних запитів
+
     searchInput.addEventListener('input', U.debounce(async () => {
       const q = searchInput.value.trim();
       if (q.length < 2) { hideSug(); return; }
+      const gen = ++searchGen;
       sugList.hidden = false;
-      sugList.innerHTML = `<div class="s-note">${icons.search}<span>Шукаю на IMDb…</span></div>`;
-      sugItems = await suggestFilms(q);
+
+      // Спершу IMDb; якщо він недоступний або не знайшов — Вікіпедія
+      let items = [];
+      if (imdbTemporarilyDown()) {
+        sugList.innerHTML = note(icons.search, 'Шукаю у Вікіпедії…');
+        items = await searchWikiFilms(q);
+      } else {
+        sugList.innerHTML = note(icons.search, 'Шукаю на IMDb…');
+        items = await suggestFilms(q);
+        if (!items.length) {
+          if (gen !== searchGen) return; // вже розпочато новий пошук
+          sugList.innerHTML = note(icons.search, 'На IMDb нічого не знайшлось — шукаю у Вікіпедії…');
+          items = await searchWikiFilms(q);
+        }
+      }
+
+      if (gen !== searchGen) return; // застарілий результат — ігноруємо
+      sugItems = items;
       sugIndex = -1;
       if (!sugItems.length) {
-        sugList.innerHTML = `<div class="s-note">${icons.alert}<span>Нічого не знайдено. Спробуйте англійську назву або заповніть поля вручну.</span></div>`;
+        sugList.innerHTML = note(icons.alert, 'Нічого не знайдено ні на IMDb, ні у Вікіпедії. Спробуйте іншу назву або заповніть поля вручну.');
         return;
       }
       sugList.innerHTML = sugItems.map((s, i) => `
         <button type="button" class="s-item" data-i="${i}">
           <span class="s-thumb">${s.poster ? `<img src="${U.escapeHtml(U.posterUrl(s.poster, 100))}" alt="" referrerpolicy="no-referrer" loading="lazy" onerror="this.remove()">` : ''}</span>
           <span class="s-text">
-            <span class="s-name">${U.escapeHtml(s.title)}</span>
-            <span class="s-year">${[s.year || '', typeLabel(s.type)].filter(Boolean).join(' · ')}</span>
+            <span class="s-name">${U.escapeHtml(s.titleUk || s.title)}</span>
+            <span class="s-year">${[s.year || '', typeLabel(s.type), s.source === 'wiki' ? 'Вікіпедія' : ''].filter(Boolean).join(' · ')}</span>
           </span>
         </button>`).join('');
     }, 350));
@@ -103,10 +124,28 @@ export function openFormModal({ film = null, currentUserId, allFilms = [] }) {
   function pickSuggestion(s) {
     if (!s) return;
     picked = s;
-    set('fTitle', s.title);
+
+    if (s.source === 'wiki') {
+      // Результат із Вікіпедії: укр. назва + оригінальна (якщо відрізняється)
+      if (s.titleUk) set('fTitleUk', s.titleUk);
+      if (s.title && (!s.titleUk || s.title.toLowerCase() !== s.titleUk.toLowerCase())) {
+        set('fTitle', s.title);
+      } else if (!val('fTitle')) {
+        set('fTitle', s.titleUk || s.title);
+      }
+    } else {
+      set('fTitle', s.title);
+    }
     if (!val('fYear')) set('fYear', s.year ?? '');
     if (!val('fPoster') && s.poster) { set('fPoster', s.poster); showPoster(box, s.poster); }
-    searchInput.value = `${s.title}${s.year ? ` (${s.year})` : ''}`;
+
+    // Вікі-результат часто несе готові дані — заповнюємо решту полів
+    if (s.director) fillIfEmpty('fDirector', s.director);
+    if (s.genres && s.genres.length) fillIfEmpty('fGenres', s.genres.join(', '));
+    if (s.runtime) fillIfEmpty('fRuntime', s.runtime);
+    if (s.plot) fillIfEmpty('fPlot', s.plot);
+
+    searchInput.value = `${s.titleUk || s.title}${s.year ? ` (${s.year})` : ''}`;
     hideSug();
     runEnrichment();
   }
@@ -115,19 +154,28 @@ export function openFormModal({ film = null, currentUserId, allFilms = [] }) {
   let enriching = false;
 
   async function runEnrichment() {
-    if (!picked || !picked.imdbId || enriching) return;
+    if (!picked || enriching) return;
+    if (!picked.imdbId && !picked.qid) return; // вручну заповнений фільм
     enriching = true;
     const st = $('enrichStatus');
     st.className = 'enrich-status show';
     st.textContent = 'Завантажую деталі з Wikidata та Вікіпедії…';
     try {
-      const d = await enrichFilm({
-        imdbId: picked.imdbId,
-        title: picked.title,
-        year: picked.year,
-        titleUkHint: val('fTitleUk').trim() || null
-      });
+      let d = {};
+      if (picked.imdbId) {
+        d = await enrichFilm({
+          imdbId: picked.imdbId,
+          title: picked.title,
+          year: picked.year,
+          titleUkHint: val('fTitleUk').trim() || null
+        });
+      } else {
+        d = await enrichByQid(picked.qid);
+      }
+      // Знайшли IMDb ID через Wikidata — збережемо його разом із фільмом
+      if (!picked.imdbId && d.imdbId) picked.imdbId = d.imdbId;
       fillIfEmpty('fTitleUk', d.titleUk);
+      if (!val('fYear') && d.year) set('fYear', d.year);
       fillIfEmpty('fDirector', d.director);
       fillIfEmpty('fGenres', (d.genres || []).join(', '));
       fillIfEmpty('fRuntime', d.runtime);
@@ -263,14 +311,14 @@ function formHTML(isEdit, film) {
 
     ${isEdit ? '' : `
     <label class="field">
-      <span class="field-label">Пошук на IMDb</span>
+      <span class="field-label">Пошук фільму</span>
       <div class="suggest-wrap">
         ${icons.search}
         <input id="fSearch" type="text" autocomplete="off" spellcheck="false"
-               placeholder="Почніть вводити назву англійською…">
+               placeholder="Почніть вводити назву — українською або англійською…">
       </div>
       <div class="suggest-list" id="suggestList" hidden></div>
-      <span class="hint">Оберіть фільм зі списку — постер, рік і деталі підтягнуться автоматично. Або просто заповніть поля нижче вручну.</span>
+      <span class="hint">Оберіть фільм зі списку — постер, рік і деталі підтягнуться автоматично. Шукаємо на IMDb, а якщо він недоступний — у Вікіпедії. Або просто заповніть поля нижче вручну.</span>
     </label>`}
 
     <div class="form-grid">
