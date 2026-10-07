@@ -442,37 +442,82 @@ function buildRatePop(film) {
         ? `Середня <b>${U.fmtAvg(a)}</b> · ${votes} ${U.pluralRatings(votes)}${my != null ? ` · ваша ${my}` : ''}`
         : (my != null ? `Ваша оцінка ${my}` : 'Перший відгук — ваш!')
     }</div>
-    <div class="rate-pop-grid" role="group" aria-label="Оцінка від 1 до 10">
-      ${Array.from({ length: 10 }, (_, i) => {
-        const s = i + 1;
-        return `<button type="button" class="pop-chip ${my === s ? 'active' : ''}" data-score="${s}" style="--c:${U.ratingColor(s)}" aria-label="${s} — ${RATE_LABELS[s]}">${s}</button>`;
-      }).join('')}
-    </div>
-    <div class="rate-caption" aria-live="polite">&nbsp;</div>
+    <div class="rt" role="group" aria-label="Оцінка від 1 до 10">${rateTrailHTML(my)}</div>
     ${my != null ? '<button type="button" class="remove-rating" data-pop-remove>Прибрати мою оцінку</button>' : ''}`;
   return pop;
 }
 
-// Підсвітка шкали при наведенні: усі числа до курсора «теплішають»,
-// підпис під сіткою показує значення оцінки словами
-function wireRatePreview(pop, onChange) {
-  const grid = pop.querySelector('.rate-pop-grid');
-  const caption = pop.querySelector('.rate-caption');
-  grid.addEventListener('mouseover', (e) => {
-    const chip = e.target.closest('.pop-chip');
-    if (!chip) return;
-    const s = +chip.dataset.score;
-    grid.querySelectorAll('.pop-chip').forEach(c => c.classList.toggle('warm', +c.dataset.score <= s));
-    if (caption) {
-      caption.textContent = `${s} · ${RATE_LABELS[s]}`;
-      caption.style.color = U.ratingColor(s);
-    }
-    if (onChange) onChange(s);
+// ---------- Компонент «шкала оцінки» (trail) ----------
+// Єдина шкала 1–10 для спливашок, шітів і модалки: сегменти
+// заливаються кольором до обраного значення (від червоного до
+// зеленого), над шкалою — велике число і слово-підпис.
+// Наведення показує прев'ю, клік зберігає миттєво.
+
+function rateTrailHTML(selected) {
+  const segs = Array.from({ length: 10 }, (_, i) => {
+    const s = i + 1;
+    const on = selected != null && s <= selected;
+    return `<button type="button" class="rt-seg ${on ? 'on' : ''}" data-score="${s}" style="--c:${U.ratingColor(s)}" aria-label="${s} — ${RATE_LABELS[s]}"></button>`;
+  }).join('');
+  const nums = Array.from({ length: 10 }, (_, i) => `<i>${i + 1}</i>`).join('');
+  return `
+    <div class="rt-display">
+      <span class="rt-value"${selected != null ? ` style="color:${U.ratingColor(selected)}"` : ''}>${selected != null ? selected : '—'}</span>
+      <span class="rt-word">${selected != null ? RATE_LABELS[selected] : 'Оберіть оцінку'}</span>
+    </div>
+    <div class="rt-track">${segs}</div>
+    <div class="rt-nums" aria-hidden="true">${nums}</div>`;
+}
+
+// Перемалювати шкалу в контейнері root на значення s (null — «порожньо»)
+function paintTrail(root, s) {
+  const track = root.querySelector('.rt-track');
+  if (track) {
+    track.querySelectorAll('.rt-seg').forEach(c =>
+      c.classList.toggle('on', s != null && +c.dataset.score <= s));
+  }
+  const v = root.querySelector('.rt-value');
+  const w = root.querySelector('.rt-word');
+  if (!v || !w) return;
+  if (s != null) {
+    v.textContent = s;
+    v.style.color = U.ratingColor(s);
+    w.textContent = RATE_LABELS[s];
+  } else {
+    v.textContent = '—';
+    v.style.color = '';
+    w.textContent = 'Оберіть оцінку';
+  }
+}
+
+// Пружний «піп» великого числа при виборі оцінки
+function popValue(root) {
+  const v = root.querySelector('.rt-value');
+  if (v && v.animate) {
+    v.animate(
+      [{ transform: 'scale(1)' }, { transform: 'scale(1.22)' }, { transform: 'scale(1)' }],
+      { duration: 280, easing: 'cubic-bezier(.34,1.56,.64,1)' }
+    );
+  }
+}
+
+// Наведення/клік для шкали у спливашці (модалка делегує події на box,
+// бо refreshDetail() перестикує її вміст на кожному снапшоті)
+function wireTrail(root, { selected, onPick }) {
+  const track = root.querySelector('.rt-track');
+  if (!track) return;
+  track.addEventListener('mouseover', (e) => {
+    const seg = e.target.closest('.rt-seg');
+    if (seg) paintTrail(root, +seg.dataset.score);
   });
-  grid.addEventListener('mouseleave', () => {
-    grid.querySelectorAll('.pop-chip.warm').forEach(c => c.classList.remove('warm'));
-    if (caption) { caption.innerHTML = '&nbsp;'; caption.style.color = ''; }
-    if (onChange) onChange(null);
+  track.addEventListener('mouseleave', () => paintTrail(root, selected));
+  track.addEventListener('click', (e) => {
+    const seg = e.target.closest('.rt-seg');
+    if (!seg) return;
+    const s = +seg.dataset.score;
+    paintTrail(root, s);
+    popValue(root);
+    onPick(s);
   });
 }
 
@@ -496,8 +541,8 @@ function openRatePop(anchor, film) {
   } else {
     // Позиція біля якоря, з врахуванням меж екрана
     const r = anchor.getBoundingClientRect();
-    const pw = pop.offsetWidth || 268;
-    const ph = pop.offsetHeight || 232;
+    const pw = pop.offsetWidth || 300;
+    const ph = pop.offsetHeight || 250;
     const vw = window.innerWidth, vh = window.innerHeight;
     let left = r.left + r.width / 2 - pw / 2;
     left = Math.max(10, Math.min(left, vw - pw - 10));
@@ -526,7 +571,6 @@ function openRatePop(anchor, film) {
   };
 
   pop.addEventListener('click', async (e) => {
-    const chip = e.target.closest('.pop-chip');
     const rm = e.target.closest('[data-pop-remove]');
     if (rm) {
       try {
@@ -537,25 +581,25 @@ function openRatePop(anchor, film) {
         console.error(err);
         toast('Не вдалося прибрати оцінку', 'err');
       }
-      return;
     }
-    if (chip) pick(+chip.dataset.score);
   });
+
+  // Шкала: наведення — прев'ю, клік — миттєве збереження
+  wireTrail(pop, { selected: (film.ratings || {})[currentUserId], onPick: pick });
 
   // Клавіатура: цифри 1–9 та 0 (=10) ставлять оцінку одразу
   pop.addEventListener('keydown', (e) => {
     if (e.key >= '1' && e.key <= '9') { e.preventDefault(); pick(+e.key); return; }
     if (e.key === '0') { e.preventDefault(); pick(10); return; }
-    const chips = [...pop.querySelectorAll('.pop-chip')];
-    const idx = chips.indexOf(document.activeElement);
+    const segs = [...pop.querySelectorAll('.rt-seg')];
+    const idx = segs.indexOf(document.activeElement);
     if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
       e.preventDefault();
-      const next = e.key === 'ArrowRight' ? Math.min(idx + 1, chips.length - 1) : Math.max(idx - 1, 0);
-      chips[next].focus();
+      const next = e.key === 'ArrowRight' ? Math.min(idx + 1, segs.length - 1) : Math.max(idx - 1, 0);
+      segs[next].focus();
+      paintTrail(pop, +segs[next].dataset.score);
     }
   });
-
-  wireRatePreview(pop);
 
   document.addEventListener('mousedown', onPopOutside, true);
   document.addEventListener('keydown', onPopKey, true);
@@ -564,7 +608,8 @@ function openRatePop(anchor, film) {
 
   // Фокус всередину для роботи з клавіатури
   if (!isSheet) {
-    const active = pop.querySelector('.pop-chip.active') || pop.querySelector('.pop-chip');
+    const onSegs = [...pop.querySelectorAll('.rt-seg.on')];
+    const active = onSegs[onSegs.length - 1] || pop.querySelectorAll('.rt-seg')[6] || pop.querySelector('.rt-seg');
     if (active) active.focus({ preventScroll: true });
   }
 }
@@ -605,11 +650,6 @@ function detailHTML(f) {
   const directorBtn = f.director
     ? `<button type="button" class="person-link" data-person="${U.escapeHtml(f.director)}" title="Фільми цього режисера">${U.escapeHtml(f.director)}</button>`
     : '';
-
-  const chips = Array.from({ length: 10 }, (_, i) => {
-    const s = i + 1;
-    return `<button class="rate-chip ${my === s ? 'active' : ''}" data-score="${s}" style="--c:${U.ratingColor(s)}" aria-label="${s} — ${RATE_LABELS[s]}">${s}</button>`;
-  }).join('');
 
   const friendRows = USERS.map(u => {
     const v = (f.ratings || {})[u.id];
@@ -656,11 +696,8 @@ function detailHTML(f) {
     </div>
     <div class="detail-ratings">
       <div class="my-rating">
-        <div class="my-rating-top">
-          <span class="my-rating-label">Ваша оцінка</span>
-          <span class="rate-caption modal-caption" aria-live="polite">${my != null ? `${my} · ${RATE_LABELS[my]}` : '&nbsp;'}</span>
-        </div>
-        <div class="chips-row" role="group" aria-label="Ваша оцінка від 1 до 10">${chips}</div>
+        <div class="my-rating-top"><span class="my-rating-label">Ваша оцінка</span></div>
+        <div class="rt" role="group" aria-label="Ваша оцінка від 1 до 10">${rateTrailHTML(my)}</div>
         ${my != null ? `<button class="remove-rating" data-remove-rating>Прибрати мою оцінку</button>` : ''}
       </div>
       <ul class="friends-list">${friendRows}</ul>
@@ -673,28 +710,27 @@ function detailHTML(f) {
 }
 
 function wireDetail(box) {
-  // Живий підпис під чіпами у модалці: наведення показує значення словами
-  const chipsRow = box.querySelector('.chips-row');
-  const caption = box.querySelector('.modal-caption');
-  if (chipsRow && caption) {
-    chipsRow.addEventListener('mouseover', (e) => {
-      const chip = e.target.closest('.rate-chip');
-      if (!chip) return;
-      const s = +chip.dataset.score;
-      chipsRow.querySelectorAll('.rate-chip').forEach(c => c.classList.toggle('warm', +c.dataset.score <= s));
-      caption.textContent = `${s} · ${RATE_LABELS[s]}`;
-      caption.style.color = U.ratingColor(s);
-    });
-    chipsRow.addEventListener('mouseleave', () => {
-      chipsRow.querySelectorAll('.rate-chip.warm').forEach(c => c.classList.remove('warm'));
-      const film0 = filmsList.find(f => f.id === detailState.filmId);
-      const my0 = film0 ? (film0.ratings || {})[currentUserId] : null;
-      caption.textContent = my0 != null ? `${my0} · ${RATE_LABELS[my0]}` : '';
-      caption.style.color = '';
-    });
-  }
+  // Живе прев'ю шкали в модалці. Делегуємо на box (а не на .rt):
+  // refreshDetail() перестикує вміст на кожному снапшоті Firebase,
+  // тож слухач на box переживає будь-які ре-рендери.
+  box.addEventListener('mouseover', (e) => {
+    const seg = e.target.closest('.rt-seg');
+    if (seg) paintTrail(box, +seg.dataset.score);
+  });
+  box.addEventListener('mouseout', (e) => {
+    const seg = e.target.closest('.rt-seg');
+    if (!seg) return;
+    const to = e.relatedTarget;
+    if (to && box.contains(to) && to.closest('.rt-seg')) return; // перехід на сусідній сегмент
+    const film0 = (detailState && document.body.contains(detailState.overlay))
+      ? filmsList.find(f => f.id === detailState.filmId) : null;
+    paintTrail(box, film0 ? (film0.ratings || {})[currentUserId] : null);
+  });
 
   box.addEventListener('click', async (e) => {
+    // Модалку могли вже закрити (снапшот Firebase прибрав фільм),
+    // а подія кліку ще долетіла за 180 мс анімації зникнення
+    if (!detailState || !document.body.contains(detailState.overlay)) return;
     const film = filmsList.find(f => f.id === detailState.filmId);
     if (!film) return;
 
@@ -707,18 +743,21 @@ function wireDetail(box) {
       return;
     }
 
-    const chip = e.target.closest('.rate-chip');
-    if (chip) {
+    const seg = e.target.closest('.rt-seg');
+    if (seg) {
       if (!currentUserId) { toast('Спочатку оберіть профіль', 'err'); return; }
-      const score = +chip.dataset.score;
+      const score = +seg.dataset.score;
       const cur = (film.ratings || {})[currentUserId];
       const next = (cur === score) ? null : score; // повторний клік прибирає оцінку
+      paintTrail(box, next);
+      popValue(box);
       try {
         await store.setRating(film.id, currentUserId, next);
-        toast(next == null ? 'Оцінку прибрано' : `Ваша оцінка: ${next}`);
+        toast(next == null ? 'Оцінку прибрано' : `Ваша оцінка: ${next}${next >= 9 ? ' ✨' : ''}`);
       } catch (err) {
         console.error(err);
         toast('Не вдалося зберегти оцінку', 'err');
+        paintTrail(box, cur); // повертаємо попередній стан шкали
       }
       return;
     }
@@ -749,12 +788,17 @@ function wireDetail(box) {
       if (!ok) return;
       try {
         await store.deleteFilm(film.id);
-        toast('Фільм видалено');
-        detailState.close();
       } catch (err) {
         console.error(err);
         toast('Не вдалося видалити фільм', 'err');
+        return;
       }
+      // УВАГА: поки тривало видалення, снапшот Firebase міг уже
+      // оновити список і закрити модалку через refreshDetail()
+      // (detailState став null). Раніше тут був detailState.close(),
+      // який падав з TypeError -> показувалась і помилка, і успіх.
+      toast('Фільм видалено');
+      if (detailState) { detailState.close(); detailState = null; }
     }
   });
 }

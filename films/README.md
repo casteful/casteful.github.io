@@ -5,13 +5,14 @@ light/dark theme, built as a **zero-build static site** — perfect for GitHub P
 
 ## Features
 
-- **Effortless rating** — one tap on «Оцінити» opens a color-coded 1–10 scale right next to the button (a bottom sheet on phones). Hovering the scale previews the score with a live caption («Добре», «Шедевр»…), keyboard works too (digits 1–9, 0 = 10, ←/→, Esc). On phones the picker is a large bottom sheet that is easy to reach with a thumb.
+- **Effortless rating — the 1–10 “trail” scale** — one tap on «Оцінити» opens a color-coded scale right next to the button (a large bottom sheet on phones). Segments fill with a red→green ramp up to the chosen value, a big number + word caption («Добре», «Шедевр»…) reacts live to hovering, and a tap saves instantly. The same trail lives in the film window. Keyboard: digits 1–9, 0 = 10, ←/→, Esc.
 - **Cinematic card grid** — vertical poster cards with the average score on the poster, a full-width rate button and friends' scores as colored chips; 2-column layout on phones. A compact **table** view with a rating column per friend is one tap away; both views remember your choice.
-- **Beautiful film window** — poster blurred into a hero header with the title, director, genres and cast; rate chips with the same live captions; everyone's scores in one list.
+- **Beautiful film window** — poster blurred into a hero header with the title, director, genres and cast; the 1–10 trail for your own score; everyone's scores in one list.
 - **Smart adding** — start typing a film name (Ukrainian or English) and pick it from live suggestions; poster, year, Ukrainian title, director, cast, genres, runtime and plot are fetched automatically (IMDb + Wikipedia + Wikidata). Everything stays manually editable.
 - **Clickable people & genres** — tap any director, actor or genre (in the film window or in statistics) to see all matching films of the club.
 - **Statistics tab** — totals (films, ratings, average, shared cinema-hours, most active viewer), club records (best / worst / most controversial / most discussed / oldest / newest), top films, favourite genres, top actors and directors, rating histogram, decades, runtime stats and per-viewer profiles («strictest critic» vs «most generous viewer»).
-- **Light / dark theme** — toggle in the header, remembered per device.
+- **Modern UI (v3)** — warm-amber identity with gradient accents, glass topbar, springy micro-animations, refined dark theme, soft “projector” glow, thin scrollbars, reduced-motion support.
+- **Light / dark theme** — toggle in the header, remembered per device (browser UI color adapts too).
 - **Realtime** — all data lives in Firebase Realtime Database, so everyone sees updates instantly. Missing posters are re-fetched automatically in the background.
 
 ## Deploy to GitHub Pages (no build step needed)
