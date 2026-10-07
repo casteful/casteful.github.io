@@ -349,142 +349,240 @@ function cardHTML(f) {
   const my = (f.ratings || {})[currentUserId];
   const mainTitle = f.titleUk || f.title || 'Без назви';
   const orig = (f.titleUk && f.title && f.titleUk !== f.title) ? f.title : '';
-  const metaBits = [f.year, f.runtime ? `${f.runtime} хв` : ''].filter(Boolean).join(' · ');
-  const dir = f.director ? `реж. ${f.director}` : '';
-  const metaLine = [dir, metaBits].filter(Boolean).join(' · ');
-
   const ratedCount = Object.keys(f.ratings || {}).length;
-  const votes = ratedCount
-    ? `<span class="votes">${ratedCount} ${U.pluralRatings(ratedCount)}</span>`
-    : `<span class="votes none">без оцінок</span>`;
+  const metaBits = [
+    f.year,
+    f.runtime ? `${f.runtime} хв` : '',
+    ratedCount ? `${ratedCount} ${U.pluralRatings(ratedCount)}` : 'без оцінок'
+  ].filter(Boolean).join(' · ');
 
   const friendChips = USERS
     .filter(u => (f.ratings || {})[u.id] != null)
     .map(u => `<span class="fchip" title="${U.escapeHtml(u.name)}: ${f.ratings[u.id]}"><i style="background:${u.color}"></i>${f.ratings[u.id]}</span>`)
     .join('');
 
-  const castLine = (f.cast || []).length
-    ? `<div class="card-cast" title="${U.escapeHtml(f.cast.join(', '))}">У ролях: ${U.escapeHtml(U.trunc(f.cast.join(', '), 44))}</div>`
-    : '';
-
   return `
   <article class="card" data-id="${f.id}" tabindex="0" role="button" aria-label="${U.escapeHtml(mainTitle)}">
     <div class="poster">
-      ${f.poster ? `<img src="${U.escapeHtml(U.posterUrl(f.poster, 240))}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">` : ''}
+      ${f.poster ? `<img src="${U.escapeHtml(U.posterUrl(f.poster, 300))}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" onerror="this.remove()">` : ''}
       ${icons.film}
-      ${f.year ? `<span class="year-badge">${f.year}</span>` : ''}
+      ${a != null ? `<span class="avg-badge float" style="background:${U.ratingColor(a)}" title="Середня оцінка">${U.fmtAvg(a)}</span>` : ''}
+      <button class="icon-btn card-edit" data-edit aria-label="Редагувати фільм" title="Редагувати">${icons.edit}</button>
     </div>
     <div class="card-body">
       <h3 class="card-title">${U.escapeHtml(mainTitle)}</h3>
       ${orig ? `<div class="card-sub">${U.escapeHtml(orig)}</div>` : ''}
-      ${metaLine ? `<div class="card-meta">${U.escapeHtml(metaLine)}</div>` : ''}
-      ${castLine}
+      <div class="card-meta">${U.escapeHtml(metaBits)}</div>
       <div class="rating-row">
-        ${a != null
-          ? `<span class="avg-badge" style="background:${U.ratingColor(a)}">${U.fmtAvg(a)}</span>${votes}`
-          : votes}
-        <button class="rate-btn ${my != null ? 'rated' : ''}" data-rate aria-label="Оцінити фільм">
+        <button class="rate-btn ${my != null ? 'rated' : ''}" data-rate aria-label="Оцінити фільм" ${my != null ? `style="--my:${U.ratingColor(my)}"` : ''}>
           ${icons.star}<span>${my != null ? my : 'Оцінити'}</span>
         </button>
       </div>
       ${friendChips ? `<div class="fchips">${friendChips}</div>` : ''}
     </div>
-    <button class="icon-btn card-edit" data-edit aria-label="Редагувати фільм" title="Редагувати">${icons.edit}</button>
   </article>`;
 }
 
-// ---------- Швидке оцінювання (спливне вікно біля кнопки/комірки) ----------
+// ---------- Швидке оцінювання ----------
+// Робимо оцінювання максимально простим:
+//  • десктоп — спливне вікно біля кнопки з підсвіткою шкали при наведенні
+//    та живим підписом («Добре», «Шедевр»…);
+//  • мобільний (≤640px) — шіт, що виїжджає знизу: великий шрифт,
+//    великі кнопки, зручно великою пальцем;
+//  • клавіатура: цифри 1–9, 0 (десять), стрілки ←/→, Enter, Esc.
 
-let ratePop = null;
+let ratePop = null; // { el, backdrop, sheet }
+
+const RATE_LABELS = {
+  1: 'Жах', 2: 'Дуже погано', 3: 'Погано', 4: 'Слабко', 5: 'Так собі',
+  6: 'Нормально', 7: 'Добре', 8: 'Дуже добре', 9: 'Чудово', 10: 'Шедевр'
+};
 
 function closeRatePop() {
   if (!ratePop) return;
-  const p = ratePop;
+  const { el, backdrop } = ratePop;
   ratePop = null;
   document.removeEventListener('mousedown', onPopOutside, true);
   document.removeEventListener('keydown', onPopKey, true);
-  window.removeEventListener('scroll', closeRatePop, true);
-  window.removeEventListener('resize', closeRatePop);
-  p.classList.remove('show');
-  setTimeout(() => p.remove(), 140);
+  window.removeEventListener('scroll', onPopScroll, true);
+  window.removeEventListener('resize', onPopScroll);
+  if (backdrop) {
+    backdrop.classList.remove('show');
+    setTimeout(() => backdrop.remove(), 220);
+  }
+  el.classList.remove('show');
+  setTimeout(() => el.remove(), 220);
 }
 
 function onPopOutside(e) {
-  if (ratePop && !ratePop.contains(e.target)) closeRatePop();
+  if (ratePop && !ratePop.sheet && !ratePop.el.contains(e.target)) closeRatePop();
 }
 
 function onPopKey(e) {
   if (e.key === 'Escape') { e.stopPropagation(); closeRatePop(); }
 }
 
-function openRatePop(anchor, film) {
-  if (!currentUserId) { toast('Спочатку оберіть профіль', 'err'); return; }
-  closeRatePop();
+function onPopScroll() {
+  if (ratePop && !ratePop.sheet) closeRatePop();
+}
 
+function buildRatePop(film) {
   const my = (film.ratings || {})[currentUserId];
   const a = U.avg(film.ratings);
+  const votes = Object.keys(film.ratings || {}).length;
   const pop = document.createElement('div');
   pop.className = 'rate-pop';
   pop.setAttribute('role', 'dialog');
   pop.setAttribute('aria-label', `Оцінити «${fTitle(film)}»`);
   pop.innerHTML = `
+    <div class="pop-grab" aria-hidden="true"></div>
     <div class="rate-pop-title" title="${U.escapeHtml(fTitle(film))}">${U.escapeHtml(fTitle(film))}</div>
-    <div class="rate-pop-sub">Ваша оцінка ${my != null ? `· зараз ${my}` : ''}${a != null ? ` · сер. ${U.fmtAvg(a)}` : ''}</div>
+    <div class="rate-pop-sub">${
+      a != null
+        ? `Середня <b>${U.fmtAvg(a)}</b> · ${votes} ${U.pluralRatings(votes)}${my != null ? ` · ваша ${my}` : ''}`
+        : (my != null ? `Ваша оцінка ${my}` : 'Перший відгук — ваш!')
+    }</div>
     <div class="rate-pop-grid" role="group" aria-label="Оцінка від 1 до 10">
       ${Array.from({ length: 10 }, (_, i) => {
         const s = i + 1;
-        return `<button type="button" class="pop-chip ${my === s ? 'active' : ''}" data-score="${s}" style="--c:${U.ratingColor(s)}" aria-label="Оцінка ${s}">${s}</button>`;
+        return `<button type="button" class="pop-chip ${my === s ? 'active' : ''}" data-score="${s}" style="--c:${U.ratingColor(s)}" aria-label="${s} — ${RATE_LABELS[s]}">${s}</button>`;
       }).join('')}
     </div>
+    <div class="rate-caption" aria-live="polite">&nbsp;</div>
     ${my != null ? '<button type="button" class="remove-rating" data-pop-remove>Прибрати мою оцінку</button>' : ''}`;
+  return pop;
+}
+
+// Підсвітка шкали при наведенні: усі числа до курсора «теплішають»,
+// підпис під сіткою показує значення оцінки словами
+function wireRatePreview(pop, onChange) {
+  const grid = pop.querySelector('.rate-pop-grid');
+  const caption = pop.querySelector('.rate-caption');
+  grid.addEventListener('mouseover', (e) => {
+    const chip = e.target.closest('.pop-chip');
+    if (!chip) return;
+    const s = +chip.dataset.score;
+    grid.querySelectorAll('.pop-chip').forEach(c => c.classList.toggle('warm', +c.dataset.score <= s));
+    if (caption) {
+      caption.textContent = `${s} · ${RATE_LABELS[s]}`;
+      caption.style.color = U.ratingColor(s);
+    }
+    if (onChange) onChange(s);
+  });
+  grid.addEventListener('mouseleave', () => {
+    grid.querySelectorAll('.pop-chip.warm').forEach(c => c.classList.remove('warm'));
+    if (caption) { caption.innerHTML = '&nbsp;'; caption.style.color = ''; }
+    if (onChange) onChange(null);
+  });
+}
+
+function openRatePop(anchor, film) {
+  if (!currentUserId) { toast('Спочатку оберіть профіль', 'err'); return; }
+  closeRatePop();
+
+  const pop = buildRatePop(film);
+  const isSheet = window.matchMedia('(max-width: 640px)').matches;
+  let backdrop = null;
 
   document.body.appendChild(pop);
-  ratePop = pop;
 
-  // Позиція біля якоря, з врахуванням меж екрана
-  const r = anchor.getBoundingClientRect();
-  const pw = pop.offsetWidth || 236;
-  const ph = pop.offsetHeight || 150;
-  const vw = window.innerWidth, vh = window.innerHeight;
-  let left = r.left + r.width / 2 - pw / 2;
-  left = Math.max(10, Math.min(left, vw - pw - 10));
-  let top = r.bottom + 8;
-  if (top + ph > vh - 10) top = r.top - ph - 8; // не влазить знизу — відкриваємо вгору
-  top = Math.max(10, top);
-  pop.style.left = `${Math.round(left)}px`;
-  pop.style.top = `${Math.round(top)}px`;
+  if (isSheet) {
+    pop.classList.add('sheet');
+    backdrop = document.createElement('div');
+    backdrop.className = 'sheet-backdrop';
+    document.body.appendChild(backdrop);
+    requestAnimationFrame(() => backdrop.classList.add('show'));
+    backdrop.addEventListener('mousedown', closeRatePop);
+  } else {
+    // Позиція біля якоря, з врахуванням меж екрана
+    const r = anchor.getBoundingClientRect();
+    const pw = pop.offsetWidth || 268;
+    const ph = pop.offsetHeight || 232;
+    const vw = window.innerWidth, vh = window.innerHeight;
+    let left = r.left + r.width / 2 - pw / 2;
+    left = Math.max(10, Math.min(left, vw - pw - 10));
+    let top = r.bottom + 8;
+    if (top + ph > vh - 10) top = r.top - ph - 8; // не влазить знизу — відкриваємо вгору
+    top = Math.max(10, top);
+    pop.style.left = `${Math.round(left)}px`;
+    pop.style.top = `${Math.round(top)}px`;
+  }
+
+  ratePop = { el: pop, backdrop, sheet: isSheet };
   requestAnimationFrame(() => pop.classList.add('show'));
 
-  pop.addEventListener('click', async (e) => {
-    const chip = e.target.closest('.pop-chip');
-    const rm = e.target.closest('[data-pop-remove]');
-    if (!chip && !rm) return;
-    const score = chip ? +chip.dataset.score : null;
+  // Вибір оцінки: клік по числу. Повторний клік по тому ж числу прибирає.
+  const pick = async (score) => {
     const cur = (film.ratings || {})[currentUserId];
-    const next = chip ? (cur === score ? null : score) : null;
+    const next = (cur === score) ? null : score;
     try {
       await store.setRating(film.id, currentUserId, next);
-      toast(next == null ? 'Оцінку прибрано' : `Ваша оцінка: ${next}`);
+      toast(next == null ? 'Оцінку прибрано' : `Ваша оцінка: ${next}${next >= 9 ? ' ✨' : ''}`);
       closeRatePop();
     } catch (err) {
       console.error(err);
       toast('Не вдалося зберегти оцінку', 'err');
     }
+  };
+
+  pop.addEventListener('click', async (e) => {
+    const chip = e.target.closest('.pop-chip');
+    const rm = e.target.closest('[data-pop-remove]');
+    if (rm) {
+      try {
+        await store.setRating(film.id, currentUserId, null);
+        toast('Оцінку прибрано');
+        closeRatePop();
+      } catch (err) {
+        console.error(err);
+        toast('Не вдалося прибрати оцінку', 'err');
+      }
+      return;
+    }
+    if (chip) pick(+chip.dataset.score);
   });
+
+  // Клавіатура: цифри 1–9 та 0 (=10) ставлять оцінку одразу
+  pop.addEventListener('keydown', (e) => {
+    if (e.key >= '1' && e.key <= '9') { e.preventDefault(); pick(+e.key); return; }
+    if (e.key === '0') { e.preventDefault(); pick(10); return; }
+    const chips = [...pop.querySelectorAll('.pop-chip')];
+    const idx = chips.indexOf(document.activeElement);
+    if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
+      e.preventDefault();
+      const next = e.key === 'ArrowRight' ? Math.min(idx + 1, chips.length - 1) : Math.max(idx - 1, 0);
+      chips[next].focus();
+    }
+  });
+
+  wireRatePreview(pop);
 
   document.addEventListener('mousedown', onPopOutside, true);
   document.addEventListener('keydown', onPopKey, true);
-  window.addEventListener('scroll', closeRatePop, true);
-  window.addEventListener('resize', closeRatePop);
+  window.addEventListener('scroll', onPopScroll, true);
+  window.addEventListener('resize', onPopScroll);
+
+  // Фокус всередину для роботи з клавіатури
+  if (!isSheet) {
+    const active = pop.querySelector('.pop-chip.active') || pop.querySelector('.pop-chip');
+    if (active) active.focus({ preventScroll: true });
+  }
 }
 
 // ---------- Модальне вікно фільму ----------
 
 function openDetail(filmId) {
+  // Вікно цього ж фільму вже відкрите — не дублюємо (подвійний клік,
+  // швидкі кліки з рекордів статистики тощо)
+  if (detailState && document.body.contains(detailState.overlay)) {
+    if (detailState.filmId === filmId) return;
+    detailState.close();
+    detailState = null;
+  }
   const film = filmsList.find(f => f.id === filmId);
   if (!film) return;
   const { overlay, box, close } = openModal(detailHTML(film), {
-    width: 780,
+    width: 760,
     label: fTitle(film)
   });
   detailState = { overlay, box, filmId, close };
@@ -510,7 +608,7 @@ function detailHTML(f) {
 
   const chips = Array.from({ length: 10 }, (_, i) => {
     const s = i + 1;
-    return `<button class="rate-chip ${my === s ? 'active' : ''}" data-score="${s}" style="--c:${U.ratingColor(s)}" aria-label="Оцінка ${s}">${s}</button>`;
+    return `<button class="rate-chip ${my === s ? 'active' : ''}" data-score="${s}" style="--c:${U.ratingColor(s)}" aria-label="${s} — ${RATE_LABELS[s]}">${s}</button>`;
   }).join('');
 
   const friendRows = USERS.map(u => {
@@ -530,18 +628,24 @@ function detailHTML(f) {
     : '';
 
   return `
-  <div class="modal-head">
-    <h2 class="detail-heading">${U.escapeHtml(fTitle(f))}</h2>
-    <button class="icon-btn" data-close aria-label="Закрити">${icons.close}</button>
-  </div>
-  <div class="detail-grid">
-    <div class="detail-poster">
-      ${f.poster ? `<img src="${U.escapeHtml(U.posterUrl(f.poster, 400))}" alt="Постер: ${U.escapeHtml(fTitle(f))}" referrerpolicy="no-referrer" onerror="this.remove()">` : ''}
-      ${icons.film}
+  <div class="detail-hero">
+    ${f.poster ? `<img class="hero-bg" src="${U.escapeHtml(U.posterUrl(f.poster, 400))}" alt="" referrerpolicy="no-referrer" onerror="this.remove()">` : ''}
+    <div class="hero-shade"></div>
+    <button class="icon-btn hero-close" data-close aria-label="Закрити">${icons.close}</button>
+    <div class="hero-body">
+      ${f.poster
+        ? `<img class="hero-poster" src="${U.escapeHtml(U.posterUrl(f.poster, 300))}" alt="Постер: ${U.escapeHtml(fTitle(f))}" referrerpolicy="no-referrer" onerror="this.classList.add('broken'); this.removeAttribute('src')">`
+        : `<span class="hero-poster placeholder">${icons.film}</span>`}
+      <div class="hero-text">
+        <h2 class="detail-heading">${U.escapeHtml(fTitle(f))}</h2>
+        ${orig ? `<div class="detail-orig">${U.escapeHtml(orig)}</div>` : ''}
+        <div class="detail-meta">${[f.director ? `реж. ${directorBtn}` : '', metaBits].filter(Boolean).join(' · ')}</div>
+        ${a != null ? `<span class="avg-big" style="background:${U.ratingColor(a)}" title="Середня оцінка">${U.fmtAvg(a)}</span>` : ''}
+      </div>
     </div>
+  </div>
+  <div class="detail-scroll">
     <div class="detail-info">
-      ${orig ? `<div class="detail-orig">${U.escapeHtml(orig)}</div>` : ''}
-      <div class="detail-meta">${[f.director ? `реж. ${directorBtn}` : '', metaBits].filter(Boolean).join(' · ')}</div>
       ${genres ? `<div class="genre-row">${genres}</div>` : ''}
       ${cast ? `<div class="cast-row"><span class="cast-label">У ролях:</span>${cast}</div>` : ''}
       ${f.plot ? `<p class="detail-plot">${U.escapeHtml(f.plot)}</p>` : ''}
@@ -550,26 +654,46 @@ function detailHTML(f) {
         ${addedLine ? `<span class="added-line">${addedLine}</span>` : ''}
       </div>
     </div>
-  </div>
-  <div class="detail-ratings">
-    <div class="dr-head">
-      <h3>Оцінки</h3>
-      ${a != null ? `<span class="avg-big" style="background:${U.ratingColor(a)}">${U.fmtAvg(a)}</span>` : ''}
+    <div class="detail-ratings">
+      <div class="my-rating">
+        <div class="my-rating-top">
+          <span class="my-rating-label">Ваша оцінка</span>
+          <span class="rate-caption modal-caption" aria-live="polite">${my != null ? `${my} · ${RATE_LABELS[my]}` : '&nbsp;'}</span>
+        </div>
+        <div class="chips-row" role="group" aria-label="Ваша оцінка від 1 до 10">${chips}</div>
+        ${my != null ? `<button class="remove-rating" data-remove-rating>Прибрати мою оцінку</button>` : ''}
+      </div>
+      <ul class="friends-list">${friendRows}</ul>
     </div>
-    <div class="my-rating">
-      <span class="my-rating-label">Ваша оцінка:</span>
-      <div class="chips-row" role="group" aria-label="Ваша оцінка від 1 до 10">${chips}</div>
-      ${my != null ? `<button class="remove-rating" data-remove-rating>Прибрати мою оцінку</button>` : ''}
+    <div class="modal-footer between">
+      <button class="btn danger-ghost" data-act="delete">${icons.trash}<span>Видалити</span></button>
+      <button class="btn" data-act="edit">${icons.edit}<span>Редагувати</span></button>
     </div>
-    <ul class="friends-list">${friendRows}</ul>
-  </div>
-  <div class="modal-footer between">
-    <button class="btn danger-ghost" data-act="delete">${icons.trash}<span>Видалити</span></button>
-    <button class="btn" data-act="edit">${icons.edit}<span>Редагувати</span></button>
   </div>`;
 }
 
 function wireDetail(box) {
+  // Живий підпис під чіпами у модалці: наведення показує значення словами
+  const chipsRow = box.querySelector('.chips-row');
+  const caption = box.querySelector('.modal-caption');
+  if (chipsRow && caption) {
+    chipsRow.addEventListener('mouseover', (e) => {
+      const chip = e.target.closest('.rate-chip');
+      if (!chip) return;
+      const s = +chip.dataset.score;
+      chipsRow.querySelectorAll('.rate-chip').forEach(c => c.classList.toggle('warm', +c.dataset.score <= s));
+      caption.textContent = `${s} · ${RATE_LABELS[s]}`;
+      caption.style.color = U.ratingColor(s);
+    });
+    chipsRow.addEventListener('mouseleave', () => {
+      chipsRow.querySelectorAll('.rate-chip.warm').forEach(c => c.classList.remove('warm'));
+      const film0 = filmsList.find(f => f.id === detailState.filmId);
+      const my0 = film0 ? (film0.ratings || {})[currentUserId] : null;
+      caption.textContent = my0 != null ? `${my0} · ${RATE_LABELS[my0]}` : '';
+      caption.style.color = '';
+    });
+  }
+
   box.addEventListener('click', async (e) => {
     const film = filmsList.find(f => f.id === detailState.filmId);
     if (!film) return;

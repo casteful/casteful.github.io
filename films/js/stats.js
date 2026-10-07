@@ -21,7 +21,12 @@ export function mount(container, filmsArr, handlers = {}) {
     return;
   }
   const s = compute(filmsArr);
+
+  // Оновлення даних не має «стрибати» — зберігаємо позицію прокрутки
+  const y = window.scrollY;
   container.innerHTML = template(s, handlers);
+  window.scrollTo({ top: y, behavior: 'instant' });
+
   wire(container, handlers);
 }
 
@@ -138,13 +143,20 @@ function template(s, handlers) {
   const maxDist = Math.max(...s.dist, 1);
   const maxDecade = Math.max(...s.decadeRows.map(r => r.c), 1);
 
+  const tile = (icon, value, label, extraCls = '') => `
+    <div class="tile">
+      <span class="tile-icon">${icon}</span>
+      <span class="tile-value ${extraCls}">${value}</span>
+      <span class="tile-label">${label}</span>
+    </div>`;
+
   const tiles = `
     <div class="tiles">
-      <div class="tile"><span class="tile-value">${s.films.length}</span><span class="tile-label">${U.pluralFilms(s.films.length)}</span></div>
-      <div class="tile"><span class="tile-value">${s.totalRatings}</span><span class="tile-label">${s.totalRatings} ${U.pluralRatingsGen(s.totalRatings)} поставлено</span></div>
-      <div class="tile"><span class="tile-value">${U.fmtAvg(s.overallAvg)}</span><span class="tile-label">середня оцінка</span></div>
-      <div class="tile"><span class="tile-value">${s.totalMin ? Math.round(s.totalMin / 60) : '—'}<small class="tile-unit">год</small></span><span class="tile-label">спільного кіночасу</span></div>
-      <div class="tile"><span class="tile-value tile-user">${s.activeUser ? `<i class="ava-dot" style="background:${s.activeUser.color}"></i>${U.escapeHtml(s.activeUser.name)}` : '—'}</span><span class="tile-label">найактивніший глядач</span></div>
+      ${tile(icons.clapper, s.films.length, U.pluralFilms(s.films.length))}
+      ${tile(icons.star, s.totalRatings, `${s.totalRatings} ${U.pluralRatingsGen(s.totalRatings)} поставлено`)}
+      ${tile(icons.chart, U.fmtAvg(s.overallAvg), 'середня оцінка')}
+      ${tile(icons.clock, `${s.totalMin ? Math.round(s.totalMin / 60) : '—'}<small class="tile-unit">год</small>`, 'спільного кіночасу')}
+      ${tile(icons.users, s.activeUser ? `<i class="ava-dot" style="background:${s.activeUser.color}"></i>${U.escapeHtml(s.activeUser.name)}` : '—', 'найактивніший глядач', 'tile-user')}
     </div>`;
 
   // Клікабельний рядок барами
@@ -271,12 +283,12 @@ function template(s, handlers) {
     <section class="panel">
       <h3 class="panel-title">Рекорди нашого клубу</h3>
       <div class="rec-list">
-        ${rec('Найкращий', s.best, icons.star)}
-        ${rec('Найгірший', s.worst)}
-        ${rec('Найсуперечливіший', s.controversy)}
-        ${rec('Найбільше обговорений', s.mostRated)}
-        ${rec('Найдавніший', s.oldest)}
-        ${rec('Найновіший', s.newest)}
+        ${rec('Найкращий', s.best, icons.trophy)}
+        ${rec('Найгірший', s.worst, icons.thumbDown)}
+        ${rec('Найсуперечливіший', s.controversy, icons.flame)}
+        ${rec('Найбільше обговорений', s.mostRated, icons.users)}
+        ${rec('Найдавніший', s.oldest, icons.clock)}
+        ${rec('Найновіший', s.newest, icons.spark)}
       </div>
     </section>` : '';
 
@@ -305,8 +317,14 @@ function template(s, handlers) {
   return `${tiles}${records}${topFilms}${genresPanel}${castPanel}${directorsPanel}${distPanel}${decadesPanel}${runtimePanel}${viewers}`;
 }
 
-// Клікабельні рядки: фільтр за людиною/жанром або відкриття фільму
+// Клікабельні рядки: фільтр за людиною/жанром або відкриття фільму.
+// ВАЖЛИВО: mount() викликається на кожне оновлення даних з бази,
+// тому слухач вішаємо РІВНО ОДИН раз — інакше кліки накопичувались
+// і вікно фільму відкривалось кілька разів підряд (баг «треба 3 рази
+// закрити»). Контейнер завжди один і той самий (#view).
 function wire(container, handlers) {
+  if (container._statsWired) return;
+  container._statsWired = true;
   container.addEventListener('click', (e) => {
     const openBtn = e.target.closest('[data-open-film]');
     if (openBtn && typeof handlers.onOpenFilm === 'function') {

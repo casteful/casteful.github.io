@@ -5,14 +5,14 @@ light/dark theme, built as a **zero-build static site** — perfect for GitHub P
 
 ## Features
 
-- **Easy rating** — open any film and tap one of ten color-coded chips (1–10, red → green). Tap the same chip again to remove your rating.
-- **Two list views** — poster cards (grid) or a compact **table** with year, director, genres, runtime, average and a separate rating column per friend; switch with the icons next to the sort selector, the choice is remembered. Click any column header (Фільм / Рік / Сер.) to sort.
-- **Smart adding** — start typing a film name (Ukrainian or English) and pick it from live suggestions; poster, year, Ukrainian title, director, genres, runtime and plot are fetched automatically. Everything stays manually editable.
-- **Editing & deleting** — any member can edit or remove any film (pencil icon on the card or inside the film window).
-- **Profiles** — on first visit everyone picks their name (surguy, q1oob, dimyeah, burlaka21, oddfriend); it's remembered on that device.
-- **Statistics tab** — total films/ratings, average score, top-rated films, rating distribution histogram, films by decade, top directors, and a per-viewer profile (average, favorite film, "strictest critic" vs "most generous viewer").
+- **Effortless rating** — one tap on «Оцінити» opens a color-coded 1–10 scale right next to the button (a bottom sheet on phones). Hovering the scale previews the score with a live caption («Добре», «Шедевр»…), keyboard works too (digits 1–9, 0 = 10, ←/→, Esc). On phones the picker is a large bottom sheet that is easy to reach with a thumb.
+- **Cinematic card grid** — vertical poster cards with the average score on the poster, a full-width rate button and friends' scores as colored chips; 2-column layout on phones. A compact **table** view with a rating column per friend is one tap away; both views remember your choice.
+- **Beautiful film window** — poster blurred into a hero header with the title, director, genres and cast; rate chips with the same live captions; everyone's scores in one list.
+- **Smart adding** — start typing a film name (Ukrainian or English) and pick it from live suggestions; poster, year, Ukrainian title, director, cast, genres, runtime and plot are fetched automatically (IMDb + Wikipedia + Wikidata). Everything stays manually editable.
+- **Clickable people & genres** — tap any director, actor or genre (in the film window or in statistics) to see all matching films of the club.
+- **Statistics tab** — totals (films, ratings, average, shared cinema-hours, most active viewer), club records (best / worst / most controversial / most discussed / oldest / newest), top films, favourite genres, top actors and directors, rating histogram, decades, runtime stats and per-viewer profiles («strictest critic» vs «most generous viewer»).
 - **Light / dark theme** — toggle in the header, remembered per device.
-- **Realtime** — all data lives in Firebase Realtime Database, so everyone sees updates instantly.
+- **Realtime** — all data lives in Firebase Realtime Database, so everyone sees updates instantly. Missing posters are re-fetched automatically in the background.
 
 ## Deploy to GitHub Pages (no build step needed)
 

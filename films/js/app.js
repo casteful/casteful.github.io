@@ -20,6 +20,7 @@ const fab = document.getElementById('fabAdd');
 
 let filmsArr = null;      // null = ще завантажується з бази
 let activeTab = 'films';
+let mountedTab = null;    // яку вкладку зараз змонтовано у #view
 let currentUser = null;
 let errNotified = false;
 
@@ -192,7 +193,12 @@ function renderTab() {
   });
 
   if (activeTab === 'films') {
-    filmsView.mount(view);
+    // Каркас монтуємо лише при переключенні вкладки — оновлення даних
+    // із бази просто перемальовують сітку, не смикаючи інтерфейс
+    if (mountedTab !== 'films') {
+      filmsView.mount(view);
+      mountedTab = 'films';
+    }
     if (currentUser) filmsView.setUser(currentUser.id);
     filmsView.setFilms(filmsArr);
   } else {
@@ -203,5 +209,6 @@ function renderTab() {
       onFilter: (q) => { switchTab('films'); filmsView.setFilter(q); },
       onOpenFilm: (id) => filmsView.openFilmById(id)
     });
+    mountedTab = 'stats';
   }
 }
