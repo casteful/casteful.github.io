@@ -160,14 +160,56 @@ export function openFormModal({ film = null, currentUserId, allFilms = [] }) {
       }
     });
 
+    // Вибір підказки — три шари подій (порядок важливий для iPhone/iPad):
+    //  1) touchend + preventDefault: на iOS саме це надійно працює.
+    //     preventDefault НЕ дає зняти фокус із поля (інакше blur ховає
+    //     список швидше, ніж встигає спрацювати тап) і не породжує
+    //     примарні mouse-події, які ламають розкладку після iOS-зуму.
+    //  2) mousedown + preventDefault: десктоп (фокус лишається у полі).
+    //  3) click: запасний варіант. pickOnce() захищає від подвійного вибору.
+    sugList.addEventListener('touchend', (e) => {
+      const item = e.target.closest('.s-item');
+      if (!item) return;
+      e.preventDefault();
+      pickOnce(item);
+    }, { passive: false });
+
     sugList.addEventListener('mousedown', (e) => {
       const item = e.target.closest('.s-item');
       if (!item) return;
       e.preventDefault();
-      pickSuggestion(sugItems[+item.dataset.i]);
+      pickOnce(item);
     });
 
-    searchInput.addEventListener('blur', () => setTimeout(hideSug, 180));
+    sugList.addEventListener('click', (e) => {
+      const item = e.target.closest('.s-item');
+      if (!item) return;
+      pickOnce(item);
+    });
+
+    // Ховаємо список при втраті фокусу, АЛЕ не тоді, коли фокус переходить
+    // на саму підказку (на iPhone список зникав раніше, ніж встигали тапнути).
+    searchInput.addEventListener('blur', () => {
+      setTimeout(() => {
+        const ae = document.activeElement;
+        if (ae && sugList.contains(ae)) return;
+        hideSug();
+      }, 150);
+    });
+  }
+
+  // Один вибір за один жест (touchend іноді доопрацьовується click'ом)
+  let lastPickAt = 0;
+  function pickOnce(item) {
+    const now = Date.now();
+    if (now - lastPickAt < 350) return;
+    lastPickAt = now;
+    pickSuggestion(sugItems[+item.dataset.i]);
+    // На дотик-пристроях навмисно знімаємо фокус: клавіатура ховається,
+    // і користувач бачить заповнену форму (фокус ми утримали вище).
+    if (searchInput && window.matchMedia('(pointer: coarse)').matches) {
+      try { searchInput.blur(); } catch (e) { /* не критично */ }
+    }
   }
 
   function hideSug() {
@@ -386,10 +428,11 @@ function formHTML(isEdit, film) {
       <span class="field-label">Пошук фільму</span>
       <div class="suggest-wrap">
         ${icons.search}
-        <input id="fSearch" type="text" autocomplete="off" spellcheck="false"
+        <input id="fSearch" type="text" autocomplete="off" autocapitalize="off" autocorrect="off"
+               spellcheck="false" enterkeyhint="search"
                placeholder="Почніть вводити назву — українською або англійською…">
+        <div class="suggest-list" id="suggestList" hidden></div>
       </div>
-      <div class="suggest-list" id="suggestList" hidden></div>
       <span class="hint">Оберіть фільм зі списку — постер, рік і деталі підтягнуться автоматично. Шукаємо одночасно на IMDb і у Вікіпедії, тож результати зʼявляються швидко. Або просто заповніть поля нижче вручну.</span>
     </label>`}
 

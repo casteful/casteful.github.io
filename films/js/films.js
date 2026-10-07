@@ -6,7 +6,7 @@
 import { USERS } from './config.js';
 import * as store from './store.js';
 import * as U from './utils.js';
-import { toast, openModal, confirmDialog, icons } from './ui.js';
+import { toast, openModal, confirmDialog, icons, lockScroll, unlockScroll } from './ui.js';
 import { openFormModal } from './film-form.js';
 
 let container = null;
@@ -61,7 +61,9 @@ export function setFilter(q) {
   }
   const inp = document.getElementById('filmSearch');
   inp.value = query;
-  inp.focus();
+  // На дотик-пристроях не фокусуємо поле програмно — інакше iOS/Android
+  // розкривають клавіатуру поверх щойно відфільтрованого списку
+  if (!window.matchMedia('(pointer: coarse)').matches) inp.focus();
   refreshGrid();
 }
 
@@ -400,12 +402,13 @@ const RATE_LABELS = {
 
 function closeRatePop() {
   if (!ratePop) return;
-  const { el, backdrop } = ratePop;
+  const { el, backdrop, sheet } = ratePop;
   ratePop = null;
   document.removeEventListener('mousedown', onPopOutside, true);
   document.removeEventListener('keydown', onPopKey, true);
   window.removeEventListener('scroll', onPopScroll, true);
   window.removeEventListener('resize', onPopScroll);
+  if (sheet) unlockScroll(); // фоновий скрол був заблокований на час шіта
   if (backdrop) {
     backdrop.classList.remove('show');
     setTimeout(() => backdrop.remove(), 220);
@@ -537,7 +540,9 @@ function openRatePop(anchor, film) {
     backdrop.className = 'sheet-backdrop';
     document.body.appendChild(backdrop);
     requestAnimationFrame(() => backdrop.classList.add('show'));
+    lockScroll(); // iOS: сторінка не має скролитися крізь шіт
     backdrop.addEventListener('mousedown', closeRatePop);
+    backdrop.addEventListener('click', closeRatePop);
   } else {
     // Позиція біля якоря, з врахуванням меж екрана
     const r = anchor.getBoundingClientRect();

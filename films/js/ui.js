@@ -50,6 +50,18 @@ export function toast(message, type = 'ok') {
   }, 3200);
 }
 
+// --- Блокування скролу сторінки під модалками/шітами ---
+// iOS: без нього сторінка за фіксованою модалкою скролиться крізь неї.
+let lockCount = 0;
+export function lockScroll() {
+  lockCount++;
+  document.body.classList.add('no-scroll');
+}
+export function unlockScroll() {
+  lockCount = Math.max(0, lockCount - 1);
+  if (!lockCount) document.body.classList.remove('no-scroll');
+}
+
 // --- Модальні вікна ---
 // Повертає { overlay, box, close }. Клік по фону закриває, Esc — теж (якщо не в полі вводу).
 export function openModal(innerHTML, { width = 680, label = 'Діалогове вікно' } = {}) {
@@ -59,6 +71,7 @@ export function openModal(innerHTML, { width = 680, label = 'Діалогове 
   overlay.innerHTML = `<div class="modal" role="dialog" aria-modal="true" aria-label="${escapeHtml(label)}" style="max-width:${width}px">${innerHTML}</div>`;
   root.appendChild(overlay);
   requestAnimationFrame(() => overlay.classList.add('show'));
+  lockScroll();
 
   const box = overlay.querySelector('.modal');
   let closed = false;
@@ -67,14 +80,16 @@ export function openModal(innerHTML, { width = 680, label = 'Діалогове 
     closed = true;
     overlay.classList.remove('show');
     document.removeEventListener('keydown', onKey);
+    unlockScroll();
     setTimeout(() => overlay.remove(), 180);
   }
   function onKey(e) {
     if (e.key === 'Escape' && !e.target.closest('input, textarea, select')) close();
   }
+  // Клік по фону: mousedown (швидше) + click (надійніше на тач-пристроях)
   overlay.addEventListener('mousedown', (e) => { if (e.target === overlay) close(); });
   overlay.addEventListener('click', (e) => {
-    if (e.target.closest('[data-close]')) close();
+    if (e.target === overlay || e.target.closest('[data-close]')) close();
   });
   document.addEventListener('keydown', onKey);
 

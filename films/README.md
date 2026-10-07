@@ -12,6 +12,7 @@ light/dark theme, built as a **zero-build static site** — perfect for GitHub P
 - **Clickable people & genres** — tap any director, actor or genre (in the film window or in statistics) to see all matching films of the club.
 - **Statistics tab** — totals (films, ratings, average, shared cinema-hours, most active viewer), club records (best / worst / most controversial / most discussed / oldest / newest), top films, favourite genres, top actors and directors, rating histogram, decades, runtime stats and per-viewer profiles («strictest critic» vs «most generous viewer»).
 - **Modern UI (v3)** — warm-amber identity with gradient accents, glass topbar, springy micro-animations, refined dark theme, soft “projector” glow, thin scrollbars, reduced-motion support.
+- **iPhone / mobile friendly (v3.1)** — the suggestion dropdown is anchored directly under the search field (fixed a positioning bug that pushed it off-screen), touch selection works via `touchend`, inputs are 16 px on touch devices so iOS never auto-zooms the page, the rating sheet sits above its backdrop (tappable scores), body scroll is locked behind modals/sheets, and safe-area insets keep the UI clear of the notch and home indicator.
 - **Light / dark theme** — toggle in the header, remembered per device (browser UI color adapts too).
 - **Realtime** — all data lives in Firebase Realtime Database, so everyone sees updates instantly. Missing posters are re-fetched automatically in the background.
 
@@ -117,3 +118,18 @@ films/
 - Details enrichment: Wikidata (queried by IMDb ID `P345` or Wikidata `QID`)
   with a Ukrainian Wikipedia fallback for plot text — all optional and fail-safe.
 - Poster images are hot-linked from the IMDb/Amazon image CDN or Wikimedia.
+
+### Mobile / iOS specifics
+
+- The autocomplete list is a child of the positioning wrapper (`.suggest-wrap`)
+  and is placed at `top: calc(100% + 6px)` — always right under the search field.
+- Suggestions are picked on `touchend` (with `preventDefault`, so the keyboard
+  and focus state stay stable), with `mousedown`/`click` fallbacks for desktop;
+  a 350 ms guard prevents double-picks.
+- `@media (pointer: coarse)` raises all inputs to 16 px — iOS Safari otherwise
+  zooms into any smaller field and breaks the layout.
+- On phones the modal overlay drops `backdrop-filter` (a WebKit bug prevents
+  dynamically shown children from painting inside a fixed, scrollable,
+  backdrop-filtered element).
+- The mobile rating sheet uses `z-index` below its panel, so taps reach the
+  score segments instead of the backdrop.

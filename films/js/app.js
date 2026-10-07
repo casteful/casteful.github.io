@@ -151,10 +151,12 @@ function initUser() {
     toast(`Вітаємо, ${currentUser.name}!`);
   });
 
-  userOverlay.addEventListener('mousedown', (e) => {
-    // Перший вибір обов'язковий: закрити кліком по фону можна, лише якщо профіль уже обрано
+  // Клік по фону: mousedown (швидше) + click (надійніше на тач-пристроях)
+  const overlayOutside = (e) => {
     if (e.target === userOverlay && currentUser) hideUserPicker();
-  });
+  };
+  userOverlay.addEventListener('mousedown', overlayOutside);
+  userOverlay.addEventListener('click', overlayOutside);
 
   userBadge.addEventListener('click', showUserPicker);
   renderUserBadge();
