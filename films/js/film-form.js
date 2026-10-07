@@ -10,7 +10,7 @@ import * as store from './store.js';
 import * as U from './utils.js';
 import { toast, openModal, confirmDialog, icons } from './ui.js';
 import { suggestFilms, typeLabel, imdbTemporarilyDown } from './imdb.js';
-import { searchWikiFilms, enrichByQid } from './wiki.js';
+import { searchWikiFilms, enrichByQid, fetchPoster } from './wiki.js';
 import { enrichFilm } from './enrich.js';
 
 // ============================================================
@@ -84,6 +84,7 @@ export function openFormModal({ film = null, currentUserId, allFilms = [] }) {
     set('fTitle', film.title || '');
     set('fYear', film.year || '');
     set('fDirector', film.director || '');
+    set('fCast', (film.cast || []).join(', '));
     set('fGenres', (film.genres || []).join(', '));
     set('fRuntime', film.runtime || '');
     set('fPlot', film.plot || '');
@@ -194,6 +195,7 @@ export function openFormModal({ film = null, currentUserId, allFilms = [] }) {
 
     // Вікі-результат часто несе готові дані — заповнюємо решту полів
     if (s.director) fillIfEmpty('fDirector', s.director);
+    if (s.cast && s.cast.length) fillIfEmpty('fCast', s.cast.join(', '));
     if (s.genres && s.genres.length) fillIfEmpty('fGenres', s.genres.join(', '));
     if (s.runtime) fillIfEmpty('fRuntime', s.runtime);
     if (s.plot) fillIfEmpty('fPlot', s.plot);
@@ -230,12 +232,28 @@ export function openFormModal({ film = null, currentUserId, allFilms = [] }) {
       fillIfEmpty('fTitleUk', d.titleUk);
       if (!val('fYear') && d.year) set('fYear', d.year);
       fillIfEmpty('fDirector', d.director);
+      fillIfEmpty('fCast', (d.cast || []).join(', '));
       fillIfEmpty('fGenres', (d.genres || []).join(', '));
       fillIfEmpty('fRuntime', d.runtime);
       fillIfEmpty('fPlot', d.plot);
       if (!val('fPoster') && d.poster) { set('fPoster', d.poster); showPoster(box, d.poster); }
 
-      const got = [d.titleUk, d.director, (d.genres || []).length, d.runtime, d.plot].some(Boolean);
+      // Постер усе ще порожній (en.Вікіпедія часто не віддає fair-use
+      // постери) — шукаємо за ланцюжком IMDb tt-ID → Wikidata → Вікіпедія
+      if (!val('fPoster')) {
+        st.textContent = 'Шукаю постер…';
+        try {
+          const poster = await fetchPoster({
+            imdbId: picked.imdbId || d.imdbId || null,
+            title: val('fTitle').trim() || picked.title || null,
+            titleUk: val('fTitleUk').trim() || d.titleUk || picked.titleUk || null,
+            year: val('fYear') || d.year || picked.year || null
+          });
+          if (poster) { set('fPoster', poster); showPoster(box, poster); }
+        } catch (e) { /* постер не критичний */ }
+      }
+
+      const got = [d.titleUk, d.director, (d.genres || []).length, d.runtime, d.plot, val('fPoster')].some(Boolean);
       st.textContent = got
         ? 'Готово — деталі підтягнуто. Перевірте й за потреби виправте поля.'
         : 'Додаткові дані не знайдено — заповніть поля вручну.';
@@ -296,6 +314,7 @@ export function openFormModal({ film = null, currentUserId, allFilms = [] }) {
       poster: val('fPoster').trim() || null,
       imdbId: (picked && picked.imdbId) || film?.imdbId || null,
       director: val('fDirector').trim() || null,
+      cast: U.parseGenres(val('fCast')),
       genres: U.parseGenres(val('fGenres')),
       runtime: U.intOrNull(val('fRuntime'), 1, 1200),
       plot: val('fPlot').trim() || null
@@ -394,6 +413,10 @@ function formHTML(isEdit, film) {
       <label class="field span-2">
         <span class="field-label">Режисер</span>
         <input id="fDirector" type="text" placeholder="Френк Дарабонт">
+      </label>
+      <label class="field span-2">
+        <span class="field-label">Актори (через кому)</span>
+        <input id="fCast" type="text" placeholder="Тім Роббінс, Морган Фрімен">
       </label>
       <label class="field span-2">
         <span class="field-label">Жанри (через кому)</span>

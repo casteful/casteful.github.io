@@ -8,11 +8,17 @@
 //   1) Пошук статей у Вікіпедії (префіксний + повнотекстовий, uk+en)
 //      -> назва, мініатюра (постер), вступний текст, QID Вікіданих
 //   2) wbgetentities: claims + мітки фільмів одним викликом;
-//      другим швидким викликом — мітки режисерів і жанрів
-//      -> P31/P345/P57/P577/P2047/P136
+//      другим швидким викликом — мітки режисерів, жанрів і акторів
+//      -> P31/P345/P57/P577/P2047/P136/P161
 // Пакети результатів малюються поступово (onPartial) — не чекаємо
 // найповільніше джерело. Усе fail-safe: будь-яка помилка лишає
 // список порожнім або з базовими даними (назва/постер/опис).
+//
+// Постер: en.Вікіпедія часто НЕ віддає мініатюри некомерційних
+// (fair-use) постерів, а uk. — віддає. Тому мініатюри дублікатів-
+// сторінок (та сама стаття в іншому розділі) об'єднуються, а для
+// вже збережених фільмів є fetchPoster(): IMDb за tt-ID →
+// Wikidata sitelinks → pageimages uk/en.
 // ============================================================
 
 const WD_API = 'https://www.wikidata.org/w/api.php';
@@ -106,6 +112,13 @@ async function wdEntities(qids) {
       const v = c.mainsnak && c.mainsnak.datavalue && c.mainsnak.datavalue.value;
       if (v && v.id) e.genreQids.push(v.id);
     }
+    // Актори (P161): беремо перших 8 — зазвичай це головні ролі
+    e.actorQids = [];
+    for (const c of claims.P161 || []) {
+      const v = c.mainsnak && c.mainsnak.datavalue && c.mainsnak.datavalue.value;
+      if (v && v.id) e.actorQids.push(v.id);
+      if (e.actorQids.length >= 8) break;
+    }
     e.labelUk = (labels.uk && labels.uk.value) || null;
     e.labelEn = (labels.en && labels.en.value) || null;
     out[qid] = e;
@@ -164,11 +177,12 @@ async function wikidataByQids(qids) {
     return { map: {}, ok: false }; // Wikidata недоступна
   }
 
-  // Мітки режисерів + жанрів — другим швидким викликом (до 50 id)
+  // Мітки режисерів + жанрів + акторів — другим швидким викликом (до 50 id)
   const extra = new Set();
   for (const e of Object.values(ents)) {
     if (e.directorQid) extra.add(e.directorQid);
     for (const g of e.genreQids) extra.add(g);
+    for (const a of e.actorQids || []) extra.add(a);
   }
   let labels = {};
   if (extra.size) {
@@ -191,6 +205,7 @@ async function wikidataByQids(qids) {
       imdbId: c.imdbId || null,
       director: dirLab.uk || dirLab.en || null,
       genres: c.genreQids.map(g => (labels[g] ? (labels[g].uk || labels[g].en) : null)).filter(Boolean).slice(0, 6),
+      cast: (c.actorQids || []).map(a => (labels[a] ? (labels[a].uk || labels[a].en) : null)).filter(Boolean).slice(0, 6),
       runtime: c.runtime || null,
       year: c.year || null
     };
@@ -234,13 +249,23 @@ function looksLikeFilmByExtract(text) {
 
 // ---------- Збір елементів зі сторінок (з Wikidata-фільтром) ----------
 
-async function collectItems(pages, seen) {
+// thumbs: спільна між пакетами мапа "QID або назва -> мініатюра".
+// Сторінки-дублікати (та сама стаття в uk/en розділі) відкидаються,
+// АЛЕ їхні мініатюри зберігаються тут: en.Вікіпедія часто не віддає
+// fair-use постери, а uk. — віддає. Тож постер "перетікає" з дубліката.
+async function collectItems(pages, seen, thumbs) {
   // дедуплікація за QID або назвою (seen — спільний між розділами Вікіпедії)
   pages = pages.filter(p => {
     const qid = p.pageprops && p.pageprops.wikibase_item;
     const key = qid || ('t:' + String(p.title || '').toLowerCase());
-    if (seen.has(key)) return false;
+    const thumb = p.thumbnail && p.thumbnail.source;
+    if (seen.has(key)) {
+      // дублікат: як у першої сторінки не було мініатюри — забираємо з цього дубліката
+      if (thumb && thumbs.get(key) == null) thumbs.set(key, thumb);
+      return false;
+    }
     seen.add(key);
+    thumbs.set(key, thumb || null);
     return true;
   });
   if (!pages.length) return [];
@@ -251,6 +276,7 @@ async function collectItems(pages, seen) {
   const items = [];
   for (const p of pages) {
     const qid = (p.pageprops && p.pageprops.wikibase_item) || null;
+    const key = qid || ('t:' + String(p.title || '').toLowerCase());
     const e = qid ? (wd[qid] || null) : null;
 
     if (qid && wdOk && !e) continue; // точна вікі-сутність — і це не фільм
@@ -266,7 +292,8 @@ async function collectItems(pages, seen) {
     const title = origTitle || titleUk || p.title;
     if (!title) continue;
 
-    const poster = cleanThumb(p.thumbnail && p.thumbnail.source);
+    // мініатюра сторінки або з дубліката-статті того ж фільму (інший розділ)
+    const poster = cleanThumb(p.thumbnail && p.thumbnail.source) || cleanThumb(thumbs.get(key));
     const plot = truncPlot(p.extract);
 
     // Стаття без QID і без змістовних даних — не пропозиція
@@ -283,6 +310,7 @@ async function collectItems(pages, seen) {
       source: 'wiki',
       director: (e && e.director) || null,
       genres: (e && e.genres) || [],
+      cast: (e && e.cast) || [],
       runtime: (e && e.runtime) || null,
       plot
     });
@@ -301,11 +329,21 @@ async function collectItems(pages, seen) {
 
 function dedupeItems(items) {
   const out = [];
-  const tSeen = new Set();
+  const idx = new Map(); // ключ -> позиція в out
   for (const it of items) {
     const k = String(it.title || '').toLowerCase().replace(/[^a-zа-яіїєґ0-9]/g, '');
-    if (k && tSeen.has(k)) continue;
-    if (k) tSeen.add(k);
+    const at = k ? idx.get(k) : undefined;
+    if (at !== undefined) {
+      // дублікат назви: доповнюємо перший елемент тим, що є в другому
+      const keep = out[at];
+      for (const f of ['poster', 'plot', 'year', 'director', 'runtime', 'imdbId', 'qid']) {
+        if (keep[f] == null && it[f] != null) keep[f] = it[f];
+      }
+      if ((!keep.genres || !keep.genres.length) && it.genres && it.genres.length) keep.genres = it.genres;
+      if ((!keep.cast || !keep.cast.length) && it.cast && it.cast.length) keep.cast = it.cast;
+      continue;
+    }
+    if (k) idx.set(k, out.length);
     out.push(it);
   }
   return out;
@@ -318,7 +356,8 @@ export async function searchWikiFilms(query, onPartial) {
   const hasCyrillic = /[а-яіїєґ]/i.test(q);
   const langs = hasCyrillic ? ['uk', 'en'] : ['en', 'uk'];
 
-  const seen = new Set(); // спільна дедуплікація QID/назв між пакетами
+  const seen = new Set();    // спільна дедуплікація QID/назв між пакетами
+  const thumbs = new Map(); // ключ -> мініатюра (у т.ч. з дублікатів)
   const all = [];
 
   const emit = (batch) => {
@@ -334,7 +373,7 @@ export async function searchWikiFilms(query, onPartial) {
       pages = prefix ? await wikiPrefix(lang, q) : await wikiSearch(lang, q);
     } catch (e) { return; }
     let batch = [];
-    try { batch = await collectItems(pages.slice(0, prefix ? 4 : 8), seen); } catch (e) { return; }
+    try { batch = await collectItems(pages.slice(0, prefix ? 4 : 8), seen, thumbs); } catch (e) { return; }
     emit(batch);
   };
 
@@ -344,7 +383,17 @@ export async function searchWikiFilms(query, onPartial) {
     runLang(langs[1])
   ]);
 
-  return dedupeItems(all).slice(0, 8);
+  const final = dedupeItems(all).slice(0, 8);
+  // Фінальне заповнення постерів: мініатюра могла прийти пізніше
+  // зі сторінки-дубліката (та сама стаття в іншому розділі Вікіпедії)
+  for (const it of final) {
+    if (!it.poster) {
+      const key = it.qid || ('t:' + String(it.title || '').toLowerCase());
+      const t = thumbs.get(key);
+      if (t) it.poster = cleanThumb(t);
+    }
+  }
+  return final;
 }
 
 // ---------- Добір даних за QID (коли фільм обрано з Вікіпедії) ----------
@@ -360,7 +409,128 @@ export async function enrichByQid(qid) {
     imdbId: e.imdbId || null,
     director: e.director || null,
     genres: e.genres || [],
+    cast: e.cast || [],
     runtime: e.runtime || null,
     year: e.year || null
   };
+}
+
+// ============================================================
+// Пошук постера для фільму, доданого без нього (fetchPoster).
+//
+// Чому без постера: en.Вікіпедія часто не віддає fair-use постери
+// через API, а сторінка uk.розділу могла бути відкинута як дублікат.
+// Ланцюжок (перший успішний крок перемагає):
+//   1) IMDb Suggestion API за tt-ID — миттєво і точно, якщо відомий ID;
+//   2) Wikidata: QID за P345 -> sitelinks (ukwiki/enwiki) -> pageimages;
+//      останній шанс — зображення P18 (кадр/фото з самого фільму);
+//   3) Пошук сторінки uk/en Вікіпедії з перевіркою року (щоб не
+//      чіпати однойменні книги/старі фільми).
+// ============================================================
+
+export async function fetchPoster({ imdbId, title, titleUk, year } = {}) {
+  // 1) IMDb за tt-ID — найточніше і найшвидше
+  if (imdbId && /^tt\d+$/.test(String(imdbId))) {
+    const urls = [
+      `https://v3.sg.media-imdb.com/suggestion/t/${encodeURIComponent(imdbId)}.json?includeVideos=0`,
+      `https://v2.sg.media-imdb.com/suggestion/t/${encodeURIComponent(imdbId)}.json`
+    ];
+    for (const url of urls) {
+      try {
+        const data = await fetchJSON(url, 4000);
+        const hit = ((data && data.d) || []).find(x => x && x.id === imdbId && x.i && x.i.imageUrl);
+        if (hit) return hit.i.imageUrl;
+      } catch (e) { /* наступне дзеркало */ }
+    }
+  }
+
+  // 2) Wikidata: QID за IMDb ID -> sitelinks -> pageimages -> P18
+  if (imdbId && /^tt\d+$/.test(String(imdbId))) {
+    try {
+      const sr = await fetchJSON(`${WD_API}?action=query&format=json&list=search&srlimit=1` +
+        `&srsearch=${encodeURIComponent('haswbstatement:P345=' + imdbId)}`, 5000);
+      const qid = sr && sr.query && sr.query.search && sr.query.search[0] && sr.query.search[0].title;
+      if (qid && /^Q\d+$/.test(qid)) {
+        const poster = await posterFromQid(qid);
+        if (poster) return poster;
+      }
+    } catch (e) { /* далі пошук за назвою */ }
+  }
+
+  // 3) Пошук за назвою (з перевіркою року, щоб не взяти постер
+  //    однойменного старого фільму чи книги)
+  const wikiPosterSearch = async (lang, query) => {
+    try {
+      const url = `https://${lang}.wikipedia.org/w/api.php?action=query&format=json&origin=*` +
+        `&generator=search&gsrlimit=2&gsrsearch=${encodeURIComponent(query)}` +
+        '&prop=pageimages|pageprops|extracts&exintro=1&explaintext=1&exlimit=max' +
+        '&piprop=thumbnail&pithumbsize=500';
+      const data = await fetchJSON(url, 5000);
+      const pages = data && data.query ? Object.values(data.query.pages || {}) : [];
+      pages.sort((a, b) => (a.index || 999) - (b.index || 999));
+      for (const p of pages) {
+        if (!(p.thumbnail && p.thumbnail.source)) continue;
+        if (!yearMatchesPage(p, year)) continue;
+        return cleanThumb(p.thumbnail.source);
+      }
+    } catch (e) { /* тихо */ }
+    return null;
+  };
+
+  if (titleUk) {
+    const t = (year ? await wikiPosterSearch('uk', `${titleUk} ${year}`) : null)
+      || await wikiPosterSearch('uk', titleUk);
+    if (t) return t;
+  }
+  if (title) {
+    const t = await wikiPosterSearch('en', title)
+      || (year ? await wikiPosterSearch('en', `${title} ${year}`) : null);
+    if (t) return t;
+  }
+  return null;
+}
+
+// Сторінка відповідає року? Без року — довіряємо лише точній назві.
+function yearMatchesPage(page, year) {
+  if (!year) {
+    // без року перевіряти нічим — пропускаємо лише якщо назва статті
+    // точно збігається з пошуковим запитом (перевірка зверху)
+    return true;
+  }
+  const t = String(page.title || '');
+  if (t.includes(String(year))) return true;
+  const ex = String(page.extract || '').slice(0, 250);
+  return new RegExp(`\\b${year}\\b\\s*року`).test(ex) || new RegExp(`\\b${year}\\b`).test(ex.slice(0, 120));
+}
+
+// Мініатюра за QID: sitelinks ukwiki/enwiki -> pageimages; в кінці P18
+export async function posterFromQid(qid) {
+  try {
+    const data = await fetchJSON(`${WD_API}?action=wbgetentities&format=json&origin=*` +
+      `&props=sitelinks%7Cclaims&ids=${encodeURIComponent(qid)}`, 5000);
+    const ent = data && data.entities && data.entities[qid];
+    if (!ent) return null;
+    const sl = ent.sitelinks || {};
+    const tries = [];
+    if (sl.ukwiki && sl.ukwiki.title) tries.push({ lang: 'uk', title: sl.ukwiki.title });
+    if (sl.enwiki && sl.enwiki.title) tries.push({ lang: 'en', title: sl.enwiki.title });
+    for (const t of tries) {
+      try {
+        const url = `https://${t.lang}.wikipedia.org/w/api.php?action=query&format=json&origin=*` +
+          `&titles=${encodeURIComponent(t.title)}&prop=pageimages&piprop=thumbnail&pithumbsize=500&redirects=1`;
+        const d = await fetchJSON(url, 5000);
+        const pages = d && d.query ? Object.values(d.query.pages || {}) : [];
+        const p = pages.find(x => x.thumbnail && x.thumbnail.source);
+        if (p) return cleanThumb(p.thumbnail.source);
+      } catch (e) { /* наступний розділ */ }
+    }
+    // Останній шанс: зображення P18 (кадр/фото, пов'язане саме з цим фільмом)
+    const p18 = ((ent.claims || {}).P18 || [])
+      .map(c => c.mainsnak && c.mainsnak.datavalue && c.mainsnak.datavalue.value)
+      .filter(v => typeof v === 'string' && v)[0];
+    if (p18) {
+      return `https://commons.wikimedia.org/wiki/Special:FilePath/${encodeURIComponent(p18)}?width=500`;
+    }
+  } catch (e) { /* тихо */ }
+  return null;
 }

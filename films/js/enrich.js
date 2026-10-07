@@ -24,7 +24,7 @@ async function enrichByImdbId(imdbId) {
   if (!imdbId || !/^tt\d+$/.test(imdbId)) return {};
 
   const query = `
-SELECT ?ukLabel ?ukDesc ?directorLabel ?genreLabel ?duration ?date WHERE {
+SELECT ?ukLabel ?ukDesc ?directorLabel ?genreLabel ?actorLabel ?duration ?date WHERE {
   ?film wdt:P345 "${imdbId}" .
   OPTIONAL { ?film rdfs:label ?ukLabel . FILTER(LANG(?ukLabel) = "uk") }
   OPTIONAL { ?film schema:description ?ukDesc . FILTER(LANG(?ukDesc) = "uk") }
@@ -32,8 +32,9 @@ SELECT ?ukLabel ?ukDesc ?directorLabel ?genreLabel ?duration ?date WHERE {
   OPTIONAL { ?film wdt:P2047 ?duration . }
   OPTIONAL { ?film wdt:P577 ?date . }
   OPTIONAL { ?film wdt:P136 ?genre . }
+  OPTIONAL { ?film wdt:P161 ?actor . }
   SERVICE wikibase:label { bd:serviceParam wikibase:language "uk,en" . }
-} LIMIT 60`;
+} LIMIT 150`;
 
   const data = await fetchJSON(
     `${WD_ENDPOINT}?query=${encodeURIComponent(query)}&format=json`,
@@ -53,6 +54,10 @@ SELECT ?ukLabel ?ukDesc ?directorLabel ?genreLabel ?duration ?date WHERE {
 
   const genres = [...new Set(rows.map(r => r.genreLabel && r.genreLabel.value).filter(Boolean))];
   if (genres.length) out.genres = genres.slice(0, 6);
+
+  // Актори (P161): перші знайдені українські/англійські мітки
+  const cast = [...new Set(rows.map(r => r.actorLabel && r.actorLabel.value).filter(Boolean))];
+  if (cast.length) out.cast = cast.slice(0, 6);
 
   return out;
 }

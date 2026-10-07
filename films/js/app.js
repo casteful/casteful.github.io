@@ -9,6 +9,7 @@ import * as filmsView from './films.js';
 import * as statsView from './stats.js';
 import { icons, toast } from './ui.js';
 import { escapeHtml, initial } from './utils.js';
+import { fetchPoster } from './wiki.js';
 
 const view = document.getElementById('view');
 const userOverlay = document.getElementById('userOverlay');
@@ -29,6 +30,13 @@ initFab();
 initUser();
 initTabs();
 
+// Клік на людину/жанр у модалці фільму або статистиці:
+// переключає вкладку «Фільми» (якщо потрібно) і фільтрує список
+document.addEventListener('films:filter', (e) => {
+  if (activeTab !== 'films') switchTab('films');
+  filmsView.setFilter(e.detail);
+});
+
 store.onFilms((list, err) => {
   if (err) {
     console.error('[store] Помилка Firebase:', err);
@@ -43,7 +51,48 @@ store.onFilms((list, err) => {
   }
   filmsArr = list;
   renderTab();
+  healMissingPosters(list); // тихо підтягуємо постери для фільмів без них
 });
+
+// ---------- Автоматичне підтягування постерів ----------
+// Фільми, додані через англомірну Вікіпедію, могли зберегтися без
+// постера (en.wiki не віддає fair-use зображення через API).
+// Ланцюжок: IMDb за tt-ID -> Wikidata sitelinks -> Вікіпедія.
+// Кулдаун 3 доби на фільм, щоб не спамити API після невдачі.
+
+const HEAL_COOLDOWN_MS = 3 * 24 * 60 * 60 * 1000;
+const healingNow = new Set();
+
+function healMissingPosters(list) {
+  const need = list.filter(f => !f.poster);
+  need.forEach((f, i) => setTimeout(() => healPoster(f), Math.min(i, 5) * 1200));
+}
+
+async function healPoster(film) {
+  if (healingNow.has(film.id)) return;
+  try {
+    const last = parseInt(localStorage.getItem('posterHeal_' + film.id), 10) || 0;
+    if (Date.now() - last < HEAL_COOLDOWN_MS) return;
+    localStorage.setItem('posterHeal_' + film.id, String(Date.now()));
+  } catch (e) { /* localStorage недоступний — працюємо без кулдауну */ }
+  healingNow.add(film.id);
+  try {
+    const poster = await fetchPoster({
+      imdbId: film.imdbId || null,
+      title: film.title || null,
+      titleUk: film.titleUk || null,
+      year: film.year || null
+    });
+    if (poster) {
+      await store.updateFilm(film.id, { poster });
+      toast(`Постер для «${film.titleUk || film.title || ''}» підтягнуто автоматично`);
+    }
+  } catch (e) {
+    /* тихо: постер — не критично */
+  } finally {
+    healingNow.delete(film.id);
+  }
+}
 
 // ---------- Бренд / іконки ----------
 function initBrand() {
@@ -147,6 +196,12 @@ function renderTab() {
     if (currentUser) filmsView.setUser(currentUser.id);
     filmsView.setFilms(filmsArr);
   } else {
-    statsView.mount(view, filmsArr);
+    // Список фільмів тримаємо актуальним навіть поза вкладкою —
+    // щоб «Рекорди» у статистиці могли відкрити вікно фільму
+    filmsView.setFilms(filmsArr);
+    statsView.mount(view, filmsArr, {
+      onFilter: (q) => { switchTab('films'); filmsView.setFilter(q); },
+      onOpenFilm: (id) => filmsView.openFilmById(id)
+    });
   }
 }

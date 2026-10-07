@@ -51,6 +51,26 @@ export function openAdd() {
   openFormModal({ film: null, currentUserId, allFilms: filmsList });
 }
 
+// Зовнішній фільтр (клік на режисера/актора/жанр у статистиці чи картці).
+// Спочатку клікнуто поза вкладкою «Фільми» — просимо app.js її переключити.
+export function setFilter(q) {
+  query = String(q || '');
+  if (!document.getElementById('filmSearch') || !container.contains(document.getElementById('filmSearch'))) {
+    document.dispatchEvent(new CustomEvent('films:filter', { detail: String(q || '') }));
+    return;
+  }
+  const inp = document.getElementById('filmSearch');
+  inp.value = query;
+  inp.focus();
+  refreshGrid();
+}
+
+// Відкрити фільм за id (наприклад, з панелі «Рекорди» у статистиці).
+// Список фільмів актуальний — app.js оновлює його навіть поза вкладкою.
+export function openFilmById(filmId) {
+  if (filmsList.some(f => f.id === filmId)) openDetail(filmId);
+}
+
 // ---------- Каркас вкладки ----------
 
 function buildSkeleton() {
@@ -106,6 +126,7 @@ function buildSkeleton() {
   });
 
   // Кліки: заголовки-сортування в таблиці, кнопка «редагувати»,
+  // швидка оцінка (кнопка на картці / своя комірка в таблиці),
   // відкриття картки/рядка
   gridEl.addEventListener('click', (e) => {
     const th = e.target.closest('th[data-sort]');
@@ -118,15 +139,32 @@ function buildSkeleton() {
       return;
     }
     const editBtn = e.target.closest('[data-edit]');
+    if (editBtn) {
+      const row = e.target.closest('.card, .t-row');
+      const film = row && filmsList.find(f => f.id === row.dataset.id);
+      if (film) openFormModal({ film, currentUserId, allFilms: filmsList });
+      return;
+    }
+    // Швидке оцінювання: кнопка на картці АБО своя комірка в таблиці
+    const rateBtn = e.target.closest('[data-rate]');
+    if (rateBtn) {
+      const row = e.target.closest('.card, .t-row');
+      const film = row && filmsList.find(f => f.id === row.dataset.id);
+      if (film) openRatePop(rateBtn, film);
+      return;
+    }
+    const myCell = e.target.closest('td.u-col.mine');
+    if (myCell) {
+      const row = e.target.closest('.t-row');
+      const film = row && filmsList.find(f => f.id === row.dataset.id);
+      if (film) openRatePop(myCell, film);
+      return;
+    }
     const row = e.target.closest('.card, .t-row');
     if (!row) return;
     const film = filmsList.find(f => f.id === row.dataset.id);
     if (!film) return;
-    if (editBtn) {
-      openFormModal({ film, currentUserId, allFilms: filmsList });
-    } else {
-      openDetail(film.id);
-    }
+    openDetail(film.id);
   });
   gridEl.addEventListener('keydown', (e) => {
     if (e.key !== 'Enter') return;
@@ -147,8 +185,11 @@ function filtered() {
   const q = query.trim().toLowerCase();
   let list = filmsList;
   if (q) {
-    list = list.filter(f => [f.title, f.titleUk, f.director]
-      .some(x => String(x || '').toLowerCase().includes(q)));
+    list = list.filter(f => [
+      f.title, f.titleUk, f.director,
+      ...(f.genres || []),
+      ...(f.cast || [])
+    ].some(x => String(x || '').toLowerCase().includes(q)));
   }
   const withAvg = f => { const a = U.avg(f.ratings); return a == null ? -1 : a; };
   switch (sort) {
@@ -322,6 +363,10 @@ function cardHTML(f) {
     .map(u => `<span class="fchip" title="${U.escapeHtml(u.name)}: ${f.ratings[u.id]}"><i style="background:${u.color}"></i>${f.ratings[u.id]}</span>`)
     .join('');
 
+  const castLine = (f.cast || []).length
+    ? `<div class="card-cast" title="${U.escapeHtml(f.cast.join(', '))}">У ролях: ${U.escapeHtml(U.trunc(f.cast.join(', '), 44))}</div>`
+    : '';
+
   return `
   <article class="card" data-id="${f.id}" tabindex="0" role="button" aria-label="${U.escapeHtml(mainTitle)}">
     <div class="poster">
@@ -333,6 +378,7 @@ function cardHTML(f) {
       <h3 class="card-title">${U.escapeHtml(mainTitle)}</h3>
       ${orig ? `<div class="card-sub">${U.escapeHtml(orig)}</div>` : ''}
       ${metaLine ? `<div class="card-meta">${U.escapeHtml(metaLine)}</div>` : ''}
+      ${castLine}
       <div class="rating-row">
         ${a != null
           ? `<span class="avg-badge" style="background:${U.ratingColor(a)}">${U.fmtAvg(a)}</span>${votes}`
@@ -345,6 +391,91 @@ function cardHTML(f) {
     </div>
     <button class="icon-btn card-edit" data-edit aria-label="Редагувати фільм" title="Редагувати">${icons.edit}</button>
   </article>`;
+}
+
+// ---------- Швидке оцінювання (спливне вікно біля кнопки/комірки) ----------
+
+let ratePop = null;
+
+function closeRatePop() {
+  if (!ratePop) return;
+  const p = ratePop;
+  ratePop = null;
+  document.removeEventListener('mousedown', onPopOutside, true);
+  document.removeEventListener('keydown', onPopKey, true);
+  window.removeEventListener('scroll', closeRatePop, true);
+  window.removeEventListener('resize', closeRatePop);
+  p.classList.remove('show');
+  setTimeout(() => p.remove(), 140);
+}
+
+function onPopOutside(e) {
+  if (ratePop && !ratePop.contains(e.target)) closeRatePop();
+}
+
+function onPopKey(e) {
+  if (e.key === 'Escape') { e.stopPropagation(); closeRatePop(); }
+}
+
+function openRatePop(anchor, film) {
+  if (!currentUserId) { toast('Спочатку оберіть профіль', 'err'); return; }
+  closeRatePop();
+
+  const my = (film.ratings || {})[currentUserId];
+  const a = U.avg(film.ratings);
+  const pop = document.createElement('div');
+  pop.className = 'rate-pop';
+  pop.setAttribute('role', 'dialog');
+  pop.setAttribute('aria-label', `Оцінити «${fTitle(film)}»`);
+  pop.innerHTML = `
+    <div class="rate-pop-title" title="${U.escapeHtml(fTitle(film))}">${U.escapeHtml(fTitle(film))}</div>
+    <div class="rate-pop-sub">Ваша оцінка ${my != null ? `· зараз ${my}` : ''}${a != null ? ` · сер. ${U.fmtAvg(a)}` : ''}</div>
+    <div class="rate-pop-grid" role="group" aria-label="Оцінка від 1 до 10">
+      ${Array.from({ length: 10 }, (_, i) => {
+        const s = i + 1;
+        return `<button type="button" class="pop-chip ${my === s ? 'active' : ''}" data-score="${s}" style="--c:${U.ratingColor(s)}" aria-label="Оцінка ${s}">${s}</button>`;
+      }).join('')}
+    </div>
+    ${my != null ? '<button type="button" class="remove-rating" data-pop-remove>Прибрати мою оцінку</button>' : ''}`;
+
+  document.body.appendChild(pop);
+  ratePop = pop;
+
+  // Позиція біля якоря, з врахуванням меж екрана
+  const r = anchor.getBoundingClientRect();
+  const pw = pop.offsetWidth || 236;
+  const ph = pop.offsetHeight || 150;
+  const vw = window.innerWidth, vh = window.innerHeight;
+  let left = r.left + r.width / 2 - pw / 2;
+  left = Math.max(10, Math.min(left, vw - pw - 10));
+  let top = r.bottom + 8;
+  if (top + ph > vh - 10) top = r.top - ph - 8; // не влазить знизу — відкриваємо вгору
+  top = Math.max(10, top);
+  pop.style.left = `${Math.round(left)}px`;
+  pop.style.top = `${Math.round(top)}px`;
+  requestAnimationFrame(() => pop.classList.add('show'));
+
+  pop.addEventListener('click', async (e) => {
+    const chip = e.target.closest('.pop-chip');
+    const rm = e.target.closest('[data-pop-remove]');
+    if (!chip && !rm) return;
+    const score = chip ? +chip.dataset.score : null;
+    const cur = (film.ratings || {})[currentUserId];
+    const next = chip ? (cur === score ? null : score) : null;
+    try {
+      await store.setRating(film.id, currentUserId, next);
+      toast(next == null ? 'Оцінку прибрано' : `Ваша оцінка: ${next}`);
+      closeRatePop();
+    } catch (err) {
+      console.error(err);
+      toast('Не вдалося зберегти оцінку', 'err');
+    }
+  });
+
+  document.addEventListener('mousedown', onPopOutside, true);
+  document.addEventListener('keydown', onPopKey, true);
+  window.addEventListener('scroll', closeRatePop, true);
+  window.addEventListener('resize', closeRatePop);
 }
 
 // ---------- Модальне вікно фільму ----------
@@ -366,8 +497,16 @@ function detailHTML(f) {
   const a = U.avg(f.ratings);
   const my = (f.ratings || {})[currentUserId];
   const orig = (f.titleUk && f.title && f.titleUk !== f.title) ? f.title : '';
-  const metaBits = [f.year, f.runtime ? `${f.runtime} хв` : '', f.director ? `реж. ${f.director}` : ''].filter(Boolean).join(' · ');
-  const genres = (f.genres || []).map(g => `<span class="genre-chip">${U.escapeHtml(g)}</span>`).join('');
+  const metaBits = [f.year, f.runtime ? `${f.runtime} хв` : ''].filter(Boolean).join(' · ');
+  const genres = (f.genres || []).map(g =>
+    `<button type="button" class="genre-chip clickable" data-person="${U.escapeHtml(g)}" title="Фільми цього жанру">${U.escapeHtml(g)}</button>`
+  ).join('');
+  const cast = (f.cast || []).map(c =>
+    `<button type="button" class="cast-chip" data-person="${U.escapeHtml(c)}" title="Фільми з цим актором">${U.escapeHtml(c)}</button>`
+  ).join('');
+  const directorBtn = f.director
+    ? `<button type="button" class="person-link" data-person="${U.escapeHtml(f.director)}" title="Фільми цього режисера">${U.escapeHtml(f.director)}</button>`
+    : '';
 
   const chips = Array.from({ length: 10 }, (_, i) => {
     const s = i + 1;
@@ -402,8 +541,9 @@ function detailHTML(f) {
     </div>
     <div class="detail-info">
       ${orig ? `<div class="detail-orig">${U.escapeHtml(orig)}</div>` : ''}
-      ${metaBits ? `<div class="detail-meta">${U.escapeHtml(metaBits)}</div>` : ''}
+      <div class="detail-meta">${[f.director ? `реж. ${directorBtn}` : '', metaBits].filter(Boolean).join(' · ')}</div>
       ${genres ? `<div class="genre-row">${genres}</div>` : ''}
+      ${cast ? `<div class="cast-row"><span class="cast-label">У ролях:</span>${cast}</div>` : ''}
       ${f.plot ? `<p class="detail-plot">${U.escapeHtml(f.plot)}</p>` : ''}
       <div class="detail-links">
         ${f.imdbId ? `<a class="imdb-link" href="https://www.imdb.com/title/${U.escapeHtml(f.imdbId)}/" target="_blank" rel="noopener">${icons.link}<span>Переглянути на IMDb</span></a>` : ''}
@@ -433,6 +573,15 @@ function wireDetail(box) {
   box.addEventListener('click', async (e) => {
     const film = filmsList.find(f => f.id === detailState.filmId);
     if (!film) return;
+
+    // Клік на режисера / актора / жанр — фільтруємо список фільмів
+    const person = e.target.closest('[data-person]');
+    if (person) {
+      const q = person.dataset.person;
+      detailState.close();
+      setFilter(q);
+      return;
+    }
 
     const chip = e.target.closest('.rate-chip');
     if (chip) {

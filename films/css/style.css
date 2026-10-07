@@ -759,6 +759,133 @@ svg { display: block; }
 .duo-note { margin-top: 14px; font-size: 13.5px; color: var(--muted); text-align: center; }
 .duo-note b { color: var(--text); }
 
+/* Клікабельні рядки-бари (режисери, жанри, актори, топ фільмів) */
+.brow.clickable {
+  display: flex;
+  width: 100%;
+  padding: 3px 6px;
+  margin: -3px -6px;
+  border-radius: 8px;
+  text-align: left;
+  transition: background 0.12s;
+}
+.brow.clickable:hover { background: var(--accent-soft); }
+.brow.clickable:hover .brow-label { color: var(--accent); text-decoration: underline; text-underline-offset: 3px; }
+.panel-hint { font-weight: 500; font-size: 12px; color: var(--muted); letter-spacing: 0; }
+
+/* Міні-плитки (хронометраж) */
+.mini-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; }
+.mini-tile {
+  display: flex; flex-direction: column; gap: 2px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg);
+}
+.mt-value { font-size: 21px; font-weight: 800; letter-spacing: -0.3px; line-height: 1.15; }
+.mt-value small { font-size: 13px; font-weight: 600; color: var(--muted); }
+.mt-label { font-size: 12px; color: var(--muted); line-height: 1.4; }
+
+/* Рекорди клубу */
+.rec-list { display: flex; flex-direction: column; gap: 4px; }
+.rec-row {
+  display: flex; align-items: center; gap: 11px;
+  width: 100%;
+  padding: 8px 10px;
+  margin: 0 -10px;
+  border-radius: 10px;
+  text-align: left;
+  transition: background 0.12s;
+}
+.rec-row:hover { background: var(--accent-soft); }
+.rec-icon { display: inline-flex; color: var(--accent); flex-shrink: 0; }
+.rec-icon svg { width: 17px; height: 17px; }
+.rec-text { font-size: 13.5px; line-height: 1.45; min-width: 0; }
+.rec-text b { font-weight: 700; }
+.rec-text small { display: block; color: var(--muted); font-size: 12px; }
+.rec-row:hover .rec-text { text-decoration: none; }
+.rec-row:hover b { color: var(--accent); }
+
+.tile-unit { font-size: 14px; font-weight: 700; color: var(--muted); margin-left: 3px; }
+
+/* ---------- Швидке оцінювання (спливне вікно) ---------- */
+
+.rate-pop {
+  position: fixed;
+  z-index: 140;
+  width: 236px;
+  padding: 12px 12px 10px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: var(--shadow-lg);
+  opacity: 0;
+  transform: translateY(6px) scale(0.97);
+  transition: opacity 0.14s ease, transform 0.14s ease;
+}
+.rate-pop.show { opacity: 1; transform: translateY(0) scale(1); }
+.rate-pop-title {
+  font-size: 13.5px; font-weight: 700;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  padding-right: 4px;
+}
+.rate-pop-sub { font-size: 11.5px; color: var(--muted); margin: 1px 0 9px; }
+.rate-pop-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 5px;
+}
+.pop-chip {
+  height: 34px;
+  border-radius: 9px;
+  background: var(--surface-2);
+  color: var(--muted);
+  font-weight: 800; font-size: 13px;
+  border: 1px solid transparent;
+  transition: transform 0.1s, background 0.12s, color 0.12s, border-color 0.12s;
+}
+.pop-chip:hover { transform: translateY(-1px); border-color: var(--c); color: var(--text); }
+.pop-chip.active { background: var(--c); color: #fff; border-color: var(--c); }
+.rate-pop .remove-rating { margin: 8px auto 0; display: block; }
+
+/* ---------- Клікабельні люди та жанри ---------- */
+
+.person-link {
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--accent);
+  padding: 0;
+  border-bottom: 1px dashed transparent;
+  transition: border-color 0.12s;
+}
+.person-link:hover { border-bottom-color: var(--accent); }
+
+.genre-chip.clickable { transition: background 0.12s, color 0.12s; cursor: pointer; }
+.genre-chip.clickable:hover { background: var(--accent-soft); color: var(--accent); }
+
+.cast-row { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.cast-label { font-size: 12.5px; font-weight: 600; color: var(--muted); }
+.cast-chip {
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--muted);
+  transition: background 0.12s, color 0.12s;
+}
+.cast-chip:hover { background: var(--accent-soft); color: var(--accent); }
+
+.card-cast {
+  font-size: 12px; color: var(--muted);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+/* Клік по власній комірці оцінки в таблиці = швидке оцінювання */
+.films-table td.u-col.mine { cursor: pointer; }
+.films-table td.u-col.mine:hover { background: color-mix(in srgb, var(--accent) 12%, transparent); }
+
 /* ---------- Вибір профілю ---------- */
 
 .user-overlay {
