@@ -1333,7 +1333,8 @@ td.u-col.mine:hover { background: color-mix(in srgb, var(--accent) 9%, var(--sur
   border: 1px solid var(--border);
   border-radius: 15px;
   box-shadow: var(--shadow-lg);
-  max-height: 330px;
+  /* Висота з запасом: підказок тепер до 24, список скролиться */
+  max-height: min(56vh, 480px);
   overflow-y: auto;
   overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
@@ -1993,7 +1994,7 @@ td.u-col.mine:hover { background: color-mix(in srgb, var(--accent) 9%, var(--sur
   .modal-head { padding: calc(16px + env(safe-area-inset-top, 0px)) 16px 0; }
 
   /* Автозаповнення: більші цілі під палець */
-  .suggest-list { max-height: min(46vh, 380px); }
+  .suggest-list { max-height: min(58vh, 470px); }
   .s-item { padding: 10px 9px; gap: 12px; }
   .s-thumb { width: 44px; height: 66px; border-radius: 9px; }
   .s-thumb svg { width: 19px; height: 19px; }

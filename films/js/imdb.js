@@ -57,7 +57,7 @@ export async function suggestFilms(query) {
   // Обидва дзеркала — паралельно; перша успішна відповідь перемагає
   const parse = (data) => (data && Array.isArray(data.d) ? data.d : [])
     .filter(x => x && typeof x.id === 'string' && x.id.startsWith('tt') && ALLOWED_TYPES[x.qid] !== undefined)
-    .slice(0, 8)
+    .slice(0, 12)
     .map(x => ({
       imdbId: x.id,
       title: x.l || 'Без назви',

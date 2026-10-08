@@ -8,7 +8,7 @@ light/dark theme, built as a **zero-build static site** — perfect for GitHub P
 - **Effortless rating — the 1–10 “trail” scale** — one tap on «Оцінити» opens a color-coded scale right next to the button (a large bottom sheet on phones). Segments fill with a red→green ramp up to the chosen value, a big number + word caption («Добре», «Шедевр»…) reacts live to hovering, and a tap saves instantly. The same trail lives in the film window. Keyboard: digits 1–9, 0 = 10, ←/→, Esc.
 - **Cinematic card grid** — vertical poster cards with the average score on the poster, a full-width rate button and friends' scores as colored chips; 2-column layout on phones. A compact **table** view with a rating column per friend is one tap away; both views remember your choice.
 - **Beautiful film window** — poster blurred into a hero header with the title, director, genres and cast; the 1–10 trail for your own score; everyone's scores in one list.
-- **Smart adding** — start typing a film name (Ukrainian or English) and pick it from live suggestions **with posters**; title, year, Ukrainian title, director, cast, genres, runtime and plot are fetched automatically. **Films and TV series both work** — series are found even when IMDb's own suggestions miss them, because Wikipedia results are always merged in and an exact-name match floats to the top. Everything stays manually editable.
+- **Smart adding** — start typing a film name (Ukrainian or English) and pick it from live suggestions **with posters**; title, year, Ukrainian title, director, cast, genres, runtime and plot are fetched automatically. **Films and TV series both work** — series are found even when IMDb's own suggestions miss them, because Wikipedia and Wikidata results are always merged in and the best match floats to the top. **Year-aware search** — typing «big bang theory 2007» searches the title only and uses the year for ranking and for the year field. Everything stays manually editable.
 - **Clickable people & genres** — tap any director, actor or genre (in the film window or in statistics) to see all matching films of the club.
 - **Statistics tab** — totals (films, ratings, average, shared cinema-hours, most active viewer), club records (best / worst / most controversial / most discussed / oldest / newest), top films, favourite genres, top actors and directors, rating histogram, decades, runtime stats and per-viewer profiles («strictest critic» vs «most generous viewer»).
 - **Modern UI (v3)** — warm-amber identity with gradient accents, glass topbar, springy micro-animations, refined dark theme, soft “projector” glow, thin scrollbars, reduced-motion support.
@@ -101,6 +101,14 @@ films/
 - **Fast autocomplete** — IMDb and Wikipedia are queried in parallel with short
   timeouts; results are cached per query, so repeating a name is instant.
   Typical first suggestions appear in well under a second.
+- **Year in the query is understood** — «the office 2005» strips the year,
+  searches by title only (full-text Wikipedia search with a year in the string
+  returns episode lists and seasons), then ranks results by title relevance and
+  year match, and pre-fills the year field from the query.
+- **Strict film filter** — Wikidata classes decide what counts as a film/series
+  (film, TV series, miniseries, TV film, animated and documentary films…).
+  Seasons, episode lists, actors, characters and disambiguation pages can no
+  longer sneak into suggestions with wrong data.
 - **Films + series, both sources always** — IMDb suggestions paint first, then
   Wikipedia results are merged in (progressively, no duplicates). This matters
   for series: IMDb's suggestion endpoint often doesn't know them by full name
@@ -119,6 +127,15 @@ films/
      episodes etc. are filtered out). Results are painted progressively —
      whichever source answers first is shown immediately — and marked with a
      «Вікіпедія» badge in the dropdown.
+  3. **Wikidata label search** (`wbsearchentities`) — the language bridge:
+     finds films by their Ukrainian (or English) labels and aliases even when
+     no Wikipedia article in that language exists, then pulls the English
+     title, IMDb ID and details from the Wikidata item («Вікідані» badge).
+  4. **Ukrainian transliteration** — as a last resort a Ukrainian query is
+     transliterated to Latin (official 2010 system) and retried on English
+     Wikipedia.
+- Up to 24 suggestions are shown in one scrollable dropdown (both on desktop
+  and mobile), so «all possible options» stay one wheel-scroll away.
 - If IMDb fails, the app remembers it for 10 minutes (sessionStorage) and
   searches Wikipedia first — no timeout waiting on every keystroke. The flag
   clears itself as soon as IMDb answers again.

@@ -29,60 +29,116 @@ import { enrichFilm } from './enrich.js';
 
 const WIKI_DELAY_MS = 800;  // фори IMDb; потім вікі-пошук підключається завжди
 const SUG_CACHE_MAX = 60;
-const SUG_MAX = 9;          // максимум рядків у підказках
+const SUG_MAX = 24;         // максимум рядків у підказках (список скролиться)
 
 const sugCache = new Map(); // ключ запиту -> Promise зі списком підказок
+
+// «big bang theory 2007» -> назва «big bang theory» + рік 2007 окремо.
+// Рік у кінці запиту — це побажання користувача, а не частина назви.
+// Якщо шукати весь рядок як є, повнотекстовий пошук Вікіпедії згодом
+// «сміттєві» збіги (списки епізодів, сезони, актори), а збіг за назвою
+// губиться. Шукаємо лише за назвою, а рік використовуємо для ранжування
+// та автозаповнення поля «Рік».
+export function splitYear(raw) {
+  const s = String(raw || '').trim();
+  const m = s.match(/^(.{2,}?)[\s,–—-]+((?:18|19|20)\d{2})$/);
+  if (m && m[1].trim().length >= 2) return { title: m[1].trim(), year: parseInt(m[2], 10) };
+  return { title: s, year: null };
+}
+
+// Ранжування злитого списку:
+//   1) точний збіг назви із запитом (укр. або англ.) — нагору;
+//   2) збіг за префіксом/підрядком («the big bang theory» містить «big bang theory»);
+//   3) рік, розпізнаний у запиті: збіг — бонус, сусідній рік — менший бонус,
+//      явний розбіжний рік — штраф (напр., серіал 2017-го при запиті «... 2007»).
+function scoreItem(it, normQ, yearHint) {
+  const norm = s => String(s || '').toLowerCase().replace(/[^a-zа-яіїєґ0-9]/g, '');
+  const t = norm(it.title);
+  const tu = norm(it.titleUk);
+  let s = 0;
+  if (normQ && normQ.length >= 3) {
+    if (t === normQ || (tu && tu === normQ)) s = 100;
+    else if (t === 'the' + normQ ||
+             (t && t.includes(normQ)) ||
+             (tu && tu.includes(normQ))) s = 70;
+  }
+  if (yearHint) {
+    if (it.year === yearHint) s += 15;
+    else if (it.year && Math.abs(it.year - yearHint) <= 1) s += 5;
+    else if (it.year) s -= 10;
+  }
+  return s;
+}
 
 // Злиття результатів IMDb і Вікіпедії без дублікатів (за нормальною назвою).
 // Дублікати доповнюють один одного: бракуючі поля першого елемента
 // (постер, укр. назва, рік, режисер…) беруться з другого.
-// Точний збіг назви із запитом (напр., «Monster: The Ed Gein Story»)
-// піднімається нагору — IMDb suggestion часто не знає серіалів, і
-// потрібний результат приходить з Вікіпедії, але має бути першим.
-function mergeLists(imdbList, wikiList, query) {
+// Список ранжується за релевантністю: точні збіги назви + рік із запиту
+// піднімаються нагору (напр., «The Big Bang Theory» (2007) при запиті
+// «big bang theory 2007» — перший рядок, а не «Unaired Pilot»).
+function mergeLists(imdbList, wikiList, query, yearHint) {
   const normQ = String(query || '').toLowerCase().replace(/[^a-zа-яіїєґ0-9]/g, '');
   const out = [];
   const idx = new Map();
+  const idxUk = new Map(); // укр. назва -> позиція (міст IMDb↔uk.вікі)
   const key = it => String((it && it.title) || '').toLowerCase().replace(/[^a-zа-яіїєґ0-9]/g, '');
+  const ukKey = it => String((it && it.titleUk) || '').toLowerCase().replace(/[^a-zа-яіїєґ0-9]/g, '');
+  const mergeInto = (keep, it) => {
+    for (const f of ['poster', 'plot', 'year', 'director', 'runtime', 'imdbId', 'qid', 'titleUk', 'type']) {
+      if (keep[f] == null && it[f] != null) keep[f] = it[f];
+    }
+    if ((!keep.genres || !keep.genres.length) && it.genres && it.genres.length) keep.genres = it.genres;
+    if ((!keep.cast || !keep.cast.length) && it.cast && it.cast.length) keep.cast = it.cast;
+  };
   const add = it => {
     if (!it || !it.title) return;
     const k = key(it);
-    const at = k ? idx.get(k) : undefined;
-    if (at !== undefined) {
-      const keep = out[at];
-      for (const f of ['poster', 'plot', 'year', 'director', 'runtime', 'imdbId', 'qid', 'titleUk', 'type']) {
-        if (keep[f] == null && it[f] != null) keep[f] = it[f];
+    const ku = ukKey(it);
+    let at = k ? idx.get(k) : undefined;
+    // Вторинний міст: та сама укр. назва в IMDb- і uk.вікі-елемента,
+    // якщо їхні англ. назви не збіглися (мітка Вікіданих відсутня).
+    // Різні роки = різні фільми (ремейки) — не зливаємо.
+    if (at === undefined && ku) {
+      const atUk = idxUk.get(ku);
+      if (atUk !== undefined) {
+        const first = out[atUk];
+        const conflict = first.year && it.year && first.year !== it.year;
+        if (!conflict) at = atUk;
       }
-      if ((!keep.genres || !keep.genres.length) && it.genres && it.genres.length) keep.genres = it.genres;
-      if ((!keep.cast || !keep.cast.length) && it.cast && it.cast.length) keep.cast = it.cast;
+    }
+    if (at !== undefined) {
+      mergeInto(out[at], it);
       return;
     }
     if (k) idx.set(k, out.length);
+    if (ku) idxUk.set(ku, out.length);
     out.push(it);
   };
   (imdbList || []).forEach(add);
   (wikiList || []).forEach(add);
-  if (normQ && normQ.length >= 3) {
-    const isExact = it => {
-      const t = String(it.title || '').toLowerCase().replace(/[^a-zа-яіїєґ0-9]/g, '');
-      const tu = String(it.titleUk || '').toLowerCase().replace(/[^a-zа-яіїєґ0-9]/g, '');
-      return t === normQ || (tu && tu === normQ);
-    };
-    const exact = out.filter(isExact);
-    if (exact.length && exact.length < out.length) {
-      return exact.concat(out.filter(it => !isExact(it))).slice(0, SUG_MAX);
-    }
-  }
-  return out.slice(0, SUG_MAX);
+  // Ранжування замість простого зрізу: точні збіги + рік із запиту нагору
+  return out
+    .map((it, i) => ({ it, i }))
+    .sort((a, b) => {
+      const d = scoreItem(b.it, normQ, yearHint) - scoreItem(a.it, normQ, yearHint);
+      return d !== 0 ? d : a.i - b.i; // стабільність: IMDb-порядок при рівній оцінці
+    })
+    .map(x => x.it)
+    .slice(0, SUG_MAX);
 }
 
-function searchFilmsFast(q, onPartial) {
+function searchFilmsFast(rawQuery, onPartial) {
+  // Рік у кінці запиту («big bang theory 2007») — шукаємо тільки за назвою,
+  // а рік ідемо в ранжування та підстановку в поле «Рік»
+  const { title: q, year: yearHint } = splitYear(rawQuery);
+  if (q.length < 2) return Promise.resolve([]);
+
   const imdbDown = imdbTemporarilyDown();
   let imdbList = [];
   let wikiList = [];
 
   const paint = () => {
-    const merged = mergeLists(imdbList, wikiList, q);
+    const merged = mergeLists(imdbList, wikiList, q, yearHint);
     if (merged.length && typeof onPartial === 'function') onPartial(merged);
   };
 
@@ -98,7 +154,7 @@ function searchFilmsFast(q, onPartial) {
 
   return Promise.all([imdbP, wikiP])
     .then(([il, wl]) => { imdbList = il || []; wikiList = wl || []; })
-    .then(() => mergeLists(imdbList, wikiList, q));
+    .then(() => mergeLists(imdbList, wikiList, q, yearHint));
 }
 
 function cachedSearch(q, onPartial) {
@@ -149,9 +205,17 @@ export function openFormModal({ film = null, currentUserId, allFilms = [] }) {
   if (searchInput) {
     const note = (icon, text) => `<div class="s-note">${icon}<span>${text}</span></div>`;
     let searchGen = 0; // захист від перегонів повільних запитів
+    let lastYearHint = null; // рік, розпізнаний у кінці запиту («... 2007»)
+    const sourceBadge = s =>
+      s.source === 'wiki' ? 'Вікіпедія'
+      : s.source === 'wikidata' ? 'Вікідані'
+      : '';
 
     searchInput.addEventListener('input', U.debounce(async () => {
-      const q = searchInput.value.trim();
+      const raw = searchInput.value.trim();
+      const parsed = splitYear(raw);
+      lastYearHint = parsed.year;
+      const q = parsed.title;
       if (q.length < 2) { hideSug(); return; }
       const gen = ++searchGen;
       sugList.hidden = false;
@@ -167,15 +231,15 @@ export function openFormModal({ film = null, currentUserId, allFilms = [] }) {
               : ''}</span>
             <span class="s-text">
               <span class="s-name">${U.escapeHtml(s.titleUk || s.title)}</span>
-              <span class="s-year">${[s.year || '', typeLabel(s.type), s.source === 'wiki' ? 'Вікіпедія' : ''].filter(Boolean).join(' · ')}</span>
+              <span class="s-year">${[s.year || '', typeLabel(s.type), sourceBadge(s)].filter(Boolean).join(' · ')}</span>
             </span>
           </button>`).join('');
       };
 
-      // Підказки без постера (часто — вікі-результати): тихо підтягуємо
+      // Підказки без постера (часто — вікі/вікідані-результати): тихо підтягуємо
       // зображення в фоні, тільки швидкі джерела (IMDb за tt-ID / TVMaze).
       const fillMissingPosters = async (list) => {
-        for (let i = 0; i < list.length && i < 8; i++) {
+        for (let i = 0; i < list.length && i < 12; i++) {
           const s = list[i];
           if (s.poster || (!s.imdbId && !s.title)) continue;
           if (gen !== searchGen || sugList.hidden) return;
@@ -194,7 +258,7 @@ export function openFormModal({ film = null, currentUserId, allFilms = [] }) {
 
       let items = [];
       try {
-        items = await cachedSearch(q, (partial) => {
+        items = await cachedSearch(raw, (partial) => {
           // Прогресивний малюнок: перші результати — одразу, поки
           // другий розділ Вікіпедії ще відповідає
           if (gen !== searchGen || sugList.hidden || !partial.length) return;
@@ -204,7 +268,8 @@ export function openFormModal({ film = null, currentUserId, allFilms = [] }) {
 
       if (gen !== searchGen) return; // застарілий результат — ігноруємо
       if (!items.length) {
-        sugList.innerHTML = note(icons.alert, 'Нічого не знайдено ні на IMDb, ні у Вікіпедії. Спробуйте іншу назву або заповніть поля вручну.');
+        sugList.innerHTML = note(icons.alert,
+          'Нічого не знайдено на IMDb, у Вікіпедії та Вікіданих. Спробуйте іншу назву, іншу мову або заповніть поля вручну.');
         return;
       }
       renderItems(items);
@@ -292,8 +357,8 @@ export function openFormModal({ film = null, currentUserId, allFilms = [] }) {
     if (!s) return;
     picked = s;
 
-    if (s.source === 'wiki') {
-      // Результат із Вікіпедії: укр. назва + оригінальна (якщо відрізняється)
+    if (s.source === 'wiki' || s.source === 'wikidata') {
+      // Результат із Вікіпедії/Вікіданих: укр. назва + оригінальна (якщо відрізняється)
       if (s.titleUk) set('fTitleUk', s.titleUk);
       if (s.title && (!s.titleUk || s.title.toLowerCase() !== s.titleUk.toLowerCase())) {
         set('fTitle', s.title);
@@ -303,7 +368,9 @@ export function openFormModal({ film = null, currentUserId, allFilms = [] }) {
     } else {
       set('fTitle', s.title);
     }
-    if (!val('fYear')) set('fYear', s.year ?? '');
+    // Рік: із підказки, або — якщо користувач сам вказав рік у запиті
+    // («... 2007») — із запиту
+    if (!val('fYear')) set('fYear', s.year ?? lastYearHint ?? '');
     if (!val('fPoster') && s.poster) { set('fPoster', s.poster); showPoster(box, s.poster); }
 
     // Вікі-результат часто несе готові дані — заповнюємо решту полів
@@ -313,7 +380,8 @@ export function openFormModal({ film = null, currentUserId, allFilms = [] }) {
     if (s.runtime) fillIfEmpty('fRuntime', s.runtime);
     if (s.plot) fillIfEmpty('fPlot', s.plot);
 
-    searchInput.value = `${s.titleUk || s.title}${s.year ? ` (${s.year})` : ''}`;
+    const shownYear = s.year ?? lastYearHint;
+    searchInput.value = `${s.titleUk || s.title}${shownYear ? ` (${shownYear})` : ''}`;
     hideSug();
     runEnrichment();
   }
