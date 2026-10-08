@@ -75,7 +75,7 @@ function mergeLists(imdbList, wikiList, query, expectedYear = null) {
     const at = (k ? idx.get(k) : undefined) ?? (ku ? idx.get(ku) : undefined);
     if (at !== undefined) {
       const keep = out[at];
-      for (const f of ['poster', 'plot', 'year', 'premiere', 'director', 'runtime', 'imdbId', 'qid', 'titleUk', 'type']) {
+      for (const f of ['poster', 'plot', 'year', 'premiere', 'director', 'runtime', 'imdbId', 'qid', 'titleUk', 'type', 'enWikiTitle']) {
         if (keep[f] == null && it[f] != null) keep[f] = it[f];
       }
       if ((!keep.genres || !keep.genres.length) && it.genres && it.genres.length) keep.genres = it.genres;
@@ -251,15 +251,16 @@ export function openFormModal({ film = null, currentUserId, allFilms = [] }) {
             : '');
       };
 
-      // Підказки без постера (часто — вікі-результати): тихо підтягуємо
-      // зображення в фоні, тільки швидкі джерела (IMDb за tt-ID / TVMaze).
+      // Підказки без постера: тихо підтягуємо зображення в фоні.
+      // Джерела (швидкі): IMDb за tt-ID -> en.Вікіпедія за точною
+      // назвою статті (pilicense=any віддає fair-use постери) -> TVMaze.
       const fillMissingPosters = async (list) => {
         for (let i = 0; i < list.length && i < 12; i++) {
           const s = list[i];
           if (s.poster || (!s.imdbId && !s.title)) continue;
           if (gen !== searchGen || sugList.hidden) return;
           try {
-            const url = await posterQuick({ imdbId: s.imdbId, title: s.title, year: s.year });
+            const url = await posterQuick({ imdbId: s.imdbId, title: s.title, enWikiTitle: s.enWikiTitle, qid: s.qid, year: s.year });
             if (gen !== searchGen || sugList.hidden) return;
             if (!url) continue; // цього джерела немає — пробуємо наступний рядок
             s.poster = url;
@@ -476,8 +477,8 @@ export function openFormModal({ film = null, currentUserId, allFilms = [] }) {
       }
       if (!val('fPoster') && d.poster) { set('fPoster', d.poster); showPoster(box, d.poster); }
 
-      // Постер усе ще порожній (en.Вікіпедія часто не віддає fair-use
-      // постери) — шукаємо за ланцюжком IMDb tt-ID → Wikidata → Вікіпедія
+      // Постер усе ще порожній — шукаємо за ланцюжком IMDb tt-ID →
+      // Wikidata sitelinks (en перша) → TVMaze → Вікіпедія (en → uk → ru)
       if (!val('fPoster')) {
         st.textContent = 'Шукаю постер…';
         try {

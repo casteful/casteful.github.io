@@ -14,11 +14,12 @@
 // найповільніше джерело. Усе fail-safe: будь-яка помилка лишає
 // список порожнім або з базовими даними (назва/постер/опис).
 //
-// Постер: en.Вікіпедія часто НЕ віддає мініатюри некомерційних
-// (fair-use) постерів, а uk. — віддає. Тому мініатюри дублікатів-
-// сторінок (та сама стаття в іншому розділі) об'єднуються, а для
-// вже збережених фільмів є fetchPoster(): IMDb за tt-ID →
-// Wikidata sitelinks → pageimages uk/en.
+// Постер: важливий нюанс API — MediaWiki prop=pageimages ЗА ГОСТОВОЮ
+// УМОВОЮ ховає некомерційні (fair-use) постери фільмів (параметр
+// pilicense за замовчуванням = "free"). Тому в УСІХ запитах pageimages
+// вказуємо pilicense=any — і en.Вікіпедія (де є стаття майже про кожен
+// фільм/серіал) віддає постер майже завжди. Для вже збережених фільмів
+// є fetchPoster(): IMDb за tt-ID → Wikidata sitelinks → pageimages.
 // ============================================================
 
 import { OMDB_API_KEY } from './config.js';
@@ -44,7 +45,8 @@ async function wikiSearch(lang, query, limit = 10) {
     `https://${lang}.wikipedia.org/w/api.php?action=query&format=json&origin=*` +
     `&generator=search&gsrlimit=${limit}&gsrsearch=${encodeURIComponent(query)}` +
     '&prop=pageimages|pageprops|extracts&exintro=1&explaintext=1&exlimit=max' +
-    '&piprop=thumbnail&pithumbsize=400';
+    // pilicense=any: без цього en.вікі НЕ віддає fair-use постери фільмів
+    '&piprop=thumbnail&pithumbsize=400&pilicense=any';
 
   const data = await fetchJSON(url, 6000);
   const pages = data && data.query ? Object.values(data.query.pages || {}) : [];
@@ -61,7 +63,7 @@ async function wikiPrefix(lang, query, limit = 6) {
     `https://${lang}.wikipedia.org/w/api.php?action=query&format=json&origin=*` +
     `&generator=prefixsearch&gpslimit=${limit}&gpssearch=${encodeURIComponent(query)}` +
     '&prop=pageimages|pageprops|extracts&exintro=1&explaintext=1&exlimit=max' +
-    '&piprop=thumbnail&pithumbsize=400';
+    '&piprop=thumbnail&pithumbsize=400&pilicense=any';
 
   const data = await fetchJSON(url, 4000);
   const pages = data && data.query ? Object.values(data.query.pages || {}) : [];
@@ -322,8 +324,9 @@ function looksLikeFilmByExtract(text) {
 
 // thumbs: спільна між пакетами мапа "QID або назва -> мініатюра".
 // Сторінки-дублікати (та сама стаття в uk/en розділі) відкидаються,
-// АЛЕ їхні мініатюри зберігаються тут: en.Вікіпедія часто не віддає
-// fair-use постери, а uk. — віддає. Тож постер "перетікає" з дубліката.
+// АЛЕ їхні мініатюри зберігаються тут: якщо в першого пакета мініатюри
+// не було, а в дубліката-статті (інший розділ вікі) — є, постер
+// "перетікає" з дубліката.
 async function collectItems(pages, seen, thumbs, rescueQuery = '') {
   // дедуплікація за QID або назвою (seen — спільний між розділами Вікіпедії)
   pages = pages.filter(p => {
@@ -392,6 +395,9 @@ async function collectItems(pages, seen, thumbs, rescueQuery = '') {
       poster,
       type,
       source: 'wiki',
+      // Точна назва статті en.Вікіпедії — за нею posterQuick швидко
+      // добирає мініатюру, якщо POSTER не прийшов одразу
+      enWikiTitle: (e && e.enWikiTitle) || (p._lang === 'en' ? p.title : null),
       director: (e && e.director) || null,
       genres: (e && e.genres) || [],
       cast: (e && e.cast) || [],
@@ -424,7 +430,7 @@ function dedupeItems(items) {
     if (at !== undefined) {
       // дублікат назви: доповнюємо перший елемент тим, що є в другому
       const keep = out[at];
-      for (const f of ['poster', 'plot', 'year', 'premiere', 'director', 'runtime', 'imdbId', 'qid']) {
+      for (const f of ['poster', 'plot', 'year', 'premiere', 'director', 'runtime', 'imdbId', 'qid', 'enWikiTitle']) {
         if (keep[f] == null && it[f] != null) keep[f] = it[f];
       }
       if ((!keep.genres || !keep.genres.length) && it.genres && it.genres.length) keep.genres = it.genres;
@@ -526,16 +532,14 @@ export async function qidByImdbId(tt) {
 
 // ============================================================
 // Пошук постера для фільму, доданого без нього (fetchPoster).
-//
-// Чому без постера: en.Вікіпедія часто не віддає fair-use постери
-// через API, а сторінка uk.розділу могла бути відкинута як дублікат.
 // Ланцюжок (перший успішний крок перемагає):
 //   1) IMDb Suggestion API за tt-ID — миттєво і точно, якщо відомий ID;
-//   2) Wikidata: QID за P345 -> sitelinks (uk/en/ru вікі) -> pageimages;
+//   2) Wikidata: QID за P345 -> sitelinks (en/uk/ru вікі) -> pageimages;
 //   3) TVMaze — серіали й шоу (швидке безкоштовне API з відкритим CORS);
 //   4) Wikidata P18 (кадр/фото, пов'язане саме з цим фільмом);
-//   5) Пошук сторінки uk/en/ru Вікіпедії з перевіркою року (щоб не
-//      чіпати однойменні книги/старі фільми).
+//   5) Пошук сторінки en/uk/ru Вікіпедії з перевіркою року (щоб не
+//      чіпати однойменні книги/старі фільми) — en.ПЕРШОЮ, бо стаття
+//      там є майже про все, а з pilicense=any є і постер.
 // ============================================================
 
 // TVMaze: безкоштовне API бази серіалів із відкритим CORS.
@@ -650,7 +654,7 @@ export async function fetchPoster({ imdbId, title, titleUk, year } = {}) {
     }
   }
 
-  // 2) Wikidata: IMDb ID -> QID -> sitelinks (uk/en/ru) -> pageimages
+  // 2) Wikidata: IMDb ID -> QID -> sitelinks (en/uk/ru) -> pageimages
   if (tt) {
     try {
       qid = await qidByImdbId(tt);
@@ -678,18 +682,22 @@ export async function fetchPoster({ imdbId, title, titleUk, year } = {}) {
   if (om) return om;
 
   // 5) Пошук за назвою (з перевіркою року, щоб не взяти постер
-  //    однойменного старого фільму чи книги)
+  //    однойменного старого фільму чи книги). en.Вікіпедія першою —
+  //    стаття там є майже про кожен фільм, користувач просив саме її.
   const wikiPosterSearch = async (lang, query) => {
     try {
       const url = `https://${lang}.wikipedia.org/w/api.php?action=query&format=json&origin=*` +
-        `&generator=search&gsrlimit=2&gsrsearch=${encodeURIComponent(query)}` +
+        `&generator=search&gsrlimit=4&gsrsearch=${encodeURIComponent(query)}` +
         '&prop=pageimages|pageprops|extracts&exintro=1&explaintext=1&exlimit=max' +
-        '&piprop=thumbnail&pithumbsize=500';
+        '&piprop=thumbnail&pithumbsize=500&pilicense=any';
       const data = await fetchJSON(url, 5000);
       const pages = data && data.query ? Object.values(data.query.pages || {}) : [];
       pages.sort((a, b) => (a.index || 999) - (b.index || 999));
       for (const p of pages) {
         if (!(p.thumbnail && p.thumbnail.source)) continue;
+        // сторінка має бути про фільм/серіал, а не про однойменну річ
+        if (p.pageprops && p.pageprops.disambiguation !== undefined) continue;
+        if (!looksLikeFilmByExtract(p.extract)) continue;
         if (!yearMatchesPage(p, year)) continue;
         return cleanThumb(p.thumbnail.source);
       }
@@ -697,14 +705,13 @@ export async function fetchPoster({ imdbId, title, titleUk, year } = {}) {
     return null;
   };
 
-  if (titleUk) {
-    const t = (year ? await wikiPosterSearch('uk', `${titleUk} ${year}`) : null)
-      || await wikiPosterSearch('uk', titleUk);
-    if (t) return t;
-  }
   if (title) {
     const t = await wikiPosterSearch('en', title)
       || (year ? await wikiPosterSearch('en', `${title} ${year}`) : null)
+      || (titleUk
+        ? ((year ? await wikiPosterSearch('uk', `${titleUk} ${year}`) : null)
+          || await wikiPosterSearch('uk', titleUk))
+        : null)
       || await wikiPosterSearch('ru', title);
     if (t) return t;
   }
@@ -724,8 +731,10 @@ function yearMatchesPage(page, year) {
   return new RegExp(`\\b${year}\\b\\s*року`).test(ex) || new RegExp(`\\b${year}\\b`).test(ex.slice(0, 120));
 }
 
-// Мініатюра за QID: sitelinks ukwiki/enwiki/ruwiki -> pageimages + P18 в кінці.
-// (ru.Вікіпедія, як і uk., дозволяє fair-use — постери там часто є)
+// Мініатюра за QID: sitelinks enwiki/ukwiki/ruwiki -> pageimages + P18 в кінці.
+// en.Вікіпедія — ПЕРША: стаття там є майже про кожен фільм/серіал, а з
+// pilicense=any віддає і fair-use постери. pilicense=any ОБОВ'ЯЗКОВИЙ:
+// дефолтний фільтр «free» ховає некомерційні постери (див. коментар зверху).
 export async function posterFromSitelinks(qid) {
   try {
     const data = await fetchJSON(`${WD_API}?action=wbgetentities&format=json&origin=*` +
@@ -734,13 +743,13 @@ export async function posterFromSitelinks(qid) {
     if (!ent) return null;
     const sl = ent.sitelinks || {};
     const tries = [];
-    if (sl.ukwiki && sl.ukwiki.title) tries.push({ lang: 'uk', title: sl.ukwiki.title });
     if (sl.enwiki && sl.enwiki.title) tries.push({ lang: 'en', title: sl.enwiki.title });
+    if (sl.ukwiki && sl.ukwiki.title) tries.push({ lang: 'uk', title: sl.ukwiki.title });
     if (sl.ruwiki && sl.ruwiki.title) tries.push({ lang: 'ru', title: sl.ruwiki.title });
     for (const t of tries) {
       try {
         const url = `https://${t.lang}.wikipedia.org/w/api.php?action=query&format=json&origin=*` +
-          `&titles=${encodeURIComponent(t.title)}&prop=pageimages&piprop=thumbnail&pithumbsize=500&redirects=1`;
+          `&titles=${encodeURIComponent(t.title)}&prop=pageimages&piprop=thumbnail&pithumbsize=500&pilicense=any&redirects=1`;
         const d = await fetchJSON(url, 5000);
         const pages = d && d.query ? Object.values(d.query.pages || {}) : [];
         const p = pages.find(x => x.thumbnail && x.thumbnail.source);
@@ -774,11 +783,80 @@ export async function posterFromQid(qid) {
 
 // ============================================================
 // Швидкий постер для ПІДКАЗОК (posterQuick) — тільки легкі джерела,
-// без повільних вікі-пошуків: IMDb за tt-ID -> TVMaze за назвою.
+// без повільних вікі-пошуків: en.Вікіпедія за точною назвою ->
+// IMDb за tt-ID -> TVMaze за назвою.
 // Викликається фоново для рядків підказок без зображення.
 // ============================================================
-export async function posterQuick({ imdbId, title, year } = {}) {
+
+// Мініатюра з en.Вікіпедії (легкий запит): 1) точна стаття за назвою
+// (sitelink із Вікіданих або заголовок результату), 2) пошук із
+// перевіркою року. pilicense=any ОБОВ'ЯЗКОВИЙ — дефолтний фільтр
+// «free» ховає fair-use постери фільмів (саме через це en.вікі
+// здавалася «розділом без постерів»). Обидва кроки перевіряють, що
+// стаття дійсно про фільм/серіал: «Parasite» редиректить на біологічну
+// статтю «Parasitism» — без перевірки підтягнувся б кадр паразита.
+export async function enWikiThumb(title, year) {
+  const t = String(title || '').trim();
+  if (!t) return null;
+  // Сторінка дійсно про фільм/серіал? (не значення, не біологія/книга…)
+  const filmPage = p =>
+    p.missing === undefined &&
+    !(p.pageprops && p.pageprops.disambiguation !== undefined) &&
+    looksLikeFilmByExtract(p.extract);
+
+  // 1) точна назва статті (redirects=1 опрацьовує перенаправлення)
+  try {
+    const url = 'https://en.wikipedia.org/w/api.php?action=query&format=json&origin=*' +
+      '&titles=' + encodeURIComponent(t) + '&redirects=1' +
+      '&prop=pageimages|pageprops|extracts&exintro=1&explaintext=1&exlimit=max' +
+      '&piprop=thumbnail&pithumbsize=400&pilicense=any';
+    const data = await fetchJSON(url, 4500);
+    const pages = data && data.query ? Object.values(data.query.pages || {}) : [];
+    const p = pages.find(x => x.thumbnail && x.thumbnail.source && filmPage(x));
+    if (p) return cleanThumb(p.thumbnail.source);
+  } catch (e) { /* далі пошук */ }
+
+  // 2) пошук за назвою (рік відсіює однойменні книги/старі фільми).
+  // gsrlimit=6: видача пошуку нестабільна — за загальними назвами («Alien»)
+  // дезамбігуляція/франшиза витісняють сам фільм з топ-2; guard'и нижче
+  // (filmPage + yearMatchesPage) самі вибирають правильну статтю.
+  try {
+    const url = 'https://en.wikipedia.org/w/api.php?action=query&format=json&origin=*' +
+      '&generator=search&gsrlimit=6&gsrsearch=' + encodeURIComponent(t) +
+      '&prop=pageimages|pageprops|extracts&exintro=1&explaintext=1&exlimit=max' +
+      '&piprop=thumbnail&pithumbsize=400&pilicense=any';
+    const data = await fetchJSON(url, 4500);
+    const pages = data && data.query ? Object.values(data.query.pages || {}) : [];
+    pages.sort((a, b) => (a.index || 999) - (b.index || 999));
+    for (const p of pages) {
+      if (!(p.thumbnail && p.thumbnail.source)) continue;
+      if (!filmPage(p)) continue;
+      if (!yearMatchesPage(p, year)) continue;
+      return cleanThumb(p.thumbnail.source);
+    }
+  } catch (e) { /* тихо */ }
+  return null;
+}
+
+export async function posterQuick({ imdbId, title, enWikiTitle, qid, year } = {}) {
   const tt = (imdbId && /^tt\d+$/.test(String(imdbId))) ? imdbId : null;
+  // 1) en.Вікіпедія за ТОЧНОЮ назвою статті з Вікіданих — один легкий
+  // запит, зображення належить саме ЦІЙ статті. Для вікі-рядків це
+  // важливо ще й безпечно: P345 у Вікіданнах буває помилковим
+  // («Monster: The Ed Gein Story» має tt антології «Monster»), і
+  // постер за таким tt — постер ІНШОГО фільму.
+  if (enWikiTitle) {
+    const u = await enWikiThumb(enWikiTitle, year);
+    if (u) return u;
+  }
+  // 2) QID -> sitelinks (en -> uk -> ru): покриває рядки, відомі лише
+  //    за укр. назвою («Касабланка» на en.вікі — "Casablanca (film)")
+  if (qid && /^Q\d+$/.test(qid)) {
+    const u = await posterFromSitelinks(qid);
+    if (u) return u;
+  }
+  // 3) IMDb за tt-ID — миттєво і канонічно (для рядків із IMDb це перше
+  // джерело, бо enWikiTitle/qid у них немає)
   if (tt) {
     const urls = [
       `https://v3.sg.media-imdb.com/suggestion/t/${encodeURIComponent(tt)}.json?includeVideos=0`,
@@ -792,6 +870,9 @@ export async function posterQuick({ imdbId, title, year } = {}) {
       } catch (e) { /* наступне дзеркало */ }
     }
   }
+  // 4) назва рядка підказки (en або uk) — точна стаття або пошук en.вікі
+  const wiki = title ? await enWikiThumb(title, year) : null;
+  if (wiki) return wiki;
   if (title) return (await tvmazePoster(title, tt, year)) || omdbPoster({ title, year });
   return omdbPoster({ imdbId: tt, year });
 }

@@ -102,7 +102,8 @@ async function wikiSummary(lang, search) {
   const url =
     `https://${lang}.wikipedia.org/w/api.php?action=query&format=json&origin=*` +
     '&generator=search&gsrlimit=1&prop=extracts|pageimages&exintro=1&explaintext=1&exlimit=1' +
-    '&piprop=thumbnail&pithumbsize=500&gsrsearch=' + encodeURIComponent(search);
+    // pilicense=any: без цього en.вікі ховає fair-use постери фільмів
+    '&piprop=thumbnail&pithumbsize=500&pilicense=any&gsrsearch=' + encodeURIComponent(search);
 
   const data = await fetchJSON(url, 8000);
   const pages = data && data.query ? Object.values(data.query.pages || {}) : [];
@@ -110,7 +111,8 @@ async function wikiSummary(lang, search) {
   const p = pages[0];
   return {
     plot: (p.extract || '').trim() || null,
-    poster: (p.thumbnail && p.thumbnail.source) || null
+    // чистимо ?utm_source=… — тримаємо URL постерів охайними
+    poster: String(p.thumbnail && p.thumbnail.source || '').replace(/\?utm_source=.*$/, '') || null
   };
 }
 
@@ -121,7 +123,7 @@ async function wikiArticleByTitle(lang, title) {
     `https://${lang}.wikipedia.org/w/api.php?action=query&format=json&origin=*` +
     '&titles=' + encodeURIComponent(title) + '&redirects=1' +
     '&prop=extracts|pageimages&exintro=1&explaintext=1' +
-    '&piprop=thumbnail&pithumbsize=500';
+    '&piprop=thumbnail&pithumbsize=500&pilicense=any';
 
   const data = await fetchJSON(url, 8000);
   const pages = data && data.query ? Object.values(data.query.pages || {}) : [];
@@ -130,7 +132,7 @@ async function wikiArticleByTitle(lang, title) {
   if (p.missing !== undefined) return {};
   return {
     plot: (p.extract || '').trim() || null,
-    poster: (p.thumbnail && p.thumbnail.source) || null
+    poster: String(p.thumbnail && p.thumbnail.source || '').replace(/\?utm_source=.*$/, '') || null
   };
 }
 

@@ -124,7 +124,8 @@ tgConfig/
   "Monster" anthology), while Wikipedia does — so the two lists are always
   combined and an exact-title match (Ukrainian or original) is raised to the
   top. Suggestions that arrive without a poster get one quietly filled in
-  from fast sources (IMDb by tt-ID → TVMaze) in the background.
+  from fast sources in the background (en.Wikipedia by exact article name →
+  Wikidata sitelinks → IMDb by tt-ID → TVMaze).
 - **Seasons rescued when typed exactly** — Wikidata entities classified as a
   TV-series season (`Q3464665`) are normally filtered out of suggestions, BUT
   an entity whose English or Ukrainian label matches the user's query letter-
@@ -184,10 +185,18 @@ tgConfig/
   with an English-Wikipedia-first plot chain — all optional and fail-safe.
   The SPARQL endpoint stays as a fallback when the fast path returns nothing.
 - Poster chain (first hit wins): IMDb by `tt`-ID → Wikidata sitelinks
-  (uk → en → **ru** Wikipedia, the latter two serve fair-use posters through
-  the API when en doesn't) → **TVMaze** (free, CORS-open — the best source for
-  series key art) → Wikidata `P18` → Wikipedia article search by title with a
-  release-year sanity check so a same-named older film can't donate its poster.
+  (**en → uk → ru** Wikipedia) → **TVMaze** (free, CORS-open — the best source
+  for series key art) → Wikidata `P18` → Wikipedia article search by title
+  (en → uk → ru) with a release-year sanity check so a same-named older film
+  can't donate its poster.
+- **`pilicense=any` on every `prop=pageimages` request** — MediaWiki defaults
+  this parameter to `free`, which silently hides ALL fair-use film posters
+  (almost every film poster on en.Wikipedia is fair-use). Without it en.wiki
+  looked like it "had no posters"; with it nearly every suggestion row and
+  film gets a thumbnail, because en.Wikipedia has an article for almost every
+  film/series. Wiki-sourced images are guarded by a film-likeness check
+  (extract text + disambiguation/redirect guard) so a generic title like
+  "Parasite" can't pull the image from the biology article "Parasitism".
 - Poster images are hot-linked from the IMDb/Amazon image CDN, TVMaze or Wikimedia.
 
 ### Mobile / iOS specifics
