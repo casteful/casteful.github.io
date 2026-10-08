@@ -816,33 +816,41 @@ td.u-col.mine:hover { background: color-mix(in srgb, var(--accent) 9%, var(--sur
 .rt-track {
   display: flex;
   gap: 3px;
+  justify-content: space-between;
 }
 
+/* 10 зірочок: кожна = 1 бал; заливаються до обраної оцінки.
+   Колір кожної зірки — її власний рівень (від червоного до зеленого). */
 .rt-seg {
   flex: 1;
-  height: 17px;
-  border-radius: 5px;
-  background: var(--surface-2);
-  background: color-mix(in srgb, var(--c) 14%, var(--surface-2));
-  transition: transform 0.16s var(--ease-spring), background-color 0.16s ease, box-shadow 0.16s ease;
+  max-width: 30px;
+  aspect-ratio: 1;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--border-strong);
+  transition: transform 0.16s var(--ease-spring), color 0.16s ease;
 }
-.rt-seg:hover { transform: scaleY(1.28) translateY(-1px); }
+.rt-seg svg {
+  width: 86%;
+  height: 86%;
+  fill: transparent;
+  stroke: currentColor;
+  stroke-width: 1.4;
+  stroke-linejoin: round;
+  transition: fill 0.15s ease;
+}
+.rt-seg:hover { transform: scale(1.2); }
 .rt-seg.on {
-  background: var(--c);
-  box-shadow: 0 1px 5px color-mix(in srgb, var(--c) 45%, transparent);
+  color: var(--c);
 }
-
-.rt-nums { display: flex; gap: 3px; }
-.rt-nums i {
-  flex: 1;
-  text-align: center;
-  font-style: normal;
-  font-size: 10px;
-  font-weight: 700;
-  color: var(--muted);
-  font-variant-numeric: tabular-nums;
-  opacity: 0.75;
+.rt-seg.on svg {
+  fill: currentColor;
+  stroke: currentColor;
+  filter: drop-shadow(0 1px 3px color-mix(in srgb, var(--c) 40%, transparent));
 }
+.rt-seg:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 .remove-rating {
   align-self: center;
@@ -930,10 +938,9 @@ td.u-col.mine:hover { background: color-mix(in srgb, var(--accent) 9%, var(--sur
 .rate-pop.sheet .rate-pop-title { font-size: 16px; text-align: center; white-space: normal; }
 .rate-pop.sheet .rate-pop-sub { text-align: center; margin-bottom: 16px; }
 
-.rate-pop.sheet .rt-seg { height: 24px; border-radius: 7px; }
+.rate-pop.sheet .rt-seg { max-width: 34px; }
 .rate-pop.sheet .rt-value { font-size: 46px; }
 .rate-pop.sheet .rt-display { min-height: 48px; justify-content: center; }
-.rate-pop.sheet .rt-nums i { font-size: 12px; opacity: 1; }
 .rate-pop.sheet .remove-rating { margin-top: 10px; font-size: 13.5px; }
 
 /* ---------- Модальні вікна ---------- */
@@ -1836,7 +1843,7 @@ td.u-col.mine:hover { background: color-mix(in srgb, var(--accent) 9%, var(--sur
 
 .toast-root {
   position: fixed;
-  bottom: 20px;
+  top: calc(64px + env(safe-area-inset-top, 0px));
   left: 50%;
   transform: translateX(-50%);
   z-index: 130;
@@ -1862,7 +1869,7 @@ td.u-col.mine:hover { background: color-mix(in srgb, var(--accent) 9%, var(--sur
   font-weight: 700;
   box-shadow: var(--shadow-lg);
   opacity: 0;
-  transform: translateY(14px) scale(0.94);
+  transform: translateY(-14px) scale(0.94);
   transition: opacity 0.25s ease, transform 0.3s var(--ease-spring);
 }
 .toast.show { opacity: 1; transform: translateY(0) scale(1); }
@@ -1871,6 +1878,102 @@ td.u-col.mine:hover { background: color-mix(in srgb, var(--accent) 9%, var(--sur
 .toast svg path, .toast svg circle { stroke-width: 2.4; }
 .toast:not(.err) svg { color: #6fce67; }
 .toast.err svg { color: #ff8d8d; }
+
+/* ---------- Telegram-сповіщення ---------- */
+
+.tg-setup { display: flex; flex-direction: column; gap: 13px; padding: 4px 20px 0; }
+
+.tg-status {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--muted);
+}
+.tg-status i {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--border-strong);
+  flex-shrink: 0;
+}
+.tg-status.ok { color: var(--text); }
+.tg-status.ok i {
+  background: #6fce67;
+  box-shadow: 0 0 0 3px color-mix(in srgb, #6fce67 25%, transparent);
+}
+
+.tg-hint {
+  font-size: 12.5px;
+  color: var(--muted);
+  font-weight: 600;
+  line-height: 1.55;
+}
+
+.tg-actions { display: flex; gap: 9px; flex-wrap: wrap; }
+
+.tg-chats { display: flex; flex-direction: column; gap: 7px; }
+.tg-wait {
+  font-size: 13px;
+  color: var(--muted);
+  font-weight: 600;
+  padding: 9px 2px;
+  line-height: 1.5;
+}
+.tg-chat {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 13px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+.tg-chat:hover { background: var(--surface-2); }
+.tg-chat.picked { border-color: var(--accent); background: var(--accent-soft); }
+.tg-chat input { accent-color: var(--accent); }
+.tg-chat-title { font-weight: 700; font-size: 14px; }
+.tg-chat-type {
+  margin-left: auto;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.tg-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 36px;
+}
+.tg-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13.5px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.tg-toggle input { accent-color: var(--accent); width: 17px; height: 17px; }
+
+/* Зелена крапка на кнопці літака, коли сповіщення підключені */
+.icon-btn#tgBtn { position: relative; }
+.icon-btn#tgBtn.has-tg::after {
+  content: '';
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #6fce67;
+  box-shadow: 0 0 0 2px var(--surface);
+}
 
 /* ---------- Анімації ---------- */
 
@@ -2032,7 +2135,7 @@ td.u-col.mine:hover { background: color-mix(in srgb, var(--accent) 9%, var(--sur
   .rec-list { grid-template-columns: 1fr; }
   .u-cards { grid-template-columns: repeat(auto-fit, minmax(108px, 1fr)); gap: 8px; }
 
-  .toast-root { bottom: calc(14px + env(safe-area-inset-bottom, 0px)); }
+  .toast-root { top: calc(106px + env(safe-area-inset-top, 0px)); }
 
   /* Вибір профілю — теж із урахуванням безпечних зон */
   .user-overlay {

@@ -23,3 +23,9 @@ export const USERS = [
   { id: "burlaka21", name: "burlaka21", color: "#ef6a8b" },
   { id: "oddfriend", name: "oddfriend", color: "#4aa3e8" }
 ];
+
+// OMDb API (необов'язкове джерело постерів).
+// Отримайте безкоштовний ключ на https://www.omdbapi.com/apikey.aspx
+// і вставте його сюди. Порожній рядок = OMDb не використовується
+// (додаток тоді шукає постери через IMDb / Wikidata / TVMaze / Вікіпедію).
+export const OMDB_API_KEY = "";

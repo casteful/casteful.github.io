@@ -53,3 +53,15 @@ export async function deleteFilm(filmId) {
 export async function setRating(filmId, user, score) {
   await set(ref(db, `films/${filmId}/ratings/${user}`), score ?? null);
 }
+
+// ---------- Налаштування Telegram-сповіщень (спільні для всіх) ----------
+export function onTgConfig(cb) {
+  return onValue(
+    ref(db, 'tgConfig'),
+    (snap) => cb(snap.val() || null),
+    (err) => { console.warn('[store] tgConfig:', err && err.code); cb(null); }
+  );
+}
+export async function setTgConfig(cfg) {
+  await set(ref(db, 'tgConfig'), cfg);
+}

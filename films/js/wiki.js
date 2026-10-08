@@ -21,6 +21,8 @@
 // Wikidata sitelinks → pageimages uk/en.
 // ============================================================
 
+import { OMDB_API_KEY } from './config.js';
+
 const WD_API = 'https://www.wikidata.org/w/api.php';
 
 async function fetchJSON(url, timeoutMs = 8000, headers = {}) {
@@ -481,6 +483,26 @@ async function tvmazePoster(title, imdbId, year) {
   } catch (e) { return null; }
 }
 
+// OMDb (лише якщо в config.js вставлено безкоштовний ключ) —
+// надійне джерело постерів: точний збіг за IMDb ID або назва+рік
+async function omdbPoster({ imdbId, title, year }) {
+  if (!OMDB_API_KEY) return null;
+  try {
+    const params = new URLSearchParams({ apikey: OMDB_API_KEY });
+    if (imdbId && /^tt\d+$/.test(String(imdbId))) params.set('i', String(imdbId));
+    else {
+      if (!title) return null;
+      params.set('t', String(title));
+      if (year) params.set('y', String(year));
+    }
+    const d = await fetchJSON('https://www.omdbapi.com/?' + params.toString(), 5000);
+    if (d && d.Response !== 'False' && d.Poster && d.Poster !== 'N/A') {
+      return cleanThumb(d.Poster);
+    }
+  } catch (e) { /* OMDb не критичний */ }
+  return null;
+}
+
 export async function fetchPoster({ imdbId, title, titleUk, year } = {}) {
   const tt = (imdbId && /^tt\d+$/.test(String(imdbId))) ? imdbId : null;
   let qid = null;
@@ -525,6 +547,10 @@ export async function fetchPoster({ imdbId, title, titleUk, year } = {}) {
     const p18 = await posterP18(qid);
     if (p18) return p18;
   }
+
+  // 4.5) OMDb (якщо є ключ у config.js) — постери, яких немає ніде вище
+  const om = await omdbPoster({ imdbId: tt, title, year });
+  if (om) return om;
 
   // 5) Пошук за назвою (з перевіркою року, щоб не взяти постер
   //    однойменного старого фільму чи книги)
@@ -641,6 +667,6 @@ export async function posterQuick({ imdbId, title, year } = {}) {
       } catch (e) { /* наступне дзеркало */ }
     }
   }
-  if (title) return tvmazePoster(title, tt, year);
-  return null;
+  if (title) return (await tvmazePoster(title, tt, year)) || omdbPoster({ title, year });
+  return omdbPoster({ imdbId: tt, year });
 }

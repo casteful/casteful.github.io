@@ -5,9 +5,10 @@ light/dark theme, built as a **zero-build static site** — perfect for GitHub P
 
 ## Features
 
-- **Effortless rating — the 1–10 “trail” scale** — one tap on «Оцінити» opens a color-coded scale right next to the button (a large bottom sheet on phones). Segments fill with a red→green ramp up to the chosen value, a big number + word caption («Добре», «Шедевр»…) reacts live to hovering, and a tap saves instantly. The same trail lives in the film window. Keyboard: digits 1–9, 0 = 10, ←/→, Esc.
+- **Effortless rating — ten golden stars** — one tap on «Оцінити» opens a 10-star scale right next to the button (a large bottom sheet on phones). Stars fill with a red→green ramp up to the chosen value (each star keeps its own level colour), a big number + word caption («Добре», «Шедевр»…) reacts live to hovering, and a tap saves instantly. The same stars live in the film window. Keyboard: digits 1–9, 0 = 10, ←/→, Esc.
+- **Telegram pushes** — an elegant one-line Ukrainian message lands in your group when someone adds or deletes a film, or rates / changes / removes a rating (e.g. «surguy оцінив фільм «Інтерстеллар» на 8/10», «surguy змінив оцінку: 7 → 9»). Setup is one person's job: tap the paper-plane in the header, paste a free @BotFather token, add the bot to the group, send /start there — the app finds the chat automatically and stores the shared config in Firebase. Pushes are sent by the acting device only (no duplicates) and never block or break the UI; failures stay silent. The plane button gets a green dot while notifications are on.
 - **Cinematic card grid** — vertical poster cards with the average score on the poster, a full-width rate button and friends' scores as colored chips; 2-column layout on phones. A compact **table** view with a rating column per friend is one tap away; both views remember your choice.
-- **Beautiful film window** — poster blurred into a hero header with the title, director, genres and cast; the 1–10 trail for your own score; everyone's scores in one list.
+- **Beautiful film window** — poster blurred into a hero header with the title, director, genres and cast; the 10-star scale for your own score; everyone's scores in one list.
 - **Smart adding** — start typing a film name (Ukrainian or English) and pick it from live suggestions; poster, year, Ukrainian title, director, cast, genres, runtime and plot are fetched automatically (IMDb + Wikipedia + Wikidata). Everything stays manually editable.
 - **Clickable people & genres** — tap any director, actor or genre (in the film window or in statistics) to see all matching films of the club.
 - **Statistics tab** — totals (films, ratings, average, shared cinema-hours, most active viewer), club records (best / worst / most controversial / most discussed / oldest / newest), top films, favourite genres, top actors and directors, rating histogram, decades, runtime stats and per-viewer profiles («strictest critic» vs «most generous viewer»).
@@ -69,6 +70,14 @@ error, open **Firebase Console → Realtime Database → Rules** and publish:
 - **Add / remove friends**: edit the `USERS` array in `js/config.js`
   (id, display name, avatar color).
 - **Change Firebase project**: edit `firebaseConfig` in `js/config.js`.
+- **OMDb poster fallback (optional)**: get a free API key at
+  <https://www.omdbapi.com/apikey.aspx> and paste it into `OMDB_API_KEY`
+  in `js/config.js`. With a key, OMDb joins the poster fallback chain
+  (after TVMaze / Wikidata P18, before the Wikipedia title search);
+  without a key the app silently skips it.
+- **Telegram notifications**: none needed in code — use the ✈ button in
+  the header (see above). To move to another bot/chat, just reconnect;
+  config lives in the `tgConfig` node of the shared database.
 - Profile choice, theme, list view and sorting are stored in each browser's
   `localStorage` (`films_user`, `films_theme`, `films_view`, `films_sort`).
 
@@ -92,6 +101,11 @@ films/
     ratings:
       surguy:   9
       q1oob:    8
+tgConfig/
+  enabled:    true
+  token:      "123456:AA..."   # from @BotFather
+  chatId:     -1002222...      # group chat id (found via getUpdates)
+  chatTitle:  "Кіноклуб"
 ```
 
 ## Tech notes

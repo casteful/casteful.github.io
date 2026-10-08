@@ -8,6 +8,7 @@ import * as store from './store.js';
 import * as U from './utils.js';
 import { toast, openModal, confirmDialog, icons, lockScroll, unlockScroll } from './ui.js';
 import { openFormModal } from './film-form.js';
+import { notifyRatingSet, notifyRatingRemoved, notifyFilmDeleted } from './telegram.js';
 
 let container = null;
 let gridEl = null;
@@ -400,6 +401,9 @@ const RATE_LABELS = {
   6: 'Нормально', 7: 'Добре', 8: 'Дуже добре', 9: 'Чудово', 10: 'Шедевр'
 };
 
+// Зірочка для шкали оцінки (розмір/колір керується CSS)
+const STAR_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.9l2.8 5.8 6.4.9-4.6 4.5 1.1 6.3L12 17.4l-5.7 3 1.1-6.3-4.6-4.5 6.4-.9z"/></svg>';
+
 function closeRatePop() {
   if (!ratePop) return;
   const { el, backdrop, sheet } = ratePop;
@@ -450,26 +454,24 @@ function buildRatePop(film) {
   return pop;
 }
 
-// ---------- Компонент «шкала оцінки» (trail) ----------
-// Єдина шкала 1–10 для спливашок, шітів і модалки: сегменти
+// ---------- Компонент «шкала оцінки» (зорі) ----------
+// Єдина шкала 1–10 для спливашок, шітів і модалки: 10 зірочок,
 // заливаються кольором до обраного значення (від червоного до
 // зеленого), над шкалою — велике число і слово-підпис.
 // Наведення показує прев'ю, клік зберігає миттєво.
 
 function rateTrailHTML(selected) {
-  const segs = Array.from({ length: 10 }, (_, i) => {
+  const stars = Array.from({ length: 10 }, (_, i) => {
     const s = i + 1;
     const on = selected != null && s <= selected;
-    return `<button type="button" class="rt-seg ${on ? 'on' : ''}" data-score="${s}" style="--c:${U.ratingColor(s)}" aria-label="${s} — ${RATE_LABELS[s]}"></button>`;
+    return `<button type="button" class="rt-seg ${on ? 'on' : ''}" data-score="${s}" style="--c:${U.ratingColor(s)}" aria-label="${s} — ${RATE_LABELS[s]}">${STAR_SVG}</button>`;
   }).join('');
-  const nums = Array.from({ length: 10 }, (_, i) => `<i>${i + 1}</i>`).join('');
   return `
     <div class="rt-display">
       <span class="rt-value"${selected != null ? ` style="color:${U.ratingColor(selected)}"` : ''}>${selected != null ? selected : '—'}</span>
       <span class="rt-word">${selected != null ? RATE_LABELS[selected] : 'Оберіть оцінку'}</span>
     </div>
-    <div class="rt-track">${segs}</div>
-    <div class="rt-nums" aria-hidden="true">${nums}</div>`;
+    <div class="rt-track">${stars}</div>`;
 }
 
 // Перемалювати шкалу в контейнері root на значення s (null — «порожньо»)
@@ -561,13 +563,15 @@ function openRatePop(anchor, film) {
   ratePop = { el: pop, backdrop, sheet: isSheet };
   requestAnimationFrame(() => pop.classList.add('show'));
 
-  // Вибір оцінки: клік по числу. Повторний клік по тому ж числу прибирає.
+  // Вибір оцінки: клік по зірці. Повторний клік по тій самій прибирає.
   const pick = async (score) => {
     const cur = (film.ratings || {})[currentUserId];
     const next = (cur === score) ? null : score;
     try {
       await store.setRating(film.id, currentUserId, next);
       toast(next == null ? 'Оцінку прибрано' : `Ваша оцінка: ${next}${next >= 9 ? ' ✨' : ''}`);
+      if (next == null) notifyRatingRemoved(currentUserId, fTitle(film));
+      else notifyRatingSet(currentUserId, fTitle(film), next, cur != null ? cur : null);
       closeRatePop();
     } catch (err) {
       console.error(err);
@@ -759,6 +763,8 @@ function wireDetail(box) {
       try {
         await store.setRating(film.id, currentUserId, next);
         toast(next == null ? 'Оцінку прибрано' : `Ваша оцінка: ${next}${next >= 9 ? ' ✨' : ''}`);
+        if (next == null) notifyRatingRemoved(currentUserId, fTitle(film));
+        else notifyRatingSet(currentUserId, fTitle(film), next, cur != null ? cur : null);
       } catch (err) {
         console.error(err);
         toast('Не вдалося зберегти оцінку', 'err');
@@ -771,6 +777,7 @@ function wireDetail(box) {
       try {
         await store.setRating(film.id, currentUserId, null);
         toast('Оцінку прибрано');
+        notifyRatingRemoved(currentUserId, fTitle(film));
       } catch (err) {
         console.error(err);
         toast('Не вдалося прибрати оцінку', 'err');
@@ -803,6 +810,7 @@ function wireDetail(box) {
       // (detailState став null). Раніше тут був detailState.close(),
       // який падав з TypeError -> показувалась і помилка, і успіх.
       toast('Фільм видалено');
+      notifyFilmDeleted(currentUserId, fTitle(film));
       if (detailState) { detailState.close(); detailState = null; }
     }
   });
