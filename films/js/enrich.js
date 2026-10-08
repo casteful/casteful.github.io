@@ -1,10 +1,16 @@
 // ============================================================
-// Збагачення даних про фільм:
-//  1) Wikidata SPARQL (за IMDb ID) -> українська назва, режисер,
-//     жанри, тривалість, опис українською
-//  2) Українська Вікіпедія (фолбек) -> опис/сюжет, зображення
+// Збагачення даних про фільм (порядок — «спочатку те, що швидше»):
+//  1) Wikidata через швидкий wbgetentities (IMDb ID -> QID -> claims,
+//     мітки, sitelinks) — укр. назва/жанри/актори/режисер/рік/прем'єра
+//  2) СПАРКЛ-резерв (якщо швидкий шлях не дав основних полів)
+//  3) Українська Вікіпедія (точна стаття за sitelink, потім пошук) -> сюжет
+//  4) АНГЛІЙСЬКА Вікіпедія — страховка: якщо укр. сюжету немає ніде,
+//     беремо англійський, щоб поля не лишалися порожніми
 // Усе опціонально: будь-яка помилка просто лишає поля порожніми.
 // ============================================================
+
+import { qidByImdbId, enrichByQid } from './wiki.js';
+import { translateGenres } from './utils.js';
 
 const WD_ENDPOINT = 'https://query.wikidata.org/sparql';
 
@@ -68,6 +74,25 @@ SELECT ?ukLabel ?ukDesc ?directorLabel ?genreLabel ?actorLabel ?duration ?date ?
   const cast = [...new Set(rows.map(r => r.actorLabel && r.actorLabel.value).filter(Boolean))];
   if (cast.length) out.cast = cast.slice(0, 6);
 
+  // Рік і прем'єра з P577 (?date у SELECT довго ігнорувався): найраніша
+  // дата виходу — «рік фільму»; якщо у Вікіданих є дата з точністю до
+  // дня — це прем'єра («2007-09-24»). «01-01» = рік без дня, її лишаємо
+  // лише роком, щоб не показувати вигадане 1 січня.
+  let premiere = null, pYear = null;
+  for (const raw of rows.map(r => r.date && r.date.value)) {
+    const m = String(raw || '').match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (!m) continue;
+    const y = parseInt(m[1], 10);
+    if (y < 1888 || y > 2100) continue;
+    if (pYear == null || y < pYear) pYear = y;
+    if (!(m[2] === '01' && m[3] === '01')) {
+      const iso = `${m[1]}-${m[2]}-${m[3]}`;
+      if (premiere == null || iso < premiere) premiere = iso;
+    }
+  }
+  if (pYear != null) out.year = pYear;
+  if (premiere) out.premiere = premiere;
+
   return out;
 }
 
@@ -90,9 +115,9 @@ async function wikiSummary(search) {
 
 // Пряме читання статті за ТОЧНОЮ назвою (titles=, без пошуку) —
 // найнадійніший спосіб отримати сюжет саме про цей фільм/серіал
-async function wikiArticleByTitle(title) {
+async function wikiArticleByTitle(lang, title) {
   const url =
-    'https://uk.wikipedia.org/w/api.php?action=query&format=json&origin=*' +
+    `https://${lang}.wikipedia.org/w/api.php?action=query&format=json&origin=*` +
     '&titles=' + encodeURIComponent(title) + '&redirects=1' +
     '&prop=extracts|pageimages&exintro=1&explaintext=1' +
     '&piprop=thumbnail&pithumbsize=500';
@@ -111,14 +136,16 @@ async function wikiArticleByTitle(title) {
 // Перевірка, що вступ статті дійсно про фільм/серіал, а не про однойменну
 // книгу/теорію/людину і не про сторінку значень. «Теорія великого вибуху»
 // (серіал) — «американський серіал…» ✓; «Великий вибух» (космологія) — ✗.
-const FILM_WORDS_RE = /фільм|серіал|мінісеріал|мультфільм|мультсеріал|короткометражк|анімаційн|телевізійн/i;
+const FILM_WORDS_RE = /фільм|серіал|мультфільм|мультсеріал|короткометражк|анімаційн|телевізійн/i;
+// Англійська страховка: «is an American television series…», «…is a 2014 film»
+const EN_FILM_WORDS_RE = /\b(film|movie|series|television|miniseries|mini-series|anthology|documentary|sitcom)\b/i;
 const DAB_RE = /може означати|багатозначн|список значень|may refer to|disambiguation/i;
 
 function extractLooksLikeFilm(extract, expectTitles) {
   const head = String(extract || '').slice(0, 400);
   if (!head) return false;
   if (DAB_RE.test(head)) return false;
-  if (FILM_WORDS_RE.test(head)) return true;
+  if (FILM_WORDS_RE.test(head) || EN_FILM_WORDS_RE.test(head)) return true;
   const low = head.toLowerCase();
   return (expectTitles || []).some(t => {
     const s = String(t || '').toLowerCase().trim();
@@ -126,22 +153,46 @@ function extractLooksLikeFilm(extract, expectTitles) {
   });
 }
 
-// Головна функція: повертає { titleUk, director, genres[], runtime, plot, poster }
+// Головна функція: повертає { titleUk, director, genres[], runtime, plot,
+// poster, year, premiere, ukWikiTitle, enWikiTitle }
 export async function enrichFilm({ imdbId, title, year, titleUkHint }) {
   let out = {};
+
+  // ---- 1) ШВИДКИЙ ШЛЯХ: IMDb ID -> QID -> wbgetentities (кілька сотень мс,
+  // надійніше за SPARQL — без черг і довгих таймаутів).
+  let qid = null;
   try {
-    out = await enrichByImdbId(imdbId);
-  } catch (e) {
-    console.warn('[enrich] Wikidata недоступна:', e && e.message);
+    qid = await qidByImdbId(imdbId);
+    if (qid) out = await enrichByQid(qid);
+  } catch (e) { out = {}; }
+
+  // ---- 2) СПАРКЛ-РЕЗЕРВ: лише якщо швидкий шлях не дав основних полів
+  // (він же дає короткий uk-опис ukDesc — запасний сюжет)
+  const coreOk = out.titleUk || out.director || (out.genres && out.genres.length);
+  if (!coreOk) {
+    try {
+      const d = await enrichByImdbId(imdbId);
+      for (const k of ['titleUk', 'director', 'runtime', 'ukWikiTitle', 'year', 'premiere', 'desc']) {
+        if (d[k] && !out[k]) out[k] = d[k];
+      }
+      if ((d.genres || []).length && !(out.genres || []).length) out.genres = d.genres;
+      if ((d.cast || []).length && !(out.cast || []).length) out.cast = d.cast;
+    } catch (e) {
+      console.warn('[enrich] Wikidata недоступна:', e && e.message);
+    }
   }
 
-  // Опис: спершу точна стаття з sitelink Вікіданих, потім пошук —
-  // ЗАВЖДИ з роком у запиті (відсіює омоніми), і лише потім «голі» назви.
-  // Кожен результат пошуку перевіряємо: це має бути стаття про фільм/серіал.
+  // Жанри могли прийти англійськими мітками — переводимо словником
+  out.genres = translateGenres(out.genres || []);
+
+  // ---- 3) УКРАЇНСЬКИЙ СЮЖЕТ: спершу точна стаття з sitelink Вікіданих,
+  // потім пошук — ЗАВЖДИ з роком у запиті (відсіює омоніми), і лише потім
+  // «голі» назви. Кожен результат пошуку перевіряємо: це має бути стаття
+  // про фільм/серіал.
   if (!out.plot) {
     if (out.ukWikiTitle) {
       try {
-        const r = await wikiArticleByTitle(out.ukWikiTitle);
+        const r = await wikiArticleByTitle('uk', out.ukWikiTitle);
         if (r.plot) {
           out.plot = r.plot;
           if (!out.poster && r.poster) out.poster = r.poster;
@@ -173,6 +224,23 @@ export async function enrichFilm({ imdbId, title, year, titleUkHint }) {
 
   // Якщо з Wikidata прийшов лише короткий опис — використаємо його як запасний сюжет
   if (out.desc && !out.plot) out.plot = out.desc;
+
+  // ---- 4) АНГЛІЙСЬКА СТРАХОВКА: укр. сюжету немає ніде (у нових і
+  // малоїзвестних фільмів uk.статті часто просто немає). Краще англійський
+  // опис, ніж порожнє поле: беремо ТОЧНУ статтю en.Вікіпедії (sitelink з
+  // Вікіданих або оригінальна назва) з перевіркою «це фільм/серіал».
+  if (!out.plot) {
+    const enTitle = out.enWikiTitle || title;
+    if (enTitle) {
+      try {
+        const r = await wikiArticleByTitle('en', enTitle);
+        if (r.plot && extractLooksLikeFilm(r.plot, [out.titleEn || title, enTitle])) {
+          out.plot = r.plot;
+          if (!out.poster && r.poster) out.poster = r.poster;
+        }
+      } catch (e) { /* сюжет не критичний */ }
+    }
+  }
 
   if (out.plot && out.plot.length > 700) {
     out.plot = out.plot.slice(0, 697).trimEnd() + '…';

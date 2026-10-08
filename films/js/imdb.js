@@ -61,7 +61,8 @@ export async function suggestFilms(query) {
     .map(x => ({
       imdbId: x.id,
       title: x.l || 'Без назви',
-      year: x.y || null,
+      // y — рік виходу; у серіалів буває лише yr («2007-2019») — беремо рік старту
+      year: x.y || parseInt(x.yr, 10) || null,
       poster: (x.i && x.i.imageUrl) || null,
       type: x.qid || 'movie',
       source: 'imdb'

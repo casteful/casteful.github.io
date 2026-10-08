@@ -22,6 +22,7 @@
 // ============================================================
 
 import { OMDB_API_KEY } from './config.js';
+import { translateGenres } from './utils.js';
 
 const WD_API = 'https://www.wikidata.org/w/api.php';
 
@@ -76,7 +77,7 @@ async function wikiPrefix(lang, query, limit = 6) {
 async function wdEntities(qids) {
   if (!qids.length) return {};
   const url = `${WD_API}?action=wbgetentities&format=json&origin=*` +
-    `&props=claims%7Clabels&languages=uk%7Cen&ids=${encodeURIComponent(qids.join('|'))}`;
+    `&props=claims%7Clabels%7Csitelinks&languages=uk%7Cen&ids=${encodeURIComponent(qids.join('|'))}`;
   const data = await fetchJSON(url, 5000);
 
   const out = {};
@@ -85,7 +86,12 @@ async function wdEntities(qids) {
     const ent = entities[qid] || {};
     const claims = ent.claims || {};
     const labels = ent.labels || {};
+    const sitelinks = ent.sitelinks || {};
     const e = { classes: [], genreQids: [] };
+    // Точні назви статей uk/en Вікіпедії про ЦЮ сутність (sitelink) —
+    // найнадійніший спосіб дістати сюжет і назву без «сліпого» пошуку
+    e.ukWikiTitle = (sitelinks.ukwiki && sitelinks.ukwiki.title) || null;
+    e.enWikiTitle = (sitelinks.enwiki && sitelinks.enwiki.title) || null;
 
     for (const c of claims.P31 || []) {
       const v = c.mainsnak && c.mainsnak.datavalue && c.mainsnak.datavalue.value;
@@ -101,9 +107,15 @@ async function wdEntities(qids) {
     }
     for (const c of claims.P577 || []) {
       const v = c.mainsnak && c.mainsnak.datavalue && c.mainsnak.datavalue.value;
-      const y = v && v.time ? parseInt(String(v.time).slice(1, 5), 10) : NaN;
+      const t = v && v.time ? String(v.time) : '';
+      const y = t ? parseInt(t.slice(1, 5), 10) : NaN;
       // найраніша дата виходу — це і є «рік фільму»
-      if (!Number.isNaN(y) && y >= 1888 && y <= 2100 && (!e.year || y < e.year)) e.year = y;
+      if (!Number.isNaN(y) && y >= 1888 && y <= 2100 && (e.year == null || y < e.year)) e.year = y;
+      // повна дата (з точністю до дня, precision=11) — для «Прем'єра: …»
+      if (v && v.precision === 11 && /^[-+]?\d{4}-\d{2}-\d{2}/.test(t)) {
+        const iso = t.replace(/^[-+]?/, '').slice(0, 10);
+        if (!e.premiere || iso < e.premiere) e.premiere = iso;
+      }
     }
     for (const c of claims.P2047 || []) {
       const v = c.mainsnak && c.mainsnak.datavalue && c.mainsnak.datavalue.value;
@@ -212,10 +224,13 @@ async function wikidataByQids(qids) {
       titleEn: c.labelEn || null,
       imdbId: c.imdbId || null,
       director: dirLab.uk || dirLab.en || null,
-      genres: c.genreQids.map(g => (labels[g] ? (labels[g].uk || labels[g].en) : null)).filter(Boolean).slice(0, 6),
+      genres: translateGenres(c.genreQids.map(g => (labels[g] ? (labels[g].uk || labels[g].en) : null)).filter(Boolean).slice(0, 6)),
       cast: (c.actorQids || []).map(a => (labels[a] ? (labels[a].uk || labels[a].en) : null)).filter(Boolean).slice(0, 6),
       runtime: c.runtime || null,
       year: c.year || null,
+      premiere: c.premiere || null,
+      ukWikiTitle: c.ukWikiTitle || null,
+      enWikiTitle: c.enWikiTitle || null,
       classes: c.classes || []
     };
   }
@@ -228,10 +243,20 @@ function cleanThumb(src) {
   return src ? String(src).replace(/\?utm_source=.*$/, '') : null;
 }
 
-// «...фільм 1994 року» -> 1994 (тільки на початку тексту)
+// Рік із вступного тексту статті. Формати:
+//   uk: «...фільм 1994 року», «...вийшов у 2025 році»;
+//   en: "premiered on October 3, 2025", "released on 3 October 2025"
+// (дата прем'єри часто стоїть далі 200-го символу — беремо 400)
+const EN_MONTHS = 'January|February|March|April|May|June|July|August|September|October|November|December';
 function yearFromExtract(text) {
-  const m = String(text || '').slice(0, 200).match(/\b(18\d{2}|19\d{2}|20\d{2}|21\d{2})\s*року/);
-  return m ? parseInt(m[1], 10) : null;
+  const head = String(text || '').slice(0, 400);
+  let m = head.match(/\b(18\d{2}|19\d{2}|20\d{2}|21\d{2})\s*(року|році)/);
+  if (m) return parseInt(m[1], 10);
+  m = head.match(new RegExp(`\\b(?:${EN_MONTHS})\\s+\\d{1,2},\\s*(\\d{4})\\b`));
+  if (m) return parseInt(m[1], 10);
+  m = head.match(new RegExp(`\\b\\d{1,2}\\s+(?:${EN_MONTHS})\\s+(\\d{4})\\b`));
+  if (m) return parseInt(m[1], 10);
+  return null;
 }
 
 // «... (англ. The Shawshank Redemption, досл. ...)» -> оригінальна назва
@@ -245,10 +270,11 @@ function truncPlot(s) {
   return s.length > 700 ? s.slice(0, 697).trimEnd() + '…' : (s || null);
 }
 
-// Евристика «схоже на фільм» за вступним текстом статті —
-// використовується, лише коли Wikidata недоступна
-const FILM_WORDS = /фільм|серіал|мінісеріал|мультфільм|короткометражк|анімаційн/i;
-const NOT_FILM_WORDS = /\b(актор|акторка|режисер|письменник|сценарист|повість|роман|оповідання|книга|п'єса|альбом|співак|співачка|музикант|художник|футболіст)/i;
+// Евристика «схоже на фільм» за вступним текстом статті — для сторінок
+// БЕЗ сутності Вікіданих (вони не проходять P31-фільтр) та коли Wikidata
+// недоступна. Двомовна: uk + en (en.Вікіпедія дає більшість результатів).
+const FILM_WORDS = /фільм|серіал|мультфільм|короткометражк|анімаційн|телевізійн|\bfilm\b|\bmovie\b|\bseries\b|\btelevision\b|\bminiseries\b|\bmini-series\b|\bdocumentary\b|\bsitcom\b|\banthology\b/i;
+const NOT_FILM_WORDS = /\b(актор|акторка|режисер|письменник|сценарист|повість|роман|оповідання|книга|п'єса|альбом|співак|співачка|музикант|художник|футболіст)\b|\b(actor|actress|director|writer|screenwriter|novel|novella|book|play|album|singer|musician|band|painter|footballer|biography|memoir|short story)\b/i;
 
 function looksLikeFilmByExtract(text) {
   const head = String(text || '').slice(0, 250);
@@ -289,8 +315,12 @@ async function collectItems(pages, seen, thumbs) {
     const e = qid ? (wd[qid] || null) : null;
 
     if (qid && wdOk && !e) continue; // точна вікі-сутність — і це не фільм
-    // Wikidata недоступна — лишаємо статтю лише якщо за текстом схоже на фільм
-    if (!wdOk && !looksLikeFilmByExtract(p.extract)) continue;
+    // Сторінка без підтвердженої Вікіданими фільмової сутності (без QID
+    // або Wikidata недоступна) — лишаємо лише якщо за вступом схоже на
+    // фільм/серіал. Без цього книги й статті про людей без сутності
+    // Вікіданих просочувалися у підказки (напр., книга «…Making of
+    // Charley Varrick»).
+    if (!(qid && wdOk && e) && !looksLikeFilmByExtract(p.extract)) continue;
 
     const titleUk = p._lang === 'uk'
       ? (e && e.titleUk) || p.title
@@ -320,6 +350,7 @@ async function collectItems(pages, seen, thumbs) {
       title,
       titleUk: titleUk || null,
       year: (e && e.year) || yearFromExtract(p.extract),
+      premiere: (e && e.premiere) || null,
       poster,
       type,
       source: 'wiki',
@@ -355,7 +386,7 @@ function dedupeItems(items) {
     if (at !== undefined) {
       // дублікат назви: доповнюємо перший елемент тим, що є в другому
       const keep = out[at];
-      for (const f of ['poster', 'plot', 'year', 'director', 'runtime', 'imdbId', 'qid']) {
+      for (const f of ['poster', 'plot', 'year', 'premiere', 'director', 'runtime', 'imdbId', 'qid']) {
         if (keep[f] == null && it[f] != null) keep[f] = it[f];
       }
       if ((!keep.genres || !keep.genres.length) && it.genres && it.genres.length) keep.genres = it.genres;
@@ -434,8 +465,22 @@ export async function enrichByQid(qid) {
     genres: e.genres || [],
     cast: e.cast || [],
     runtime: e.runtime || null,
-    year: e.year || null
+    year: e.year || null,
+    premiere: e.premiere || null,
+    ukWikiTitle: e.ukWikiTitle || null,
+    enWikiTitle: e.enWikiTitle || null
   };
+}
+
+// QID за IMDb ID (P345) — швидкий wbsearch, найнадійніший місток між джерелами
+export async function qidByImdbId(tt) {
+  if (!tt || !/^tt\d+$/.test(String(tt))) return null;
+  try {
+    const sr = await fetchJSON(`${WD_API}?action=query&format=json&list=search&srlimit=1` +
+      `&srsearch=${encodeURIComponent('haswbstatement:P345=' + tt)}`, 5000);
+    const found = sr && sr.query && sr.query.search && sr.query.search[0] && sr.query.search[0].title;
+    return (found && /^Q\d+$/.test(found)) ? found : null;
+  } catch (e) { return null; }
 }
 
 // ============================================================
@@ -453,33 +498,68 @@ export async function enrichByQid(qid) {
 // ============================================================
 
 // TVMaze: безкоштовне API бази серіалів із відкритим CORS.
-// Добре дістає постери серіалів, яких немає у Вікіпедії.
-async function tvmazePoster(title, imdbId, year) {
+// Добре знає серіали й шоу (з повною датою прем'єри), яких немає
+// ані в Wikidata (P577 порожній), ані в IMDb suggestion.
+
+// Спільний пошук шоу: точний за IMDb ID -> за назвою -> за роком ±1.
+async function tvmazeFindShow(title, imdbId, year) {
   const q = String(title || '').trim();
   if (!q && !imdbId) return null;
-  try {
-    const data = await fetchJSON('https://api.tvmaze.com/search/shows?q=' +
-      encodeURIComponent(q || imdbId), 4500);
-    const shows = (Array.isArray(data) ? data : []).map(x => x && x.show).filter(Boolean);
-    if (!shows.length) return null;
+  const data = await fetchJSON('https://api.tvmaze.com/search/shows?q=' +
+    encodeURIComponent(q || imdbId), 4500);
+  const shows = (Array.isArray(data) ? data : []).map(x => x && x.show).filter(Boolean);
+  if (!shows.length) return null;
 
-    let hit = null;
-    // 1) точний збіг за IMDb ID (надійно)
-    if (imdbId) hit = shows.find(s => s.externals && s.externals.imdb === imdbId);
-    // 2) збіг за роком прем'єри (±1 рік), тільки якщо в шоу є зображення
-    if (!hit && year) {
-      hit = shows.find(s => {
-        if (!s.premiered || !s.image) return false;
-        const y = parseInt(String(s.premiered).slice(0, 4), 10);
-        return !Number.isNaN(y) && Math.abs(y - year) <= 1;
-      });
-    }
-    // 3) єдиний результат із зображенням (назва скоріш за все точна)
-    if (!hit) {
-      const withImg = shows.filter(s => s.image && s.image.original);
-      if (withImg.length === 1) hit = withImg[0];
-    }
+  const norm = s => String(s || '').toLowerCase().replace(/[^a-z0-9а-яіїєґ]/g, '');
+  const tq = norm(title);
+
+  // 1) точний збіг за IMDb ID (надійно)
+  if (imdbId) {
+    const hit = shows.find(s => s.externals && s.externals.imdb === imdbId);
+    if (hit) return hit;
+  }
+  // 2) назва збігається дослівно (нормалізовано)
+  if (tq) {
+    const hit = shows.find(s => norm(s.name) === tq);
+    if (hit) return hit;
+  }
+  // 3) рік прем'єри ±1 і схожа назва
+  if (tq && year) {
+    const hit = shows.find(s => {
+      if (!s.premiered) return false;
+      const y = parseInt(String(s.premiered).slice(0, 4), 10);
+      const sn = norm(s.name);
+      return !Number.isNaN(y) && Math.abs(y - year) <= 1 &&
+        (sn.includes(tq) || tq.includes(sn));
+    });
+    if (hit) return hit;
+  }
+  // 4) єдиний результат (назва скоріш за все точна)
+  return shows.length === 1 ? shows[0] : null;
+}
+
+async function tvmazePoster(title, imdbId, year) {
+  try {
+    const hit = await tvmazeFindShow(title, imdbId, year);
     return hit && hit.image && hit.image.original ? cleanThumb(hit.image.original) : null;
+  } catch (e) { return null; }
+}
+
+// Прем'єра серіалу/шоу: ПОВНА дата виходу («2007-09-24») + рік.
+// TVMaze — єдине швидке джерело, де вона майже завжди є: у Wikidata
+// P577 у серіалів часто порожній, а IMDb suggestion віддає лише рік.
+export async function premiereInfo({ imdbId, title, titleUk, year } = {}) {
+  const tt = (imdbId && /^tt\d+$/.test(String(imdbId))) ? imdbId : null;
+  try {
+    let hit = await tvmazeFindShow(title || titleUk, tt, year);
+    if (!hit && titleUk && title && titleUk !== title) {
+      hit = await tvmazeFindShow(titleUk, tt, year);
+    }
+    if (!hit || !hit.premiered) return null;
+    const date = String(hit.premiered);
+    const y = parseInt(date.slice(0, 4), 10);
+    if (Number.isNaN(y) || y < 1888 || y > 2100) return null;
+    return { year: y, date, name: hit.name || null };
   } catch (e) { return null; }
 }
 
@@ -525,11 +605,8 @@ export async function fetchPoster({ imdbId, title, titleUk, year } = {}) {
   // 2) Wikidata: IMDb ID -> QID -> sitelinks (uk/en/ru) -> pageimages
   if (tt) {
     try {
-      const sr = await fetchJSON(`${WD_API}?action=query&format=json&list=search&srlimit=1` +
-        `&srsearch=${encodeURIComponent('haswbstatement:P345=' + tt)}`, 5000);
-      const found = sr && sr.query && sr.query.search && sr.query.search[0] && sr.query.search[0].title;
-      if (found && /^Q\d+$/.test(found)) {
-        qid = found;
+      qid = await qidByImdbId(tt);
+      if (qid) {
         const poster = await posterFromSitelinks(qid);
         if (poster) return poster;
       }

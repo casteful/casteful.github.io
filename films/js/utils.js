@@ -77,6 +77,54 @@ export function fmtDate(ts) {
   } catch (e) { return ''; }
 }
 
+// ISO-дата прем'єри («2007-09-24») -> «24 вересня 2007»
+const MONTHS_UK_GEN = [
+  'січня', 'лютого', 'березня', 'квітня', 'травня', 'червня',
+  'липня', 'серпня', 'вересня', 'жовтня', 'листопада', 'грудня'
+];
+export function fmtPremiere(iso) {
+  const m = String(iso || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return null;
+  const d = parseInt(m[3], 10), mo = parseInt(m[2], 10);
+  if (d < 1 || d > 31 || mo < 1 || mo > 12) return null;
+  return `${d} ${MONTHS_UK_GEN[mo - 1]} ${m[1]}`;
+}
+
+// Жанри: англійські мітки Wikidata -> українські (укр. рядки не чіпаємо).
+// Словник — замкнений набір популярних жанрів; невідоме лишається як є.
+const GENRE_UK = {
+  'drama': 'драма', 'comedy': 'комедія', 'action': 'бойовик',
+  'thriller': 'трилер', 'psychological thriller': 'психологічний трилер',
+  'horror': 'жахи', 'science fiction': 'наукова фантастика', 'sci-fi': 'наукова фантастика',
+  'crime': 'кримінал', 'romance': 'мелодрама', 'romantic comedy': 'романтична комедія',
+  'documentary': 'документальний фільм', 'animation': 'анімація',
+  'animated': 'анімаційний', 'fantasy': 'фентезі', 'mystery': 'детектив',
+  'family': 'сімейний', 'biography': 'біографія', 'biopic': 'біографічний фільм',
+  'history': 'історичний', 'historical': 'історичний', 'war': 'військовий',
+  'musical': 'мюзикл', 'music': 'музичний', 'sport': 'спортивний', 'sports': 'спортивний',
+  'adventure': 'пригоди', 'western': 'вестерн', 'sitcom': 'ситком',
+  'short': 'короткометражний', 'teen': 'підлітковий', 'adult': 'дорослий',
+  'black comedy': 'чорна комедія', 'dark comedy': 'чорна комедія',
+  'dark fantasy': 'темне фентезі', 'supernatural': 'надприродне',
+  'suspense': 'саспенс', 'noir': 'нуар', 'film noir': 'нуар',
+  'satire': 'сатира', 'parody': 'пародія', 'tragedy': 'трагедія',
+  'historical drama': 'історична драма', 'crime drama': 'кримінальна драма',
+  'coming-of-age': 'дорослішання', 'coming of age film': 'фільм дорослішання',
+  'erotic': 'еротика', 'experimental': 'експериментальний', 'avant-garde': 'авангард'
+};
+export function translateGenres(list) {
+  return (Array.isArray(list) ? list : []).map(g => {
+    const s = String(g || '').trim();
+    if (!s || /[а-яіїєґ]/i.test(s)) return s; // вже українською (або порожньо)
+    const low = s.toLowerCase();
+    if (GENRE_UK[low]) return GENRE_UK[low];
+    // «drama film» / «crime television series» -> базовий жанр без суфікса
+    const base = low.replace(/\s*(film|movie|television series|tv series|series|film series)\s*$/, '').trim();
+    if (GENRE_UK[base]) return GENRE_UK[base];
+    return s;
+  }).filter(Boolean);
+}
+
 // Обрізає довгий рядок, додаючи трикрапку
 export function trunc(s, n) {
   s = String(s || '');

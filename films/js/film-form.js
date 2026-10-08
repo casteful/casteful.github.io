@@ -10,7 +10,7 @@ import * as store from './store.js';
 import * as U from './utils.js';
 import { toast, openModal, confirmDialog, icons } from './ui.js';
 import { suggestFilms, typeLabel, imdbTemporarilyDown } from './imdb.js';
-import { searchWikiFilms, enrichByQid, fetchPoster, posterQuick } from './wiki.js';
+import { searchWikiFilms, enrichByQid, fetchPoster, posterQuick, premiereInfo } from './wiki.js';
 import { enrichFilm } from './enrich.js';
 import { notifyFilmAdded, notifyFilmDeleted } from './telegram.js';
 
@@ -75,7 +75,7 @@ function mergeLists(imdbList, wikiList, query, expectedYear = null) {
     const at = (k ? idx.get(k) : undefined) ?? (ku ? idx.get(ku) : undefined);
     if (at !== undefined) {
       const keep = out[at];
-      for (const f of ['poster', 'plot', 'year', 'director', 'runtime', 'imdbId', 'qid', 'titleUk', 'type']) {
+      for (const f of ['poster', 'plot', 'year', 'premiere', 'director', 'runtime', 'imdbId', 'qid', 'titleUk', 'type']) {
         if (keep[f] == null && it[f] != null) keep[f] = it[f];
       }
       if ((!keep.genres || !keep.genres.length) && it.genres && it.genres.length) keep.genres = it.genres;
@@ -182,6 +182,9 @@ function cachedSearch(q, onPartial) {
 export function openFormModal({ film = null, currentUserId, allFilms = [] }) {
   const isEdit = !!film;
   let picked = null; // обраний фільм з підказок IMDb
+  // Прем'єра (повна дата «2007-09-24»), якщо вдалося дістати —
+  // зберігається разом із фільмом і показується під полем «Рік»
+  let pickedPremiere = (film && film.premiere) || null;
 
   const { box, close, overlay } = openModal(formHTML(isEdit, film), {
     width: 640,
@@ -203,6 +206,7 @@ export function openFormModal({ film = null, currentUserId, allFilms = [] }) {
     set('fPlot', film.plot || '');
     set('fPoster', film.poster || '');
     if (film.poster) showPoster(box, film.poster);
+    if (film.premiere) showPremiereHint();
   }
 
   // ---------- Автозаповнення (лише в режимі додавання) ----------
@@ -387,6 +391,7 @@ export function openFormModal({ film = null, currentUserId, allFilms = [] }) {
       set('fTitle', s.title);
     }
     if (!val('fYear')) set('fYear', s.year ?? '');
+    if (s.premiere && !pickedPremiere) { pickedPremiere = s.premiere; showPremiereHint(); }
     if (!val('fPoster') && s.poster) { set('fPoster', s.poster); showPoster(box, s.poster); }
 
     // Вікі-результат часто несе готові дані — заповнюємо решту полів
@@ -427,6 +432,7 @@ export function openFormModal({ film = null, currentUserId, allFilms = [] }) {
       if (!picked.imdbId && d.imdbId) picked.imdbId = d.imdbId;
       fillIfEmpty('fTitleUk', d.titleUk);
       if (!val('fYear') && d.year) set('fYear', d.year);
+      if (d.premiere && !pickedPremiere) { pickedPremiere = d.premiere; showPremiereHint(); }
       fillIfEmpty('fDirector', d.director);
       fillIfEmpty('fCast', (d.cast || []).join(', '));
       fillIfEmpty('fGenres', (d.genres || []).join(', '));
@@ -457,6 +463,25 @@ export function openFormModal({ film = null, currentUserId, allFilms = [] }) {
         } catch (e) { /* постер не критичний */ }
       }
 
+      // РІК/ПРЕМ'ЄРА СЕРІАЛУ: у Wikidata P577 у серіалів часто порожній,
+      // а TVMaze зберігає ПОВНУ дату виходу («2007-09-24»). Якщо рік досі
+      // порожній — заповнюємо його прем'єрою; для серіалів одразу показуємо
+      // і точну дату під полем «Рік».
+      if (!val('fYear') || picked.type === 'tvSeries' || picked.type === 'tvMiniSeries') {
+        try {
+          const info = await premiereInfo({
+            imdbId: picked.imdbId || d.imdbId || null,
+            title: val('fTitle').trim() || picked.title || null,
+            titleUk: val('fTitleUk').trim() || d.titleUk || picked.titleUk || null,
+            year: picked.year || d.year || null
+          });
+          if (info) {
+            if (!val('fYear') && info.year) set('fYear', String(info.year));
+            if (info.date && !pickedPremiere) { pickedPremiere = info.date; showPremiereHint(); }
+          }
+        } catch (e) { /* прем'єра не критична */ }
+      }
+
       const got = [d.titleUk, d.director, (d.genres || []).length, d.runtime, d.plot, val('fPoster')].some(Boolean);
       st.textContent = got
         ? 'Готово — деталі підтягнуто. Перевірте й за потреби виправте поля.'
@@ -470,6 +495,16 @@ export function openFormModal({ film = null, currentUserId, allFilms = [] }) {
   function fillIfEmpty(id, v) {
     if (v == null || v === '' || (Array.isArray(v) && !v.length)) return;
     if (!val(id)) set(id, v);
+  }
+
+  // Підпис «Прем'єра: 24 вересня 2007» під полем «Рік» — з'являється,
+  // коли вдалося дістати повну дату виходу (Wikidata або TVMaze)
+  function showPremiereHint() {
+    const el = $('premiereHint');
+    if (!el) return;
+    const txt = U.fmtPremiere(pickedPremiere);
+    if (txt) { el.textContent = `Прем'єра: ${txt}`; el.hidden = false; }
+    else el.hidden = true;
   }
 
   // ---------- Прев'ю постера ----------
@@ -516,6 +551,7 @@ export function openFormModal({ film = null, currentUserId, allFilms = [] }) {
       title: title || titleUk,
       titleUk: titleUk || null,
       year: U.intOrNull(val('fYear'), 1888, 2100),
+      premiere: pickedPremiere || null,
       poster: val('fPoster').trim() || null,
       imdbId: (picked && picked.imdbId) || film?.imdbId || null,
       director: val('fDirector').trim() || null,
@@ -612,6 +648,7 @@ function formHTML(isEdit, film) {
       <label class="field">
         <span class="field-label">Рік</span>
         <input id="fYear" type="number" min="1888" max="2100" placeholder="1994">
+        <span class="hint" id="premiereHint" hidden></span>
       </label>
       <label class="field">
         <span class="field-label">Тривалість, хв</span>

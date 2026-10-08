@@ -649,7 +649,10 @@ function detailHTML(f) {
   const a = U.avg(f.ratings);
   const my = (f.ratings || {})[currentUserId];
   const orig = (f.titleUk && f.title && f.titleUk !== f.title) ? f.title : '';
-  const metaBits = [f.year, f.runtime ? `${f.runtime} хв` : ''].filter(Boolean).join(' · ');
+  // Якщо відома повна дата прем'єри («24 вересня 2007») — показуємо її
+  // замість голого року; інакше — рік, як раніше
+  const prem = U.fmtPremiere(f.premiere);
+  const metaBits = [prem ? `прем'єра ${prem}` : f.year, f.runtime ? `${f.runtime} хв` : ''].filter(Boolean).join(' · ');
   const genres = (f.genres || []).map(g =>
     `<button type="button" class="genre-chip clickable" data-person="${U.escapeHtml(g)}" title="Фільми цього жанру">${U.escapeHtml(g)}</button>`
   ).join('');
