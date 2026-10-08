@@ -1333,8 +1333,7 @@ td.u-col.mine:hover { background: color-mix(in srgb, var(--accent) 9%, var(--sur
   border: 1px solid var(--border);
   border-radius: 15px;
   box-shadow: var(--shadow-lg);
-  /* Висота з запасом: підказок тепер до 24, список скролиться */
-  max-height: min(56vh, 480px);
+  max-height: min(60vh, 520px);
   overflow-y: auto;
   overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
@@ -1356,7 +1355,7 @@ td.u-col.mine:hover { background: color-mix(in srgb, var(--accent) 9%, var(--sur
 .s-item.active { background: var(--accent-soft); }
 
 .s-thumb {
-  position: relative;
+  position: relative; /* іконка-заглушка ПІД зображенням */
   width: 40px;
   height: 60px;
   border-radius: 8px;
@@ -1397,6 +1396,18 @@ td.u-col.mine:hover { background: color-mix(in srgb, var(--accent) 9%, var(--sur
   line-height: 1.45;
 }
 .s-note svg { width: 16px; height: 16px; flex-shrink: 0; }
+
+/* Нижній рядок списка підказок: кількість збігів + натяк на гортання */
+.s-foot {
+  margin-top: 4px;
+  padding: 8px 10px 6px;
+  border-top: 1px solid var(--border);
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--muted);
+  text-align: center;
+  letter-spacing: 0.01em;
+}
 
 /* Прев'ю постера */
 .poster-edit {
@@ -1918,7 +1929,9 @@ td.u-col.mine:hover { background: color-mix(in srgb, var(--accent) 9%, var(--sur
 
 /* Дотик-пристрої (iPhone/iPad): Safari примусово зумить сторінку при
    фокусі на полі з шрифтом <16px — через це ламалась розкладка і
-   випадайка автозаповнення опинялась поза екраном. 16px знімає зум. */
+   випадайка автозаповнення опинялась поза екраном. 16px знімає зум.
+   (hover: none) — страховка для гібридних пристроїв, де емуляція
+   pointer:coarse не спрацьовує. */
 @media (pointer: coarse), (hover: none) {
   input, textarea, select { font-size: 16px !important; }
 }
@@ -1994,7 +2007,7 @@ td.u-col.mine:hover { background: color-mix(in srgb, var(--accent) 9%, var(--sur
   .modal-head { padding: calc(16px + env(safe-area-inset-top, 0px)) 16px 0; }
 
   /* Автозаповнення: більші цілі під палець */
-  .suggest-list { max-height: min(58vh, 470px); }
+  .suggest-list { max-height: min(54vh, 460px); }
   .s-item { padding: 10px 9px; gap: 12px; }
   .s-thumb { width: 44px; height: 66px; border-radius: 9px; }
   .s-thumb svg { width: 19px; height: 19px; }

@@ -8,7 +8,7 @@ light/dark theme, built as a **zero-build static site** — perfect for GitHub P
 - **Effortless rating — the 1–10 “trail” scale** — one tap on «Оцінити» opens a color-coded scale right next to the button (a large bottom sheet on phones). Segments fill with a red→green ramp up to the chosen value, a big number + word caption («Добре», «Шедевр»…) reacts live to hovering, and a tap saves instantly. The same trail lives in the film window. Keyboard: digits 1–9, 0 = 10, ←/→, Esc.
 - **Cinematic card grid** — vertical poster cards with the average score on the poster, a full-width rate button and friends' scores as colored chips; 2-column layout on phones. A compact **table** view with a rating column per friend is one tap away; both views remember your choice.
 - **Beautiful film window** — poster blurred into a hero header with the title, director, genres and cast; the 1–10 trail for your own score; everyone's scores in one list.
-- **Smart adding** — start typing a film name (Ukrainian or English) and pick it from live suggestions **with posters**; title, year, Ukrainian title, director, cast, genres, runtime and plot are fetched automatically. **Films and TV series both work** — series are found even when IMDb's own suggestions miss them, because Wikipedia and Wikidata results are always merged in and the best match floats to the top. **Year-aware search** — typing «big bang theory 2007» searches the title only and uses the year for ranking and for the year field. Everything stays manually editable.
+- **Smart adding** — start typing a film name (Ukrainian or English) and pick it from live suggestions; poster, year, Ukrainian title, director, cast, genres, runtime and plot are fetched automatically (IMDb + Wikipedia + Wikidata). Everything stays manually editable.
 - **Clickable people & genres** — tap any director, actor or genre (in the film window or in statistics) to see all matching films of the club.
 - **Statistics tab** — totals (films, ratings, average, shared cinema-hours, most active viewer), club records (best / worst / most controversial / most discussed / oldest / newest), top films, favourite genres, top actors and directors, rating histogram, decades, runtime stats and per-viewer profiles («strictest critic» vs «most generous viewer»).
 - **Modern UI (v3)** — warm-amber identity with gradient accents, glass topbar, springy micro-animations, refined dark theme, soft “projector” glow, thin scrollbars, reduced-motion support.
@@ -101,21 +101,34 @@ films/
 - **Fast autocomplete** — IMDb and Wikipedia are queried in parallel with short
   timeouts; results are cached per query, so repeating a name is instant.
   Typical first suggestions appear in well under a second.
-- **Year in the query is understood** — «the office 2005» strips the year,
-  searches by title only (full-text Wikipedia search with a year in the string
-  returns episode lists and seasons), then ranks results by title relevance and
-  year match, and pre-fills the year field from the query.
-- **Strict film filter** — Wikidata classes decide what counts as a film/series
-  (film, TV series, miniseries, TV film, animated and documentary films…).
-  Seasons, episode lists, actors, characters and disambiguation pages can no
-  longer sneak into suggestions with wrong data.
 - **Films + series, both sources always** — IMDb suggestions paint first, then
   Wikipedia results are merged in (progressively, no duplicates). This matters
   for series: IMDb's suggestion endpoint often doesn't know them by full name
   (e.g. «Monster: The Ed Gein Story»), while Wikipedia does — so the two lists
   are always combined and an exact-title match (Ukrainian or original) is
   raised to the top. Suggestions that arrive without a poster get one quietly
-  filled in from fast sources in the background.
+  filled in from fast sources (IMDb by tt-ID → TVMaze) in the background.
+- **All matches in one scrollable list** — up to 20 suggestions from IMDb and
+  both Wikipedia sections. The dropdown scrolls, with a results counter in the
+  footer («Усього N збігів — гортайте список»); touching the list to scroll
+  never accidentally picks a row (touch-move guard in `js/film-form.js`).
+- **Ukrainian → English transliteration fallback** — when a Cyrillic query
+  finds fewer than 10 matches, the title is transliterated to Latin (official
+  KMU-2010 plus phonetic and g-variants: «Інтерстеллар» → "Interstellar",
+  «Джокер» → "Joker", «Гладіатор» → "Gladiator") and searched on IMDb and in
+  English Wikipedia; everything is merged into the same list.
+- **«Title 2007» / «title (2007)» queries** — the trailing year is split off:
+  IMDb still gets the full query (it understands title+year), Wikipedia gets
+  the title only (a year in full-text search used to push episode lists and
+  seasons to the top), and results whose year matches are boosted to the top.
+  TV-series seasons (`Q3464665`) and Wikimedia list pages (`Q13406463`) are
+  filtered out of suggestions entirely.
+- **Correct Ukrainian plot** — enrichment resolves the exact uk.Wikipedia
+  article of the film/series through its Wikidata sitelink instead of a blind
+  title search (which used to fetch the cosmology article for «Теорія
+  великого вибуху»); search-based plot candidates must look film-like
+  (mentions фільм/серіал…) and never disambiguation pages, and an
+  English-sourced plot is replaced by the Ukrainian one when available.
 - Film sources:
   1. Public IMDb suggestion endpoint (`v3.sg.media-imdb.com` / `v2` mirror,
      raced in parallel, 3 s cap).
@@ -124,26 +137,17 @@ films/
      title). Searches Ukrainian and English Wikipedia (fast prefix search
      first, full-text on top), resolves each article's Wikidata item via the
      fast `wbgetentities` API and keeps only real films (books, actors,
-     episodes etc. are filtered out). Results are painted progressively —
-     whichever source answers first is shown immediately — and marked with a
-     «Вікіпедія» badge in the dropdown.
-  3. **Wikidata label search** (`wbsearchentities`) — the language bridge:
-     finds films by their Ukrainian (or English) labels and aliases even when
-     no Wikipedia article in that language exists, then pulls the English
-     title, IMDb ID and details from the Wikidata item («Вікідані» badge).
-  4. **Ukrainian transliteration** — as a last resort a Ukrainian query is
-     transliterated to Latin (official 2010 system) and retried on English
-     Wikipedia.
-- Up to 24 suggestions are shown in one scrollable dropdown (both on desktop
-  and mobile), so «all possible options» stay one wheel-scroll away.
+     episodes, seasons etc. are filtered out). Results are painted
+     progressively — whichever source answers first is shown immediately —
+     and marked with a «Вікіпедія» badge in the dropdown.
 - If IMDb fails, the app remembers it for 10 minutes (sessionStorage) and
   searches Wikipedia first — no timeout waiting on every keystroke. The flag
   clears itself as soon as IMDb answers again.
 - Details enrichment: Wikidata (queried by IMDb ID `P345` or Wikidata `QID`)
   with a Ukrainian Wikipedia fallback for plot text — all optional and fail-safe.
 - Poster chain (first hit wins): IMDb by `tt`-ID → Wikidata sitelinks
-  (uk → en → **ru** Wikipedia, the latter two serve fair-use posters through the
-  API when en doesn't) → **TVMaze** (free, CORS-open — the best source for
+  (uk → en → **ru** Wikipedia, the latter two serve fair-use posters through
+  the API when en doesn't) → **TVMaze** (free, CORS-open — the best source for
   series key art) → Wikidata `P18` → Wikipedia article search by title with a
   release-year sanity check so a same-named older film can't donate its poster.
 - Poster images are hot-linked from the IMDb/Amazon image CDN, TVMaze or Wikimedia.
@@ -155,8 +159,8 @@ films/
 - Suggestions are picked on `touchend` (with `preventDefault`, so the keyboard
   and focus state stay stable), with `mousedown`/`click` fallbacks for desktop;
   a 350 ms guard prevents double-picks.
-- `@media (pointer: coarse), (hover: none)` raises all inputs to 16 px — iOS
-  Safari otherwise zooms into any smaller field and breaks the layout.
+- `@media (pointer: coarse), (hover: none)` raises all inputs to 16 px —
+  iOS Safari otherwise zooms into any smaller field and breaks the layout.
 - On phones the modal overlay drops `backdrop-filter` (a WebKit bug prevents
   dynamically shown children from painting inside a fixed, scrollable,
   backdrop-filtered element).

@@ -91,3 +91,86 @@ export function pluralRatingsGen(n) { return plural(n, ['оцінки', 'оці�
 export function decadeLabel(d) {
   return d >= 2000 ? `${d}-ні` : `${d}-ті`;
 }
+
+// ============================================================
+// Українська → латиниця для ПОШУКУ (fallback автозаповнення):
+// коли за українською назвою знайдено замало — пробуємо її латинським
+// написанням на IMDb та в en.Вікіпедії. Три варіанти:
+//   national — офіційна транслітерація КМУ-2010
+//              («Інтерстеллар» → "Interstellar");
+//   phon     — фонетична, ближча до англійських написань
+//              (и→i, х→h, ю→u, я→a, й→y, «Джокер» → "Joker");
+//   g        — як phon, але г/ґ → g («Гладіатор» → "Gladiator").
+// Повертає масив УНІКАЛЬНИХ варіантів (порожній, якщо кирилиці немає).
+// ============================================================
+
+const TL_BASE = {
+  'а': 'a', 'б': 'b', 'в': 'v', 'д': 'd', 'е': 'e', 'ж': 'zh', 'з': 'z',
+  'і': 'i', 'к': 'k', 'л': 'l', 'м': 'm', 'н': 'n', 'о': 'o', 'п': 'p',
+  'р': 'r', 'с': 's', 'т': 't', 'у': 'u', 'ф': 'f', 'ч': 'ch', 'ш': 'sh',
+  'ь': '', '\'': '', '’': '', 'ʼ': ''
+};
+const TL_SPEC = {
+  national: { 'г': 'h', 'ґ': 'g', 'х': 'kh', 'и': 'y', 'й': 'i', 'ц': 'ts', 'щ': 'shch' },
+  phon:     { 'г': 'h', 'ґ': 'g', 'х': 'h',  'и': 'i', 'й': 'y', 'ц': 'ts', 'щ': 'sh' },
+  g:        { 'г': 'g', 'ґ': 'g', 'х': 'h',  'и': 'i', 'й': 'y', 'ц': 'ts', 'щ': 'sh' }
+};
+// є/ї/ю/я: на початку слова та всередині
+const TL_INITIAL = {
+  national: { 'є': 'ie', 'ї': 'i', 'ю': 'iu', 'я': 'ia' },
+  phon:     { 'є': 'ye', 'ї': 'yi', 'ю': 'yu', 'я': 'ya' }
+};
+TL_INITIAL.g = TL_INITIAL.phon; // g-варіант відрізняється лише г/ґ
+const TL_INNER = {
+  national: { 'є': 'ie', 'ї': 'i', 'й': 'i', 'ю': 'iu', 'я': 'ia' },
+  phon:     { 'є': 'e',  'ї': 'i', 'ю': 'u',  'я': 'a' }
+};
+TL_INNER.g = TL_INNER.phon;
+const IS_LETTER = /[a-zа-яіїєґ0-9]/i;
+
+function translitUk(s, mode) {
+  const spec = TL_SPEC[mode];
+  const initial = TL_INITIAL[mode];
+  const inner = TL_INNER[mode];
+  let out = '';
+  let prevLetter = false;
+
+  for (let i = 0; i < s.length; i++) {
+    const ch = s[i];
+    const low = ch.toLowerCase();
+
+    // Диграфи дж/дз: у фонетичних варіантах «Джокер» → "Joker"
+    if (low === 'д' && (s[i + 1] === 'ж' || s[i + 1] === 'з')) {
+      let r = (s[i + 1] === 'ж')
+        ? (mode === 'national' ? 'dzh' : 'j')
+        : 'dz';
+      if (ch !== low) r = r.charAt(0).toUpperCase() + r.slice(1);
+      out += r;
+      i++;
+      prevLetter = true;
+      continue;
+    }
+
+    let r = prevLetter ? undefined : initial[low];
+    if (r === undefined && prevLetter) r = inner[low];
+    if (r === undefined) r = spec[low];
+    if (r === undefined) r = TL_BASE[low];
+    if (r === undefined) r = ch; // латиниця, цифри, пробіли, розділові
+
+    if (ch !== low && r) r = r.charAt(0).toUpperCase() + r.slice(1);
+    out += r;
+    prevLetter = IS_LETTER.test(ch);
+  }
+  return out;
+}
+
+export function translitVariants(q) {
+  const s = String(q || '');
+  if (!/[а-яіїєґ]/i.test(s)) return [];
+  const out = [];
+  for (const v of [translitUk(s, 'national'), translitUk(s, 'phon'), translitUk(s, 'g')]) {
+    const t = v.trim();
+    if (t && !out.includes(t)) out.push(t);
+  }
+  return out;
+}

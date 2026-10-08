@@ -23,10 +23,6 @@
 
 const WD_API = 'https://www.wikidata.org/w/api.php';
 
-// Скільки результатів Вікіпедії/Вікіданих беремо в підказки.
-// (ліміт підказок у стрічці — SUG_MAX у film-form.js; тут — сирець)
-const SUGGEST_MAX = 20;
-
 async function fetchJSON(url, timeoutMs = 8000, headers = {}) {
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), timeoutMs);
@@ -152,10 +148,6 @@ async function wdLabels(qids) {
 // ---------- Об'єднання: фільмові дані за QID ----------
 
 // Не-кінематографічні сутності (книги, п'єси, альбоми, ігри, статті)
-// + «близьке, але не те»: сезони серіалів, епізоди, списки епізодів,
-// актори, персонажі, дізамбігації. Раніше сезони/списки проходили
-// фільтр «схоже на фільм» і потрапляли в підказки з чужими даними
-// (напр., «The Big Bang Theory season 1» як «фільм 2007 року»).
 const NOT_FILM_CLASSES = new Set([
   'Q571',      // книга
   'Q8261',     // роман
@@ -168,31 +160,13 @@ const NOT_FILM_CLASSES = new Set([
   'Q277759',   // серія книг
   'Q3331189',  // видання
   'Q21191270', // епізод телесеріалу
-  'Q3464665',  // сезон телесеріалу
-  'Q13406463', // список (стаття-список Вікіпедії)
-  'Q4167410',  // сторінка дізамбігації
-  'Q5',        // людина (актор, режисер…)
-  'Q95074',    // персонаж
-  'Q15773317', // телевізійний персонаж
-  'Q193977',   // музичне відео
+  'Q3464665',  // сезон телесеріалу (не сам витвір — інакше підказки
+               // забиваються сезонами: «The Big Bang Theory season 1»)
+  'Q13406463', // список статей Вікімедіа («List of … episodes»)
   'Q7725634',  // літературний твір
   'Q191067',   // стаття
   'Q17329259', // енциклопедична стаття
   'Q13433827'  // есе
-]);
-
-// Кінематографічні класи Вікіданих (P31): «точно фільм/серіал».
-// Суворий дозвільний фільтр: якщо сутність не належить жодному з цих
-// класів і не має IMDb ID чи режисера — це не кіно (сезон, список,
-// книга, людина тощо) і в підказки вона не потрапляє.
-const FILM_CLASSES = new Set([
-  'Q11424',    // фільм
-  'Q24869',    // повнометражний фільм
-  'Q93204',    // документальний фільм
-  'Q202866',   // анімаційний фільм
-  'Q5398426',  // телевізійний серіал
-  'Q1259759',  // мінісеріал
-  'Q506240'    // телевізійний фільм
 ]);
 
 async function wikidataByQids(qids) {
@@ -222,13 +196,13 @@ async function wikidataByQids(qids) {
   for (const qid of qids) {
     const c = ents[qid];
     if (!c) continue;
-    const classes = c.classes || [];
-    if (classes.some(cl => NOT_FILM_CLASSES.has(cl))) continue;
-    // Суворий фільтр «точно кіно/серіал»: відомий кіноклас АБО IMDb ID
-    // АБО режисер. Акторський склад/рік+жанр більше НЕ пропускаємо —
-    // саме так у підказки раніше пролізали сезони серіалів і списки.
-    const knownFilm = classes.some(cl => FILM_CLASSES.has(cl));
-    if (!knownFilm && !c.imdbId && !c.directorQid) continue;
+    if ((c.classes || []).some(cl => NOT_FILM_CLASSES.has(cl))) continue;
+    // Фільтр «це точно кіно/серіал»: IMDb ID, режисер, актори або (рік і жанр).
+    // (у серіалів часто немає єдиного режисера P57, зате є актори P161)
+    const filmLike = c.imdbId || c.directorQid ||
+      (c.actorQids && c.actorQids.length) ||
+      (c.year && c.genreQids.length);
+    if (!filmLike) continue;
 
     const dirLab = c.directorQid ? (labels[c.directorQid] || {}) : {};
     map[qid] = {
@@ -357,83 +331,6 @@ async function collectItems(pages, seen, thumbs) {
   return items;
 }
 
-// ---------- Пошук сутностей у Вікіданих за назвою (мітки + аліаси) ----------
-// Міст між мовами: знаходить фільм за українською назвою навіть тоді,
-// коли в українській Вікіпедії статті немає — українська мітка у Вікіданих
-// є майже завжди, а з QID ми беремо англійську назву, IMDb ID і деталі.
-async function wikidataSearch(query, lang, limit = 10) {
-  const url = `${WD_API}?action=wbsearchentities&format=json&origin=*` +
-    `&type=item&limit=${limit}&language=${lang}&uselang=${lang}` +
-    `&search=${encodeURIComponent(query)}`;
-  const data = await fetchJSON(url, 5000);
-  return ((data && data.search) || []).map(r => r.id).filter(id => /^Q\d+$/.test(id));
-}
-
-// Елементи підказок із QID (результат wikidataSearch).
-// Сутності, відфільтровані як «не кіно», тут просто зникають.
-async function itemsFromQids(qids, seen, thumbs) {
-  const uniq = [...new Set(qids)].filter(q => q && !seen.has(q));
-  if (!uniq.length) return [];
-  const { map: wd, ok } = await wikidataByQids(uniq);
-  if (!ok) return [];
-  const items = [];
-  for (const qid of uniq) {
-    const e = wd[qid];
-    if (!e) continue; // не фільм/серіал — відфільтровано
-    seen.add(qid);
-    const title = e.titleEn || e.titleUk;
-    if (!title) continue;
-    thumbs.set(qid, null); // постер підтягнеться фоново (IMDb/TVMaze)
-    const cl = e.classes || [];
-    const type = cl.includes('Q5398426') ? 'tvSeries'   // television series
-      : cl.includes('Q506240') ? 'tvMovie'              // television film
-      : 'movie';
-    items.push({
-      imdbId: e.imdbId || null,
-      qid,
-      title,
-      titleUk: e.titleUk || null,
-      year: e.year || null,
-      poster: null,
-      type,
-      source: 'wikidata',
-      director: e.director || null,
-      genres: e.genres || [],
-      cast: e.cast || [],
-      runtime: e.runtime || null,
-      plot: null
-    });
-  }
-  return items;
-}
-
-// ---------- Українська латиниця (спрощена офіційна транслітерація) ----------
-// Останній шанс для en.Вікіпедії: коли укр. назву не знайдено ні в uk.,
-// ні в en. розділі, ні у Вікіданих — пробуємо латинську запис назви.
-const UK_LAT = {
-  'а': 'a', 'б': 'b', 'в': 'v', 'г': 'h', 'ґ': 'g', 'д': 'd', 'е': 'e',
-  'ж': 'zh', 'з': 'z', 'и': 'y', 'і': 'i', 'ї': 'i', 'к': 'k', 'л': 'l',
-  'м': 'm', 'н': 'n', 'о': 'o', 'п': 'p', 'р': 'r', 'с': 's', 'т': 't',
-  'у': 'u', 'ф': 'f', 'х': 'kh', 'ц': 'ts', 'ч': 'ch', 'ш': 'sh',
-  'щ': 'shch', 'ь': '', '\u2019': '', '\u02BC': '', "'": ''
-};
-
-function translitUk(s) {
-  return String(s).split(/(\s+)/).map(word => {
-    let out = '';
-    for (let i = 0; i < word.length; i++) {
-      const ch = word[i].toLowerCase();
-      const start = i === 0;
-      if (ch === 'є') out += start ? 'ye' : 'ie';
-      else if (ch === 'ю') out += start ? 'yu' : 'iu';
-      else if (ch === 'я') out += start ? 'ya' : 'ia';
-      else if (ch === 'й') out += start ? 'y' : 'i';
-      else out += (ch in UK_LAT) ? UK_LAT[ch] : ch;
-    }
-    return out;
-  }).join('');
-}
-
 // ---------- Головна функція пошуку ----------
 //
 // Прогресивна видача (якомога швидший перший малюнок):
@@ -445,47 +342,42 @@ function translitUk(s) {
 
 function dedupeItems(items) {
   const out = [];
-  const idx = new Map();    // ключ назви -> позиція в out
-  const idxUk = new Map();  // ключ укр. назви -> позиція (міст uk↔en сторінок)
+  const idx = new Map(); // ключ -> позиція в out
+  const norm = s => String(s || '').toLowerCase().replace(/[^a-zа-яіїєґ0-9]/g, '');
   for (const it of items) {
-    const norm = s => String(s || '').toLowerCase().replace(/[^a-zа-яіїєґ0-9]/g, '');
+    // два ключі: оригінальна назва + укр. назва («Інтерстеллар» і
+    // "Interstellar" — та сама стаття, просто з різних розділів вікі)
     const k = norm(it.title);
-    const ku = it.titleUk ? norm(it.titleUk) : '';
-    let at = k ? idx.get(k) : undefined;
-    // Вторинний міст: та сама укр. назва, коли англ. назви сторінок
-    // не збіглися (мітка Вікіданих відсутня). Різні роки = ремейки —
-    // такі елементи не зливаємо.
-    if (at === undefined && ku) {
-      const atUk = idxUk.get(ku);
-      if (atUk !== undefined) {
-        const first = out[atUk];
-        const conflict = first.year && it.year && first.year !== it.year;
-        if (!conflict) at = atUk;
-      }
-    }
+    const ku = norm(it.titleUk);
+    const at = (k ? idx.get(k) : undefined) ?? (ku ? idx.get(ku) : undefined);
     if (at !== undefined) {
-      // дублікат: доповнюємо перший елемент тим, що є в другому
+      // дублікат назви: доповнюємо перший елемент тим, що є в другому
       const keep = out[at];
-      for (const f of ['poster', 'plot', 'year', 'director', 'runtime', 'imdbId', 'qid', 'titleUk']) {
+      for (const f of ['poster', 'plot', 'year', 'director', 'runtime', 'imdbId', 'qid']) {
         if (keep[f] == null && it[f] != null) keep[f] = it[f];
       }
       if ((!keep.genres || !keep.genres.length) && it.genres && it.genres.length) keep.genres = it.genres;
       if ((!keep.cast || !keep.cast.length) && it.cast && it.cast.length) keep.cast = it.cast;
+      if (k && !idx.has(k)) idx.set(k, at);
+      if (ku && !idx.has(ku)) idx.set(ku, at);
       continue;
     }
-    if (k) idx.set(k, out.length);
-    if (ku) idxUk.set(ku, out.length);
+    const pos = out.length;
+    if (k) idx.set(k, pos);
+    if (ku) idx.set(ku, pos);
     out.push(it);
   }
   return out;
 }
 
-export async function searchWikiFilms(query, onPartial) {
+export async function searchWikiFilms(query, onPartial, opts = {}) {
   const q = String(query || '').trim();
   if (q.length < 2) return [];
 
   const hasCyrillic = /[а-яіїєґ]/i.test(q);
-  const langs = hasCyrillic ? ['uk', 'en'] : ['en', 'uk'];
+  // opts.langs — явне обмеження розділів (транслітераційний fallback
+  // шукає лише в en.Вікіпедії, щоб не витрачати запити на uk/ru)
+  const langs = (opts && opts.langs) || (hasCyrillic ? ['uk', 'en'] : ['en', 'uk']);
 
   const seen = new Set();    // спільна дедуплікація QID/назв між пакетами
   const thumbs = new Map(); // ключ -> мініатюра (у т.ч. з дублікатів)
@@ -494,47 +386,25 @@ export async function searchWikiFilms(query, onPartial) {
   const emit = (batch) => {
     if (!batch.length) return;
     all.push(...batch);
-    const merged = dedupeItems(all).slice(0, SUGGEST_MAX);
+    const merged = dedupeItems(all).slice(0, 12);
     if (typeof onPartial === 'function' && merged.length) onPartial(merged);
   };
 
-  const runLang = async (lang, { prefix = false, query: qOverride } = {}) => {
-    const qq = qOverride || q;
+  const runLang = async (lang, { prefix = false } = {}) => {
     let pages = [];
     try {
-      pages = prefix ? await wikiPrefix(lang, qq) : await wikiSearch(lang, qq);
+      pages = prefix ? await wikiPrefix(lang, q) : await wikiSearch(lang, q);
     } catch (e) { return; }
     let batch = [];
     try { batch = await collectItems(pages.slice(0, prefix ? 6 : 10), seen, thumbs); } catch (e) { return; }
     emit(batch);
   };
 
-  // Вікідані: пошук за мітками/аліасами мовою запиту — міст uk<->en.
-  // Знаходить фільми, статей про які у Вікіпедії мовою запиту немає.
-  const runWikidata = async () => {
-    try {
-      const qids = await wikidataSearch(q, hasCyrillic ? 'uk' : 'en', 10);
-      emit(await itemsFromQids(qids, seen, thumbs));
-    } catch (e) { /* Вікідані недоступні — інші джерела дадуть результат */ }
-  };
+  const tasks = [runLang(langs[0], { prefix: true }), runLang(langs[0])];
+  if (langs[1] && langs[1] !== langs[0]) tasks.push(runLang(langs[1]));
+  await Promise.allSettled(tasks);
 
-  // Транслітерація укр -> латиниця: останній шанс для en.Вікіпедії
-  const runTranslit = async () => {
-    if (!hasCyrillic) return;
-    const t = translitUk(q);
-    if (!t || t.toLowerCase() === q.toLowerCase()) return;
-    await runLang('en', { query: t });
-  };
-
-  await Promise.allSettled([
-    runLang(langs[0], { prefix: true }), // найшвидший пакет — перший на екрані
-    runLang(langs[0]),
-    runLang(langs[1]),
-    runWikidata(),
-    runTranslit()
-  ]);
-
-  const final = dedupeItems(all).slice(0, SUGGEST_MAX);
+  const final = dedupeItems(all).slice(0, 12);
   // Фінальне заповнення постерів: мініатюра могла прийти пізніше
   // зі сторінки-дубліката (та сама стаття в іншому розділі Вікіпедії)
   for (const it of final) {
