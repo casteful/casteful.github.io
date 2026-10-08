@@ -8,7 +8,7 @@ light/dark theme, built as a **zero-build static site** — perfect for GitHub P
 - **Effortless rating — the 1–10 “trail” scale** — one tap on «Оцінити» opens a color-coded scale right next to the button (a large bottom sheet on phones). Segments fill with a red→green ramp up to the chosen value, a big number + word caption («Добре», «Шедевр»…) reacts live to hovering, and a tap saves instantly. The same trail lives in the film window. Keyboard: digits 1–9, 0 = 10, ←/→, Esc.
 - **Cinematic card grid** — vertical poster cards with the average score on the poster, a full-width rate button and friends' scores as colored chips; 2-column layout on phones. A compact **table** view with a rating column per friend is one tap away; both views remember your choice.
 - **Beautiful film window** — poster blurred into a hero header with the title, director, genres and cast; the 1–10 trail for your own score; everyone's scores in one list.
-- **Smart adding** — start typing a film name (Ukrainian or English) and pick it from live suggestions; poster, year, Ukrainian title, director, cast, genres, runtime and plot are fetched automatically (IMDb + Wikipedia + Wikidata). Everything stays manually editable.
+- **Smart adding** — start typing a film name (Ukrainian or English) and pick it from live suggestions **with posters**; title, year, Ukrainian title, director, cast, genres, runtime and plot are fetched automatically. **Films and TV series both work** — series are found even when IMDb's own suggestions miss them, because Wikipedia results are always merged in and an exact-name match floats to the top. Everything stays manually editable.
 - **Clickable people & genres** — tap any director, actor or genre (in the film window or in statistics) to see all matching films of the club.
 - **Statistics tab** — totals (films, ratings, average, shared cinema-hours, most active viewer), club records (best / worst / most controversial / most discussed / oldest / newest), top films, favourite genres, top actors and directors, rating histogram, decades, runtime stats and per-viewer profiles («strictest critic» vs «most generous viewer»).
 - **Modern UI (v3)** — warm-amber identity with gradient accents, glass topbar, springy micro-animations, refined dark theme, soft “projector” glow, thin scrollbars, reduced-motion support.
@@ -101,6 +101,13 @@ films/
 - **Fast autocomplete** — IMDb and Wikipedia are queried in parallel with short
   timeouts; results are cached per query, so repeating a name is instant.
   Typical first suggestions appear in well under a second.
+- **Films + series, both sources always** — IMDb suggestions paint first, then
+  Wikipedia results are merged in (progressively, no duplicates). This matters
+  for series: IMDb's suggestion endpoint often doesn't know them by full name
+  (e.g. «Monster: The Ed Gein Story»), while Wikipedia does — so the two lists
+  are always combined and an exact-title match (Ukrainian or original) is
+  raised to the top. Suggestions that arrive without a poster get one quietly
+  filled in from fast sources in the background.
 - Film sources:
   1. Public IMDb suggestion endpoint (`v3.sg.media-imdb.com` / `v2` mirror,
      raced in parallel, 3 s cap).
@@ -117,7 +124,12 @@ films/
   clears itself as soon as IMDb answers again.
 - Details enrichment: Wikidata (queried by IMDb ID `P345` or Wikidata `QID`)
   with a Ukrainian Wikipedia fallback for plot text — all optional and fail-safe.
-- Poster images are hot-linked from the IMDb/Amazon image CDN or Wikimedia.
+- Poster chain (first hit wins): IMDb by `tt`-ID → Wikidata sitelinks
+  (uk → en → **ru** Wikipedia, the latter two serve fair-use posters through the
+  API when en doesn't) → **TVMaze** (free, CORS-open — the best source for
+  series key art) → Wikidata `P18` → Wikipedia article search by title with a
+  release-year sanity check so a same-named older film can't donate its poster.
+- Poster images are hot-linked from the IMDb/Amazon image CDN, TVMaze or Wikimedia.
 
 ### Mobile / iOS specifics
 
@@ -126,8 +138,8 @@ films/
 - Suggestions are picked on `touchend` (with `preventDefault`, so the keyboard
   and focus state stay stable), with `mousedown`/`click` fallbacks for desktop;
   a 350 ms guard prevents double-picks.
-- `@media (pointer: coarse)` raises all inputs to 16 px — iOS Safari otherwise
-  zooms into any smaller field and breaks the layout.
+- `@media (pointer: coarse), (hover: none)` raises all inputs to 16 px — iOS
+  Safari otherwise zooms into any smaller field and breaks the layout.
 - On phones the modal overlay drops `backdrop-filter` (a WebKit bug prevents
   dynamically shown children from painting inside a fixed, scrollable,
   backdrop-filtered element).

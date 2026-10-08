@@ -10,47 +10,95 @@ import * as store from './store.js';
 import * as U from './utils.js';
 import { toast, openModal, confirmDialog, icons } from './ui.js';
 import { suggestFilms, typeLabel, imdbTemporarilyDown } from './imdb.js';
-import { searchWikiFilms, enrichByQid, fetchPoster } from './wiki.js';
+import { searchWikiFilms, enrichByQid, fetchPoster, posterQuick } from './wiki.js';
 import { enrichFilm } from './enrich.js';
 
 // ============================================================
 // Швидкий пошук для автозаповнення (спільний між відкриттями).
 //
-// Стратегія «пріоритет швидкості»:
-//   1. IMDb стартує одразу; Вікіпедія — із мікрозатримкою 450 мс.
-//   2. На IMDb чекаємо максимум IMDB_CAP_MS: встиг із результатами
-//      — показуємо їх (вікі-запит ігноруємо).
-//   3. Не встиг / порожньо / вимкнений — беремо вже готові (або
-//      майже готові) результати Вікіпедії, які йшли паралельно.
+// Стратегія «обидва джерела завжди»:
+//   1. IMDb стартує одразу і малюється першим, щойно відповів.
+//   2. Вікіпедія підключається через WIKI_DELAY_MS і ДОБУДОВУЄ список:
+//      IMDb suggestion часто «не знає» серіалів і новинок або віддає
+//      нерелевантні збіги за повної назви — тоді потрібний фільм/серіал
+//      приходить саме з Вікіпедії.
+//   3. Результати зливаються без дублікатів (IMDb зверху, збіги за
+//      назвою доповнюють один одного: постер з IMDb + укр. назва з вікі).
 //   4. Усе кешується: повторний запит тієї ж назви — миттєвий.
 // ============================================================
 
-const IMDB_CAP_MS = 2800;   // стільки даємо IMDb, потім показуємо Вікіпедію
-const WIKI_DELAY_MS = 800;  // фори IMDb; якщо він не встиг — стартує вікі-пошук
+const WIKI_DELAY_MS = 800;  // фори IMDb; потім вікі-пошук підключається завжди
 const SUG_CACHE_MAX = 60;
+const SUG_MAX = 9;          // максимум рядків у підказках
 
 const sugCache = new Map(); // ключ запиту -> Promise зі списком підказок
 
+// Злиття результатів IMDb і Вікіпедії без дублікатів (за нормальною назвою).
+// Дублікати доповнюють один одного: бракуючі поля першого елемента
+// (постер, укр. назва, рік, режисер…) беруться з другого.
+// Точний збіг назви із запитом (напр., «Monster: The Ed Gein Story»)
+// піднімається нагору — IMDb suggestion часто не знає серіалів, і
+// потрібний результат приходить з Вікіпедії, але має бути першим.
+function mergeLists(imdbList, wikiList, query) {
+  const normQ = String(query || '').toLowerCase().replace(/[^a-zа-яіїєґ0-9]/g, '');
+  const out = [];
+  const idx = new Map();
+  const key = it => String((it && it.title) || '').toLowerCase().replace(/[^a-zа-яіїєґ0-9]/g, '');
+  const add = it => {
+    if (!it || !it.title) return;
+    const k = key(it);
+    const at = k ? idx.get(k) : undefined;
+    if (at !== undefined) {
+      const keep = out[at];
+      for (const f of ['poster', 'plot', 'year', 'director', 'runtime', 'imdbId', 'qid', 'titleUk', 'type']) {
+        if (keep[f] == null && it[f] != null) keep[f] = it[f];
+      }
+      if ((!keep.genres || !keep.genres.length) && it.genres && it.genres.length) keep.genres = it.genres;
+      if ((!keep.cast || !keep.cast.length) && it.cast && it.cast.length) keep.cast = it.cast;
+      return;
+    }
+    if (k) idx.set(k, out.length);
+    out.push(it);
+  };
+  (imdbList || []).forEach(add);
+  (wikiList || []).forEach(add);
+  if (normQ && normQ.length >= 3) {
+    const isExact = it => {
+      const t = String(it.title || '').toLowerCase().replace(/[^a-zа-яіїєґ0-9]/g, '');
+      const tu = String(it.titleUk || '').toLowerCase().replace(/[^a-zа-яіїєґ0-9]/g, '');
+      return t === normQ || (tu && tu === normQ);
+    };
+    const exact = out.filter(isExact);
+    if (exact.length && exact.length < out.length) {
+      return exact.concat(out.filter(it => !isExact(it))).slice(0, SUG_MAX);
+    }
+  }
+  return out.slice(0, SUG_MAX);
+}
+
 function searchFilmsFast(q, onPartial) {
   const imdbDown = imdbTemporarilyDown();
-  const imdbP = imdbDown
-    ? Promise.resolve([])
-    : suggestFilms(q).catch(() => []);
+  let imdbList = [];
+  let wikiList = [];
 
-  // Вікіпедія: стартуємо із мікрозатримкою (0, якщо IMDb уже вимкнений),
-  // АЛЕ тільки якщо IMDb ще не встиг відповести результатом —
-  // тоді на щасливому шляху займі запити не летять узагалі
-  const wikiP = Promise.race([
-    new Promise(res => setTimeout(res, imdbDown ? 0 : WIKI_DELAY_MS)),
-    imdbP.then(list => (list && list.length ? 'imdb-won' : 'wiki-go'))
-  ]).then(out => out === 'imdb-won'
-    ? []
-    : searchWikiFilms(q, onPartial).catch(() => []));
+  const paint = () => {
+    const merged = mergeLists(imdbList, wikiList, q);
+    if (merged.length && typeof onPartial === 'function') onPartial(merged);
+  };
 
-  return Promise.race([
-    imdbP.then(list => (list && list.length ? list : null)),
-    new Promise(res => setTimeout(() => res(null), IMDB_CAP_MS))
-  ]).then(imdbRes => imdbRes || wikiP);
+  // IMDb стартує одразу і малюється, щойно відповів (навіть якщо вікі ще шукає)
+  const imdbP = (imdbDown ? Promise.resolve([]) : suggestFilms(q).catch(() => []))
+    .then(list => { imdbList = list || []; paint(); return imdbList; });
+
+  // Вікіпедія: невелика затримка (щоб не спамити WMF на кожну літеру),
+ // потім шукаємо ЗАВЖДИ і добудовуємо список поступово (onPartial)
+  const wikiP = new Promise(res => setTimeout(res, imdbDown ? 0 : WIKI_DELAY_MS))
+    .then(() => searchWikiFilms(q, partial => { wikiList = partial || []; paint(); }))
+    .catch(() => []);
+
+  return Promise.all([imdbP, wikiP])
+    .then(([il, wl]) => { imdbList = il || []; wikiList = wl || []; })
+    .then(() => mergeLists(imdbList, wikiList, q));
 }
 
 function cachedSearch(q, onPartial) {
@@ -114,7 +162,9 @@ export function openFormModal({ film = null, currentUserId, allFilms = [] }) {
         sugIndex = -1;
         sugList.innerHTML = list.map((s, i) => `
           <button type="button" class="s-item" data-i="${i}">
-            <span class="s-thumb">${s.poster ? `<img src="${U.escapeHtml(U.posterUrl(s.poster, 100))}" alt="" referrerpolicy="no-referrer" loading="lazy" onerror="this.remove()">` : ''}</span>
+            <span class="s-thumb">${icons.film}${s.poster
+              ? `<img src="${U.escapeHtml(U.posterUrl(s.poster, 100))}" alt="" referrerpolicy="no-referrer" loading="lazy" onerror="this.remove()">`
+              : ''}</span>
             <span class="s-text">
               <span class="s-name">${U.escapeHtml(s.titleUk || s.title)}</span>
               <span class="s-year">${[s.year || '', typeLabel(s.type), s.source === 'wiki' ? 'Вікіпедія' : ''].filter(Boolean).join(' · ')}</span>
@@ -122,11 +172,31 @@ export function openFormModal({ film = null, currentUserId, allFilms = [] }) {
           </button>`).join('');
       };
 
+      // Підказки без постера (часто — вікі-результати): тихо підтягуємо
+      // зображення в фоні, тільки швидкі джерела (IMDb за tt-ID / TVMaze).
+      const fillMissingPosters = async (list) => {
+        for (let i = 0; i < list.length && i < 8; i++) {
+          const s = list[i];
+          if (s.poster || (!s.imdbId && !s.title)) continue;
+          if (gen !== searchGen || sugList.hidden) return;
+          try {
+            const url = await posterQuick({ imdbId: s.imdbId, title: s.title, year: s.year });
+            if (gen !== searchGen || sugList.hidden) return;
+            if (!url) continue; // цього джерела немає — пробуємо наступний рядок
+            s.poster = url;
+            const thumb = sugList.querySelector(`.s-item[data-i="${i}"] .s-thumb`);
+            if (thumb) {
+              thumb.insertAdjacentHTML('beforeend', `<img src="${U.escapeHtml(U.posterUrl(url, 100))}" alt="" referrerpolicy="no-referrer" loading="lazy" onerror="this.remove()">`);
+            }
+          } catch (e) { /* постер у підказці не критичний */ }
+        }
+      };
+
       let items = [];
       try {
         items = await cachedSearch(q, (partial) => {
-          // Прогресивний малюнок: перші вікі-результати — одразу,
-          // поки другий розділ Вікіпедії ще відповідає
+          // Прогресивний малюнок: перші результати — одразу, поки
+          // другий розділ Вікіпедії ще відповідає
           if (gen !== searchGen || sugList.hidden || !partial.length) return;
           renderItems(partial);
         });
@@ -138,6 +208,7 @@ export function openFormModal({ film = null, currentUserId, allFilms = [] }) {
         return;
       }
       renderItems(items);
+      fillMissingPosters(items);
     }, 220));
 
     searchInput.addEventListener('keydown', (e) => {
@@ -433,7 +504,7 @@ function formHTML(isEdit, film) {
                placeholder="Почніть вводити назву — українською або англійською…">
         <div class="suggest-list" id="suggestList" hidden></div>
       </div>
-      <span class="hint">Оберіть фільм зі списку — постер, рік і деталі підтягнуться автоматично. Шукаємо одночасно на IMDb і у Вікіпедії, тож результати зʼявляються швидко. Або просто заповніть поля нижче вручну.</span>
+      <span class="hint">Оберіть фільм або серіал зі списку — постер, рік і деталі підтягнуться автоматично. Шукаємо одночасно на IMDb і у Вікіпедії, тож результати зʼявляються швидко. Або просто заповніть поля нижче вручну.</span>
     </label>`}
 
     <div class="form-grid">

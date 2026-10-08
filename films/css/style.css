@@ -1355,16 +1355,25 @@ td.u-col.mine:hover { background: color-mix(in srgb, var(--accent) 9%, var(--sur
 .s-item.active { background: var(--accent-soft); }
 
 .s-thumb {
-  width: 35px;
-  height: 52px;
-  border-radius: 7px;
+  position: relative;
+  width: 40px;
+  height: 60px;
+  border-radius: 8px;
   background: var(--surface-2);
   overflow: hidden;
   flex-shrink: 0;
   display: grid;
   place-items: center;
+  box-shadow: inset 0 0 0 1px var(--border);
 }
-.s-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.s-thumb svg { width: 17px; height: 17px; color: var(--muted); opacity: 0.5; }
+.s-thumb img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
 
 .s-text { min-width: 0; display: flex; flex-direction: column; gap: 1px; }
 .s-name {
@@ -1909,7 +1918,7 @@ td.u-col.mine:hover { background: color-mix(in srgb, var(--accent) 9%, var(--sur
 /* Дотик-пристрої (iPhone/iPad): Safari примусово зумить сторінку при
    фокусі на полі з шрифтом <16px — через це ламалась розкладка і
    випадайка автозаповнення опинялась поза екраном. 16px знімає зум. */
-@media (pointer: coarse) {
+@media (pointer: coarse), (hover: none) {
   input, textarea, select { font-size: 16px !important; }
 }
 
@@ -1986,7 +1995,8 @@ td.u-col.mine:hover { background: color-mix(in srgb, var(--accent) 9%, var(--sur
   /* Автозаповнення: більші цілі під палець */
   .suggest-list { max-height: min(46vh, 380px); }
   .s-item { padding: 10px 9px; gap: 12px; }
-  .s-thumb { width: 40px; height: 58px; border-radius: 8px; }
+  .s-thumb { width: 44px; height: 66px; border-radius: 9px; }
+  .s-thumb svg { width: 19px; height: 19px; }
   .s-name { font-size: 15px; white-space: normal; display: -webkit-box;
     -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
   .s-note { padding: 14px 10px; }

@@ -194,8 +194,11 @@ async function wikidataByQids(qids) {
     const c = ents[qid];
     if (!c) continue;
     if ((c.classes || []).some(cl => NOT_FILM_CLASSES.has(cl))) continue;
-    // Фільтр «це точно кіно/серіал»: IMDb ID, режисер або (рік і жанр)
-    const filmLike = c.imdbId || c.directorQid || (c.year && c.genreQids.length);
+    // Фільтр «це точно кіно/серіал»: IMDb ID, режисер, актори або (рік і жанр).
+    // (у серіалів часто немає єдиного режисера P57, зате є актори P161)
+    const filmLike = c.imdbId || c.directorQid ||
+      (c.actorQids && c.actorQids.length) ||
+      (c.year && c.genreQids.length);
     if (!filmLike) continue;
 
     const dirLab = c.directorQid ? (labels[c.directorQid] || {}) : {};
@@ -207,7 +210,8 @@ async function wikidataByQids(qids) {
       genres: c.genreQids.map(g => (labels[g] ? (labels[g].uk || labels[g].en) : null)).filter(Boolean).slice(0, 6),
       cast: (c.actorQids || []).map(a => (labels[a] ? (labels[a].uk || labels[a].en) : null)).filter(Boolean).slice(0, 6),
       runtime: c.runtime || null,
-      year: c.year || null
+      year: c.year || null,
+      classes: c.classes || []
     };
   }
   return { map, ok: true };
@@ -299,6 +303,12 @@ async function collectItems(pages, seen, thumbs) {
     // Стаття без QID і без змістовних даних — не пропозиція
     if (!qid && !plot && !poster) continue;
 
+    // Підпис типу для підказок: серіал / ТВ-фільм (класи Вікіданих)
+    const cl = (e && e.classes) || [];
+    const type = cl.includes('Q5398426') ? 'tvSeries'   // television series
+      : cl.includes('Q506240') ? 'tvMovie'              // television film
+      : 'movie';
+
     items.push({
       imdbId: (e && e.imdbId) || null,
       qid,
@@ -306,7 +316,7 @@ async function collectItems(pages, seen, thumbs) {
       titleUk: titleUk || null,
       year: (e && e.year) || yearFromExtract(p.extract),
       poster,
-      type: 'movie',
+      type,
       source: 'wiki',
       director: (e && e.director) || null,
       genres: (e && e.genres) || [],
@@ -422,42 +432,90 @@ export async function enrichByQid(qid) {
 // через API, а сторінка uk.розділу могла бути відкинута як дублікат.
 // Ланцюжок (перший успішний крок перемагає):
 //   1) IMDb Suggestion API за tt-ID — миттєво і точно, якщо відомий ID;
-//   2) Wikidata: QID за P345 -> sitelinks (ukwiki/enwiki) -> pageimages;
-//      останній шанс — зображення P18 (кадр/фото з самого фільму);
-//   3) Пошук сторінки uk/en Вікіпедії з перевіркою року (щоб не
+//   2) Wikidata: QID за P345 -> sitelinks (uk/en/ru вікі) -> pageimages;
+//   3) TVMaze — серіали й шоу (швидке безкоштовне API з відкритим CORS);
+//   4) Wikidata P18 (кадр/фото, пов'язане саме з цим фільмом);
+//   5) Пошук сторінки uk/en/ru Вікіпедії з перевіркою року (щоб не
 //      чіпати однойменні книги/старі фільми).
 // ============================================================
 
+// TVMaze: безкоштовне API бази серіалів із відкритим CORS.
+// Добре дістає постери серіалів, яких немає у Вікіпедії.
+async function tvmazePoster(title, imdbId, year) {
+  const q = String(title || '').trim();
+  if (!q && !imdbId) return null;
+  try {
+    const data = await fetchJSON('https://api.tvmaze.com/search/shows?q=' +
+      encodeURIComponent(q || imdbId), 4500);
+    const shows = (Array.isArray(data) ? data : []).map(x => x && x.show).filter(Boolean);
+    if (!shows.length) return null;
+
+    let hit = null;
+    // 1) точний збіг за IMDb ID (надійно)
+    if (imdbId) hit = shows.find(s => s.externals && s.externals.imdb === imdbId);
+    // 2) збіг за роком прем'єри (±1 рік), тільки якщо в шоу є зображення
+    if (!hit && year) {
+      hit = shows.find(s => {
+        if (!s.premiered || !s.image) return false;
+        const y = parseInt(String(s.premiered).slice(0, 4), 10);
+        return !Number.isNaN(y) && Math.abs(y - year) <= 1;
+      });
+    }
+    // 3) єдиний результат із зображенням (назва скоріш за все точна)
+    if (!hit) {
+      const withImg = shows.filter(s => s.image && s.image.original);
+      if (withImg.length === 1) hit = withImg[0];
+    }
+    return hit && hit.image && hit.image.original ? cleanThumb(hit.image.original) : null;
+  } catch (e) { return null; }
+}
+
 export async function fetchPoster({ imdbId, title, titleUk, year } = {}) {
+  const tt = (imdbId && /^tt\d+$/.test(String(imdbId))) ? imdbId : null;
+  let qid = null;
+
   // 1) IMDb за tt-ID — найточніше і найшвидше
-  if (imdbId && /^tt\d+$/.test(String(imdbId))) {
+  if (tt) {
     const urls = [
-      `https://v3.sg.media-imdb.com/suggestion/t/${encodeURIComponent(imdbId)}.json?includeVideos=0`,
-      `https://v2.sg.media-imdb.com/suggestion/t/${encodeURIComponent(imdbId)}.json`
+      `https://v3.sg.media-imdb.com/suggestion/t/${encodeURIComponent(tt)}.json?includeVideos=0`,
+      `https://v2.sg.media-imdb.com/suggestion/t/${encodeURIComponent(tt)}.json`
     ];
     for (const url of urls) {
       try {
         const data = await fetchJSON(url, 4000);
-        const hit = ((data && data.d) || []).find(x => x && x.id === imdbId && x.i && x.i.imageUrl);
+        const hit = ((data && data.d) || []).find(x => x && x.id === tt && x.i && x.i.imageUrl);
         if (hit) return hit.i.imageUrl;
       } catch (e) { /* наступне дзеркало */ }
     }
   }
 
-  // 2) Wikidata: QID за IMDb ID -> sitelinks -> pageimages -> P18
-  if (imdbId && /^tt\d+$/.test(String(imdbId))) {
+  // 2) Wikidata: IMDb ID -> QID -> sitelinks (uk/en/ru) -> pageimages
+  if (tt) {
     try {
       const sr = await fetchJSON(`${WD_API}?action=query&format=json&list=search&srlimit=1` +
-        `&srsearch=${encodeURIComponent('haswbstatement:P345=' + imdbId)}`, 5000);
-      const qid = sr && sr.query && sr.query.search && sr.query.search[0] && sr.query.search[0].title;
-      if (qid && /^Q\d+$/.test(qid)) {
-        const poster = await posterFromQid(qid);
+        `&srsearch=${encodeURIComponent('haswbstatement:P345=' + tt)}`, 5000);
+      const found = sr && sr.query && sr.query.search && sr.query.search[0] && sr.query.search[0].title;
+      if (found && /^Q\d+$/.test(found)) {
+        qid = found;
+        const poster = await posterFromSitelinks(qid);
         if (poster) return poster;
       }
-    } catch (e) { /* далі пошук за назвою */ }
+    } catch (e) { /* далі інші джерела */ }
   }
 
-  // 3) Пошук за назвою (з перевіркою року, щоб не взяти постер
+  // 3) TVMaze — серіали та шоу (і коли IMDb ID невідомий — за назвою)
+  if (title || tt) {
+    const tv = await tvmazePoster(title, tt, year);
+    if (tv) return tv;
+  }
+
+  // 4) Останній шанс у Wikidata: зображення P18 (кадр/фото)
+  if (qid) {
+    const p18 = await posterP18(qid);
+    if (p18) return p18;
+  }
+
+  // 5) Пошук за назвою (з перевіркою року, щоб не взяти постер
   //    однойменного старого фільму чи книги)
   const wikiPosterSearch = async (lang, query) => {
     try {
@@ -484,7 +542,8 @@ export async function fetchPoster({ imdbId, title, titleUk, year } = {}) {
   }
   if (title) {
     const t = await wikiPosterSearch('en', title)
-      || (year ? await wikiPosterSearch('en', `${title} ${year}`) : null);
+      || (year ? await wikiPosterSearch('en', `${title} ${year}`) : null)
+      || await wikiPosterSearch('ru', title);
     if (t) return t;
   }
   return null;
@@ -503,8 +562,9 @@ function yearMatchesPage(page, year) {
   return new RegExp(`\\b${year}\\b\\s*року`).test(ex) || new RegExp(`\\b${year}\\b`).test(ex.slice(0, 120));
 }
 
-// Мініатюра за QID: sitelinks ukwiki/enwiki -> pageimages; в кінці P18
-export async function posterFromQid(qid) {
+// Мініатюра за QID: sitelinks ukwiki/enwiki/ruwiki -> pageimages + P18 в кінці.
+// (ru.Вікіпедія, як і uk., дозволяє fair-use — постери там часто є)
+export async function posterFromSitelinks(qid) {
   try {
     const data = await fetchJSON(`${WD_API}?action=wbgetentities&format=json&origin=*` +
       `&props=sitelinks%7Cclaims&ids=${encodeURIComponent(qid)}`, 5000);
@@ -514,6 +574,7 @@ export async function posterFromQid(qid) {
     const tries = [];
     if (sl.ukwiki && sl.ukwiki.title) tries.push({ lang: 'uk', title: sl.ukwiki.title });
     if (sl.enwiki && sl.enwiki.title) tries.push({ lang: 'en', title: sl.enwiki.title });
+    if (sl.ruwiki && sl.ruwiki.title) tries.push({ lang: 'ru', title: sl.ruwiki.title });
     for (const t of tries) {
       try {
         const url = `https://${t.lang}.wikipedia.org/w/api.php?action=query&format=json&origin=*` +
@@ -524,13 +585,51 @@ export async function posterFromQid(qid) {
         if (p) return cleanThumb(p.thumbnail.source);
       } catch (e) { /* наступний розділ */ }
     }
-    // Останній шанс: зображення P18 (кадр/фото, пов'язане саме з цим фільмом)
-    const p18 = ((ent.claims || {}).P18 || [])
+  } catch (e) { /* тихо */ }
+  return null;
+}
+
+// Зображення P18 (кадр/фото, пов'язане саме з цим фільмом) — останній шанс
+export async function posterP18(qid) {
+  try {
+    const data = await fetchJSON(`${WD_API}?action=wbgetclaims&format=json&origin=*` +
+      `&property=P18&entity=${encodeURIComponent(qid)}`, 5000);
+    const claims = (data && data.claims && data.claims.P18) || [];
+    const p18 = claims
       .map(c => c.mainsnak && c.mainsnak.datavalue && c.mainsnak.datavalue.value)
       .filter(v => typeof v === 'string' && v)[0];
     if (p18) {
       return `https://commons.wikimedia.org/wiki/Special:FilePath/${encodeURIComponent(p18)}?width=500`;
     }
   } catch (e) { /* тихо */ }
+  return null;
+}
+
+// Комбо (сумісність): sitelinks -> P18
+export async function posterFromQid(qid) {
+  return (await posterFromSitelinks(qid)) || (await posterP18(qid));
+}
+
+// ============================================================
+// Швидкий постер для ПІДКАЗОК (posterQuick) — тільки легкі джерела,
+// без повільних вікі-пошуків: IMDb за tt-ID -> TVMaze за назвою.
+// Викликається фоново для рядків підказок без зображення.
+// ============================================================
+export async function posterQuick({ imdbId, title, year } = {}) {
+  const tt = (imdbId && /^tt\d+$/.test(String(imdbId))) ? imdbId : null;
+  if (tt) {
+    const urls = [
+      `https://v3.sg.media-imdb.com/suggestion/t/${encodeURIComponent(tt)}.json?includeVideos=0`,
+      `https://v2.sg.media-imdb.com/suggestion/t/${encodeURIComponent(tt)}.json`
+    ];
+    for (const url of urls) {
+      try {
+        const data = await fetchJSON(url, 4000);
+        const hit = ((data && data.d) || []).find(x => x && x.id === tt && x.i && x.i.imageUrl);
+        if (hit) return hit.i.imageUrl;
+      } catch (e) { /* наступне дзеркало */ }
+    }
+  }
+  if (title) return tvmazePoster(title, tt, year);
   return null;
 }
