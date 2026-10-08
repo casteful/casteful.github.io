@@ -80,6 +80,35 @@ export async function suggestFilms(query) {
   }
 }
 
+// Дані за tt-ID (перевірка IMDb ID із Вікіданих / постери):
+// IMDb suggestion за tt-ID віддає еталонну назву — нею звіряємо,
+// чи не «випадковий» це ID іншого фільму (у Вікіданнах трапляються
+// помилкові P345: «Monster: The Ed Gein Story» має tt антології «Monster»).
+export async function imdbById(tt) {
+  if (!tt || !/^tt\d+$/.test(String(tt))) return null;
+  const urls = [
+    `https://v3.sg.media-imdb.com/suggestion/t/${encodeURIComponent(tt)}.json?includeVideos=0`,
+    `https://v2.sg.media-imdb.com/suggestion/t/${encodeURIComponent(tt)}.json`
+  ];
+  for (const url of urls) {
+    try {
+      const data = await fetchJSON(url, 3000);
+      const hit = ((data && data.d) || []).find(x => x && x.id === String(tt));
+      if (hit) {
+        return {
+          imdbId: hit.id,
+          title: hit.l || null,
+          year: hit.y || parseInt(hit.yr, 10) || null,
+          poster: (hit.i && hit.i.imageUrl) || null,
+          type: hit.qid || null
+        };
+      }
+      return null; // відповіли, але такого tt-ID немає
+    } catch (e) { /* наступне дзеркало */ }
+  }
+  return null;
+}
+
 async function fetchJSON(url, timeoutMs) {
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), timeoutMs);

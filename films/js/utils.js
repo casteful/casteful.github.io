@@ -90,8 +90,14 @@ export function fmtPremiere(iso) {
   return `${d} ${MONTHS_UK_GEN[mo - 1]} ${m[1]}`;
 }
 
-// Жанри: англійські мітки Wikidata -> українські (укр. рядки не чіпаємо).
-// Словник — замкнений набір популярних жанрів; невідоме лишається як є.
+// Нормалізація назви для порівнянь: без дужок-уточнень («House (TV
+// series)» -> «house»), без пунктуації, нижчим регістром.
+export function normTitle(s) {
+  return String(s || '')
+    .toLowerCase()
+    .replace(/\([^)]*\)/g, ' ')
+    .replace(/[^a-zа-яіїєґ0-9]/g, '');
+}
 const GENRE_UK = {
   'drama': 'драма', 'comedy': 'комедія', 'action': 'бойовик',
   'thriller': 'трилер', 'psychological thriller': 'психологічний трилер',
@@ -123,6 +129,21 @@ export function translateGenres(list) {
     if (GENRE_UK[base]) return GENRE_UK[base];
     return s;
   }).filter(Boolean);
+}
+
+// Жанри: у базі трапляються і укр. («драма» — старі записи), і англ.
+// («drama» — нові) назви. genreEn() зводить будь-який жанр до англійської:
+// статистика і фільтри групують «драма» та "drama" як один жанр.
+const GENRE_EN = Object.fromEntries(Object.entries(GENRE_UK).map(([en, uk]) => [uk, en]));
+export function genreEn(g) {
+  const s = String(g || '').trim();
+  if (!s || !/[а-яіїєґ]/i.test(s)) return s; // вже латиницею (або порожньо)
+  const low = s.toLowerCase();
+  if (GENRE_EN[low]) return GENRE_EN[low];
+  // складені («кримінальна драма») — збираємо з перекладених частин
+  const parts = low.split(/\s+/).map(w => GENRE_EN[w]).filter(Boolean);
+  if (parts.length) return parts.join(' ');
+  return s;
 }
 
 // Обрізає довгий рядок, додаючи трикрапку

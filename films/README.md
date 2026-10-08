@@ -1,6 +1,7 @@
 # Фільмотека — Movie Night Rating App
 
-A minimalistic film-rating web app for a group of friends. Fully in Ukrainian,
+A minimalistic film-rating web app for a group of friends. UI in Ukrainian,
+film **metadata in English** (titles in both Ukrainian and English),
 light/dark theme, built as a **zero-build static site** — perfect for GitHub Pages.
 
 ## Features
@@ -9,7 +10,7 @@ light/dark theme, built as a **zero-build static site** — perfect for GitHub P
 - **Telegram pushes** — an elegant one-line Ukrainian message lands in your group when someone adds or deletes a film, or rates / changes / removes a rating (e.g. «surguy оцінив фільм «Інтерстеллар» на 8/10», «surguy змінив оцінку: 7 → 9»). Setup is one person's job: tap the paper-plane in the header, paste a free @BotFather token, add the bot to the group, send /start there — the app finds the chat automatically and stores the shared config in Firebase. Pushes are sent by the acting device only (no duplicates) and never block or break the UI; failures stay silent. The plane button gets a green dot while notifications are on.
 - **Cinematic card grid** — vertical poster cards with the average score on the poster, a full-width rate button and friends' scores as colored chips; 2-column layout on phones. A compact **table** view with a rating column per friend is one tap away; both views remember your choice.
 - **Beautiful film window** — poster blurred into a hero header with the title, director, genres and cast; the 10-star scale for your own score; everyone's scores in one list.
-- **Smart adding** — start typing a film name (Ukrainian or English) and pick it from live suggestions; poster, year, Ukrainian title, director, cast, genres, runtime and plot are fetched automatically (IMDb + Wikipedia + Wikidata). **Series always get their premiere**: the year is filled from the premiere date (IMDb year-range, Wikidata P577, TVMaze) and the exact day shows as «Прем'єра: 24 вересня 2007» under the year field and in the film window. Everything stays manually editable.
+- **Smart adding** — start typing a film name (Ukrainian or English) and pick it from live suggestions; poster, year, both titles, director, cast, genres, runtime and plot are fetched automatically (IMDb + Wikipedia + Wikidata). **Titles are bilingual** — Ukrainian («Чудовисько: Історія Еда Ґіна») above the English original ("Monster: The Ed Gein Story") in suggestions, cards, the table and the film window; **all other metadata is English-first** (director, cast, genres, plot come from en.Wikipedia / English Wikidata labels, with Ukrainian as fallback). **Series always get their premiere**: the year is filled from the premiere date (IMDb year-range, Wikidata P577, TVMaze) and the exact day shows as «Прем'єра: 24 вересня 2007» under the year field and in the film window. Everything stays manually editable.
 - **Clickable people & genres** — tap any director, actor or genre (in the film window or in statistics) to see all matching films of the club.
 - **Statistics tab** — totals (films, ratings, average, shared cinema-hours, most active viewer), club records (best / worst / most controversial / most discussed / oldest / newest), top films, favourite genres, top actors and directors, rating histogram, decades, runtime stats and per-viewer profiles («strictest critic» vs «most generous viewer»).
 - **Modern UI (v3)** — warm-amber identity with gradient accents, glass topbar, springy micro-animations, refined dark theme, soft “projector” glow, thin scrollbars, reduced-motion support.
@@ -92,10 +93,10 @@ films/
     premiere:   "1994-09-10"          # full premiere date when known (optional)
     poster:     "https://m.media-amazon.com/..."
     imdbId:     "tt0111161"
-    director:   "Френк Дарабонт"
-    genres:     ["драматичний фільм", "кримінальний фільм"]
+    director:   "Frank Darabont"
+    genres:     ["drama film", "crime film"]
     runtime:    142
-    plot:       "«Втеча з Шоушенка» — ..."
+    plot:       "The Shawshank Redemption is a 1994 American…"
     addedBy:    "surguy"
     createdAt:  1728300000000
     updatedAt:  1728300000000
@@ -119,10 +120,20 @@ tgConfig/
 - **Films + series, both sources always** — IMDb suggestions paint first, then
   Wikipedia results are merged in (progressively, no duplicates). This matters
   for series: IMDb's suggestion endpoint often doesn't know them by full name
-  (e.g. «Monster: The Ed Gein Story»), while Wikipedia does — so the two lists
-  are always combined and an exact-title match (Ukrainian or original) is
-  raised to the top. Suggestions that arrive without a poster get one quietly
-  filled in from fast sources (IMDb by tt-ID → TVMaze) in the background.
+  (e.g. «Monster: The Ed Gein Story» — on IMDb it is a season of the
+  "Monster" anthology), while Wikipedia does — so the two lists are always
+  combined and an exact-title match (Ukrainian or original) is raised to the
+  top. Suggestions that arrive without a poster get one quietly filled in
+  from fast sources (IMDb by tt-ID → TVMaze) in the background.
+- **Seasons rescued when typed exactly** — Wikidata entities classified as a
+  TV-series season (`Q3464665`) are normally filtered out of suggestions, BUT
+  an entity whose English or Ukrainian label matches the user's query letter-
+  for-letter is kept (that is exactly the show the user wants). This is how
+  "Monster: The Ed Gein Story" (a season of the IMDb "Monster" anthology)
+  appears as the first suggestion. A wrong IMDb ID from Wikidata (`P345`
+  pointing to the anthology) is detected by comparing IMDb's own title for
+  that tt-ID with the picked title and dropped, so the film is enriched via
+  its correct Wikidata QID instead; TVMaze can supply the correct tt-ID later.
 - **All matches in one scrollable list** — up to 20 suggestions from IMDb and
   both Wikipedia sections. The dropdown scrolls, with a results counter in the
   footer («Усього N збігів — гортайте список»); touching the list to scroll
@@ -139,30 +150,22 @@ tgConfig/
   TV-series seasons (`Q3464665`) and Wikimedia list pages (`Q13406463`) are
   filtered out of suggestions entirely.
 - **Series premiere dates** — Wikidata `P577` is often empty for series and
-  IMDb suggestions carry only a start year, so the year is now filled from a
+  IMDb suggestions carry only a start year, so the year is filled from a
   chain: IMDb `y` / `yr` range → Wikidata `P577` → **TVMaze `premiered`** (full
   date, matched by IMDb ID or exact title). When the full day is known it is
   stored as `premiere` ("2007-09-24"), shown as «Прем'єра: 24 вересня 2007»
   under the year field in the add/edit form and in the film window instead of
   the bare year. Year extraction from Wikipedia extracts also learned
-  «2025 році» and English "premiered on October 3, 2025" patterns.
-- **English-first enrichment, Ukrainian upgrades** — the fast Wikidata path
-  (`wbgetentities`, a few hundred ms) now runs before the slow SPARQL query
-  (which stays only as a fallback), so fields fill even when SPARQL times out.
-  The plot chain ends with an **English Wikipedia safety net**: if no Ukrainian
-  article exists anywhere, the exact en.Wikipedia article (sitelink or original
-  title) is used — better an English plot than an empty field. Ukrainian is
-  upgraded automatically wherever it is free: the title (Wikidata uk label /
-  uk article), genres (built-in en→uk dictionary: drama→драма, film noir→нуар…)
-  and the plot (uk article found under a localized name). Wikipedia pages
-  WITHOUT a Wikidata entity (books, people) are now film-checked in both
-  languages so they can't leak into suggestions.
-- **Correct Ukrainian plot** — enrichment resolves the exact uk.Wikipedia
-  article of the film/series through its Wikidata sitelink instead of a blind
-  title search (which used to fetch the cosmology article for «Теорія
-  великого вибуху»); search-based plot candidates must look film-like
-  (mentions фільм/серіал…) and never disambiguation pages, and an
-  English-sourced plot is replaced by the Ukrainian one when available.
+  «2025 році», English "is a 2025 American…" and "premiered on October 3,
+  2025" patterns (year near premiere/release keywords within the intro).
+- **English-first metadata, bilingual titles** — the title is stored in both
+  languages (`titleUk` + `title`); everything else prefers English: director,
+  genres and cast use English Wikidata labels (en → uk fallback), and the
+  plot comes from the exact en.Wikipedia article first (uk article / uk
+  search / en search as fallbacks). Legacy Ukrainian genres in the database
+  are normalized to English at aggregation time (`genreEn()` in
+  `js/utils.js`), so statistics and filters group «драма» and "drama"
+  together.
 - Film sources:
   1. Public IMDb suggestion endpoint (`v3.sg.media-imdb.com` / `v2` mirror,
      raced in parallel, 3 s cap).
@@ -177,8 +180,9 @@ tgConfig/
 - If IMDb fails, the app remembers it for 10 minutes (sessionStorage) and
   searches Wikipedia first — no timeout waiting on every keystroke. The flag
   clears itself as soon as IMDb answers again.
-- Details enrichment: Wikidata (queried by IMDb ID `P345` or Wikidata `QID`)
-  with a Ukrainian Wikipedia fallback for plot text — all optional and fail-safe.
+- Details enrichment: Wikidata (queried by IMDb ID `P345` or a direct QID)
+  with an English-Wikipedia-first plot chain — all optional and fail-safe.
+  The SPARQL endpoint stays as a fallback when the fast path returns nothing.
 - Poster chain (first hit wins): IMDb by `tt`-ID → Wikidata sitelinks
   (uk → en → **ru** Wikipedia, the latter two serve fair-use posters through
   the API when en doesn't) → **TVMaze** (free, CORS-open — the best source for

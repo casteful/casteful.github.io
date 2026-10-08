@@ -22,7 +22,6 @@
 // ============================================================
 
 import { OMDB_API_KEY } from './config.js';
-import { translateGenres } from './utils.js';
 
 const WD_API = 'https://www.wikidata.org/w/api.php';
 
@@ -183,7 +182,7 @@ const NOT_FILM_CLASSES = new Set([
   'Q13433827'  // есе
 ]);
 
-async function wikidataByQids(qids) {
+async function wikidataByQids(qids, opts = {}) {
   if (!qids.length) return { map: {}, ok: true };
 
   // claims + мітки самих фільмів — ОДНИМ викликом (швидше, ніж два)
@@ -193,6 +192,15 @@ async function wikidataByQids(qids) {
   } catch (e) {
     return { map: {}, ok: false }; // Wikidata недоступна
   }
+
+  // Рятувальний точний збіг: сутності класу «сезон серіалу» (Q3464665)
+  // зазвичай відкидаються, АЛЕ якщо назва ДОСЛІВНО збігається із запитом
+  // («Monster: The Ed Gein Story» — сезон антології «Monster» на IMDb) —
+  // це саме те, що шукає користувач. Інакше потрібного результату
+  // просто немає у підказках, і користувач додає неправильний фільм.
+  const nq = opts.rescueQuery
+    ? String(opts.rescueQuery).toLowerCase().replace(/[^a-zа-яіїєґ0-9]/g, '') : '';
+  const nrm = s => String(s || '').toLowerCase().replace(/[^a-zа-яіїєґ0-9]/g, '');
 
   // Мітки режисерів + жанрів + акторів — другим швидким викликом (до 50 id)
   const extra = new Set();
@@ -206,26 +214,39 @@ async function wikidataByQids(qids) {
     try { labels = await wdLabels([...extra]); } catch (e) { /* мітки не критичні */ }
   }
 
+  // keepAll — явний запит за відомим QID (обрано користувачем): без фільтрів
+  const keepAll = !!opts.keepAll;
+
   const map = {};
   for (const qid of qids) {
     const c = ents[qid];
     if (!c) continue;
-    if ((c.classes || []).some(cl => NOT_FILM_CLASSES.has(cl))) continue;
     // Фільтр «це точно кіно/серіал»: IMDb ID, режисер, актори або (рік і жанр).
     // (у серіалів часто немає єдиного режисера P57, зате є актори P161)
     const filmLike = c.imdbId || c.directorQid ||
       (c.actorQids && c.actorQids.length) ||
       (c.year && c.genreQids.length);
-    if (!filmLike) continue;
+    if (keepAll) {
+      // без фільтрів
+    } else if ((c.classes || []).some(cl => NOT_FILM_CLASSES.has(cl))) {
+      const exactHit = nq && nq.length >= 3 && filmLike &&
+        (nrm(c.labelEn) === nq || nrm(c.labelUk) === nq);
+      if (!exactHit) continue; // сезон/книга/список — рятують лише точні збіги
+    } else if (!filmLike) {
+      continue;
+    }
 
     const dirLab = c.directorQid ? (labels[c.directorQid] || {}) : {};
+    // ДАНІ АНГЛІЙСЬКОЮ: режисер/жанри/актори — мітки en (fallback uk).
+    // Укр. лишається лише НАЗВА (titleUk) — так домовилися з користувачем:
+    // назва двомовна, решта інформації англійською.
     map[qid] = {
       titleUk: c.labelUk || null,
       titleEn: c.labelEn || null,
       imdbId: c.imdbId || null,
-      director: dirLab.uk || dirLab.en || null,
-      genres: translateGenres(c.genreQids.map(g => (labels[g] ? (labels[g].uk || labels[g].en) : null)).filter(Boolean).slice(0, 6)),
-      cast: (c.actorQids || []).map(a => (labels[a] ? (labels[a].uk || labels[a].en) : null)).filter(Boolean).slice(0, 6),
+      director: dirLab.en || dirLab.uk || null,
+      genres: c.genreQids.map(g => (labels[g] ? (labels[g].en || labels[g].uk) : null)).filter(Boolean).slice(0, 6),
+      cast: (c.actorQids || []).map(a => (labels[a] ? (labels[a].en || labels[a].uk) : null)).filter(Boolean).slice(0, 6),
       runtime: c.runtime || null,
       year: c.year || null,
       premiere: c.premiere || null,
@@ -245,17 +266,32 @@ function cleanThumb(src) {
 
 // Рік із вступного тексту статті. Формати:
 //   uk: «...фільм 1994 року», «...вийшов у 2025 році»;
-//   en: "premiered on October 3, 2025", "released on 3 October 2025"
+//   en: "is a 2025 American…", "premiered on October 3, 2025",
+//       "released on 3 October 2025"
 // (дата прем'єри часто стоїть далі 200-го символу — беремо 400)
 const EN_MONTHS = 'January|February|March|April|May|June|July|August|September|October|November|December';
 function yearFromExtract(text) {
-  const head = String(text || '').slice(0, 400);
+  const s = String(text || '');
+  const head = s.slice(0, 400);
   let m = head.match(/\b(18\d{2}|19\d{2}|20\d{2}|21\d{2})\s*(року|році)/);
   if (m) return parseInt(m[1], 10);
   m = head.match(new RegExp(`\\b(?:${EN_MONTHS})\\s+\\d{1,2},\\s*(\\d{4})\\b`));
   if (m) return parseInt(m[1], 10);
   m = head.match(new RegExp(`\\b\\d{1,2}\\s+(?:${EN_MONTHS})\\s+(\\d{4})\\b`));
   if (m) return parseInt(m[1], 10);
+  // «X is a 2025 American…» / «… is a 2025 … television miniseries»
+  m = head.match(/\b(?:is|was)\s+(?:an|a)?\s*(18\d{2}|19\d{2}|20\d{2}|21\d{2})\b/);
+  if (m) return parseInt(m[1], 10);
+  // Рік може стояти далеко у вступі («Upon its premiere on October 3,
+  // 2025…», «Прем'єра відбулася 3 жовтня 2025…») — шукаємо РІК ПОБЛИЗУ
+  // слів прем'єри/виходу у ширшому фрагменті (до 1200 знаків), щоб не
+  // чіпати випадкові роки (напр., роки народження акторів).
+  m = s.slice(0, 1200).match(
+    /(?:premier\w*|release[ds]?|debuted?|прем['’ʼ]?єр\w*|вийшл[ао]|реліз)[^.\n]{0,140}?\b(18\d{2}|19\d{2}|20\d{2}|21\d{2})\b/i);
+  if (m) {
+    const y = parseInt(m[1], 10);
+    if (y >= 1888 && y <= 2100) return y;
+  }
   return null;
 }
 
@@ -288,7 +324,7 @@ function looksLikeFilmByExtract(text) {
 // Сторінки-дублікати (та сама стаття в uk/en розділі) відкидаються,
 // АЛЕ їхні мініатюри зберігаються тут: en.Вікіпедія часто не віддає
 // fair-use постери, а uk. — віддає. Тож постер "перетікає" з дубліката.
-async function collectItems(pages, seen, thumbs) {
+async function collectItems(pages, seen, thumbs, rescueQuery = '') {
   // дедуплікація за QID або назвою (seen — спільний між розділами Вікіпедії)
   pages = pages.filter(p => {
     const qid = p.pageprops && p.pageprops.wikibase_item;
@@ -306,7 +342,7 @@ async function collectItems(pages, seen, thumbs) {
   if (!pages.length) return [];
 
   const qids = pages.map(p => p.pageprops && p.pageprops.wikibase_item).filter(Boolean);
-  const { map: wd, ok: wdOk } = await wikidataByQids(qids);
+  const { map: wd, ok: wdOk } = await wikidataByQids(qids, { rescueQuery });
 
   const items = [];
   for (const p of pages) {
@@ -338,9 +374,11 @@ async function collectItems(pages, seen, thumbs) {
     // Стаття без QID і без змістовних даних — не пропозиція
     if (!qid && !plot && !poster) continue;
 
-    // Підпис типу для підказок: серіал / ТВ-фільм (класи Вікіданих)
+    // Підпис типу для підказок: серіал / ТВ-фільм (класи Вікіданих).
+    // Q3464665 (сезон серіалу) теж показуємо як серіал: «Monster: The
+    // Ed Gein Story» у Вікіданнах — саме сезон антології «Monster».
     const cl = (e && e.classes) || [];
-    const type = cl.includes('Q5398426') ? 'tvSeries'   // television series
+    const type = cl.includes('Q5398426') || cl.includes('Q3464665') ? 'tvSeries' // television series / season
       : cl.includes('Q506240') ? 'tvMovie'              // television film
       : 'movie';
 
@@ -429,7 +467,7 @@ export async function searchWikiFilms(query, onPartial, opts = {}) {
       pages = prefix ? await wikiPrefix(lang, q) : await wikiSearch(lang, q);
     } catch (e) { return; }
     let batch = [];
-    try { batch = await collectItems(pages.slice(0, prefix ? 6 : 10), seen, thumbs); } catch (e) { return; }
+    try { batch = await collectItems(pages.slice(0, prefix ? 6 : 10), seen, thumbs, q); } catch (e) { return; }
     emit(batch);
   };
 
@@ -454,7 +492,10 @@ export async function searchWikiFilms(query, onPartial, opts = {}) {
 
 export async function enrichByQid(qid) {
   if (!qid || !/^Q\d+$/.test(qid)) return {};
-  const { map: wd } = await wikidataByQids([qid]);
+  // keepAll: QID тут відомий точно (фільм обрано користувачем або знайдено
+  // за IMDb ID) — фільтри «сезон/книга» не застосовуємо, інакше
+  // легітимні сезони-серіали («Monster: The Ed Gein Story») втрачали б дані.
+  const { map: wd } = await wikidataByQids([qid], { keepAll: true });
   const e = wd[qid];
   if (!e) return {};
   return {
@@ -559,7 +600,14 @@ export async function premiereInfo({ imdbId, title, titleUk, year } = {}) {
     const date = String(hit.premiered);
     const y = parseInt(date.slice(0, 4), 10);
     if (Number.isNaN(y) || y < 1888 || y > 2100) return null;
-    return { year: y, date, name: hit.name || null };
+    return {
+      year: y,
+      date,
+      name: hit.name || null,
+      // TVMaze знає правильний IMDb ID навіть тоді, коли у Вікіданнах
+      // записано помилковий (антологія-сезон) — використовуємо як rescue
+      imdbId: (hit.externals && hit.externals.imdb) || null
+    };
   } catch (e) { return null; }
 }
 

@@ -79,7 +79,9 @@ function compute(films) {
   };
 
   const topDirectors = agg(f => [String(f.director || '').trim()]).slice(0, 5);
-  const topGenres = agg(f => f.genres || []).slice(0, 6);
+  // жанри двомовні (старі записи укр., нові англ.) — зводимо до англійської,
+  // щоб «драма» і "drama" групувалися разом
+  const topGenres = agg(f => (f.genres || []).map(U.genreEn)).slice(0, 6);
   const topCast = agg(f => f.cast || []).slice(0, 6);
 
   // --- Хронометраж ---

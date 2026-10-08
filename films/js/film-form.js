@@ -9,8 +9,8 @@ import { USERS } from './config.js';
 import * as store from './store.js';
 import * as U from './utils.js';
 import { toast, openModal, confirmDialog, icons } from './ui.js';
-import { suggestFilms, typeLabel, imdbTemporarilyDown } from './imdb.js';
-import { searchWikiFilms, enrichByQid, fetchPoster, posterQuick, premiereInfo } from './wiki.js';
+import { suggestFilms, typeLabel, imdbTemporarilyDown, imdbById } from './imdb.js';
+import { searchWikiFilms, fetchPoster, posterQuick, premiereInfo } from './wiki.js';
 import { enrichFilm } from './enrich.js';
 import { notifyFilmAdded, notifyFilmDeleted } from './telegram.js';
 
@@ -229,16 +229,23 @@ export function openFormModal({ film = null, currentUserId, allFilms = [] }) {
       const renderItems = (list) => {
         sugItems = list;
         sugIndex = -1;
-        sugList.innerHTML = list.map((s, i) => `
+        sugList.innerHTML = list.map((s, i) => {
+          // Назва двомовною парою: осн. рядок — укр. назва, під ним —
+          // оригінальна англійська (якщо відрізняється)
+          const main = s.titleUk || s.title;
+          const alt = (s.titleUk && s.title && s.titleUk !== s.title) ? s.title : '';
+          return `
           <button type="button" class="s-item" data-i="${i}">
             <span class="s-thumb">${icons.film}${s.poster
               ? `<img src="${U.escapeHtml(U.posterUrl(s.poster, 100))}" alt="" referrerpolicy="no-referrer" loading="lazy" onerror="this.remove()">`
               : ''}</span>
             <span class="s-text">
-              <span class="s-name">${U.escapeHtml(s.titleUk || s.title)}</span>
+              <span class="s-name">${U.escapeHtml(main)}</span>
+              ${alt ? `<span class="s-orig">${U.escapeHtml(alt)}</span>` : ''}
               <span class="s-year">${[s.year || '', typeLabel(s.type), s.source === 'wiki' ? 'Вікіпедія' : ''].filter(Boolean).join(' · ')}</span>
             </span>
-          </button>`).join('') +
+          </button>`;
+        }).join('') +
           (list.length > 7
             ? `<div class="s-foot">Усього ${list.length} ${U.plural(list.length, ['збіг', 'збіги', 'збігів'])} — гортайте список</div>`
             : '');
@@ -379,27 +386,29 @@ export function openFormModal({ film = null, currentUserId, allFilms = [] }) {
     if (!s) return;
     picked = s;
 
+    // ЯВНИЙ вибір підказки замінює дані полів (а не лише заповнює порожні):
+    // так у режимі редагування можна «перезібрати» неправильно доданий
+    // фільм — напр., замінити випадкові режисера/сюжет правильними.
+    if (s.titleUk) set('fTitleUk', s.titleUk);
     if (s.source === 'wiki') {
-      // Результат із Вікіпедії: укр. назва + оригінальна (якщо відрізняється)
-      if (s.titleUk) set('fTitleUk', s.titleUk);
       if (s.title && (!s.titleUk || s.title.toLowerCase() !== s.titleUk.toLowerCase())) {
         set('fTitle', s.title);
-      } else if (!val('fTitle')) {
+      } else {
         set('fTitle', s.titleUk || s.title);
       }
     } else {
       set('fTitle', s.title);
     }
-    if (!val('fYear')) set('fYear', s.year ?? '');
-    if (s.premiere && !pickedPremiere) { pickedPremiere = s.premiere; showPremiereHint(); }
-    if (!val('fPoster') && s.poster) { set('fPoster', s.poster); showPoster(box, s.poster); }
+    if (s.year != null) set('fYear', s.year);
+    pickedPremiere = s.premiere || null; showPremiereHint();
+    if (s.poster) { set('fPoster', s.poster); showPoster(box, s.poster); }
 
-    // Вікі-результат часто несе готові дані — заповнюємо решту полів
-    if (s.director) fillIfEmpty('fDirector', s.director);
-    if (s.cast && s.cast.length) fillIfEmpty('fCast', s.cast.join(', '));
-    if (s.genres && s.genres.length) fillIfEmpty('fGenres', s.genres.join(', '));
-    if (s.runtime) fillIfEmpty('fRuntime', s.runtime);
-    if (s.plot) fillIfEmpty('fPlot', s.plot);
+    // Вікі-результат часто несе готові дані — перезаписуємо ними поля
+    if (s.director) set('fDirector', s.director);
+    if (s.cast && s.cast.length) set('fCast', s.cast.join(', '));
+    if (s.genres && s.genres.length) set('fGenres', s.genres.join(', '));
+    if (s.runtime) set('fRuntime', s.runtime);
+    if (s.plot) set('fPlot', s.plot);
 
     searchInput.value = `${s.titleUk || s.title}${s.year ? ` (${s.year})` : ''}`;
     hideSug();
@@ -417,20 +426,39 @@ export function openFormModal({ film = null, currentUserId, allFilms = [] }) {
     st.className = 'enrich-status show';
     st.textContent = 'Завантажую деталі з Wikidata та Вікіпедії…';
     try {
-      let d = {};
-      if (picked.imdbId) {
-        d = await enrichFilm({
-          imdbId: picked.imdbId,
-          title: picked.title,
-          year: U.intOrNull(val('fYear'), 1888, 2100) || picked.year || null,
-          titleUkHint: val('fTitleUk').trim() || null
-        });
-      } else {
-        d = await enrichByQid(picked.qid);
+      // ПЕРЕВІРКА IMDb ID З ВІКІДАНИХ: там трапляються помилкові P345
+      // («Monster: The Ed Gein Story» посилається на tt антології «Monster»,
+      // бо на IMDb це сезон). Звіряємо еталонну назву tt-ID з IMDb: якщо
+      // інша — ID хибний, відкидаємо і збагачуємо за QID Вікіданих.
+      let droppedImdbId = null;
+      if (picked.imdbId && picked.source === 'wiki') {
+        try {
+          const im = await imdbById(picked.imdbId);
+          if (im && im.title) {
+            const imT = U.normTitle(im.title);
+            const cand = [picked.title, picked.titleUk].map(t => U.normTitle(t)).filter(Boolean);
+            if (imT && cand.length && !cand.includes(imT)) {
+              droppedImdbId = picked.imdbId;
+              picked.imdbId = null;
+            }
+          }
+        } catch (e) { /* IMDb недоступний — лишаємо ID як є */ }
       }
-      // Знайшли IMDb ID через Wikidata — збережемо його разом із фільмом
-      if (!picked.imdbId && d.imdbId) picked.imdbId = d.imdbId;
+
+      let d = {};
+      d = await enrichFilm({
+        imdbId: picked.imdbId || null,
+        qid: picked.qid || null,
+        title: picked.title,
+        year: U.intOrNull(val('fYear'), 1888, 2100) || picked.year || null,
+        titleUkHint: val('fTitleUk').trim() || null
+      });
+      // Знайшли IMDb ID через Wikidata — збережемо його разом із фільмом,
+      // АЛЕ не повертаємо щойно відкинутий помилковий
+      if (!picked.imdbId && d.imdbId && d.imdbId !== droppedImdbId) picked.imdbId = d.imdbId;
       fillIfEmpty('fTitleUk', d.titleUk);
+      // d.titleEn — зі СПАРКЛ-резерву; d.title — зі швидкого шляху (en мітка)
+      if (!val('fTitle')) fillIfEmpty('fTitle', d.titleEn || d.title);
       if (!val('fYear') && d.year) set('fYear', d.year);
       if (d.premiere && !pickedPremiere) { pickedPremiere = d.premiere; showPremiereHint(); }
       fillIfEmpty('fDirector', d.director);
@@ -438,13 +466,13 @@ export function openFormModal({ film = null, currentUserId, allFilms = [] }) {
       fillIfEmpty('fGenres', (d.genres || []).join(', '));
       fillIfEmpty('fRuntime', d.runtime);
       if (d.plot) {
-        // Опис міг прийти англійською (з en.Вікіпедії, поки uk-витяг
-        // не встиг/не віддався). Якщо Wikidata/укр. вікі дали український
-        // текст — підмінюємо ним англійський; порожнє поле просто заповнюємо.
+        // Дані англійською: якщо в полі український опис (з укр. статті
+        // підказки), а збагачення принесло англійський — підмінюємо;
+        // порожнє поле просто заповнюємо; англ. не змінюємо.
         const cur = val('fPlot').trim();
         const curUk = /[а-яіїєґ]/i.test(cur);
         const dUk = /[а-яіїєґ]/i.test(String(d.plot));
-        if (!cur || (!curUk && dUk)) set('fPlot', d.plot);
+        if (!cur || (curUk && !dUk)) set('fPlot', d.plot);
       }
       if (!val('fPoster') && d.poster) { set('fPoster', d.poster); showPoster(box, d.poster); }
 
@@ -478,6 +506,9 @@ export function openFormModal({ film = null, currentUserId, allFilms = [] }) {
           if (info) {
             if (!val('fYear') && info.year) set('fYear', String(info.year));
             if (info.date && !pickedPremiere) { pickedPremiere = info.date; showPremiereHint(); }
+            // TVMaze знає правильний IMDb ID навіть коли у Вікіданнах
+            // помилковий/відсутній — але не повертаємо відкинутий
+            if (!picked.imdbId && info.imdbId && info.imdbId !== droppedImdbId) picked.imdbId = info.imdbId;
           }
         } catch (e) { /* прем'єра не критична */ }
       }
@@ -553,7 +584,9 @@ export function openFormModal({ film = null, currentUserId, allFilms = [] }) {
       year: U.intOrNull(val('fYear'), 1888, 2100),
       premiere: pickedPremiere || null,
       poster: val('fPoster').trim() || null,
-      imdbId: (picked && picked.imdbId) || film?.imdbId || null,
+      // перезапис значенням нової підказки, якщо вона була; в іншому
+      // разі лишаємо старий imdbId (режим редагування без вибору)
+      imdbId: (picked ? picked.imdbId : null) || (film ? film.imdbId : null) || null,
       director: val('fDirector').trim() || null,
       cast: U.parseGenres(val('fCast')),
       genres: U.parseGenres(val('fGenres')),
@@ -623,9 +656,9 @@ function formHTML(isEdit, film) {
       <button type="button" class="icon-btn" data-close aria-label="Закрити">${icons.close}</button>
     </div>
 
-    ${isEdit ? '' : `
+    ${`
     <label class="field">
-      <span class="field-label">Пошук фільму</span>
+      <span class="field-label">Пошук фільму${isEdit ? ' — заміна даних' : ''}</span>
       <div class="suggest-wrap">
         ${icons.search}
         <input id="fSearch" type="text" autocomplete="off" autocapitalize="off" autocorrect="off"
@@ -633,7 +666,9 @@ function formHTML(isEdit, film) {
                placeholder="Почніть вводити назву — українською або англійською…">
         <div class="suggest-list" id="suggestList" hidden></div>
       </div>
-      <span class="hint">Оберіть фільм або серіал зі списку — постер, рік і деталі підтягнуться автоматично. Показуємо всі збіги з IMDb та Вікіпедії (список гортається); якщо українською не знаходиться — пробуємо англійську транслітерацію. Або просто заповніть поля нижче вручну.</span>
+      <span class="hint">${isEdit
+        ? 'Оберіть правильний фільм зі списку — назва, постер, рік, режисер, опис та інші поля буде замінено новими даними (оцінки залишаться).'
+        : 'Оберіть фільм або серіал зі списку — постер, рік і деталі підтягнуться автоматично. Показуємо всі збіги з IMDb та Вікіпедії (список гортається); якщо українською не знаходиться — пробуємо англійську транслітерацію. Або просто заповніть поля нижче вручну.'}</span>
     </label>`}
 
     <div class="form-grid">

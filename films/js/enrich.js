@@ -1,16 +1,15 @@
 // ============================================================
 // Збагачення даних про фільм (порядок — «спочатку те, що швидше»):
-//  1) Wikidata через швидкий wbgetentities (IMDb ID -> QID -> claims,
-//     мітки, sitelinks) — укр. назва/жанри/актори/режисер/рік/прем'єра
+//  1) Wikidata через швидкий wbgetentities (QID або IMDb ID -> claims,
+//     мітки, sitelinks) — назви (uk + en)/жанри/актори/режисер/рік/прем'єра
 //  2) СПАРКЛ-резерв (якщо швидкий шлях не дав основних полів)
-//  3) Українська Вікіпедія (точна стаття за sitelink, потім пошук) -> сюжет
-//  4) АНГЛІЙСЬКА Вікіпедія — страховка: якщо укр. сюжету немає ніде,
-//     беремо англійський, щоб поля не лишалися порожніми
+//  3) СЮЖЕТ: англійська Вікіпедія (точна стаття за sitelink, потім
+//     пошук) — усі дані окрім назви користувач хоче англійською;
+//     українська стаття — страховка, якщо англійської немає
 // Усе опціонально: будь-яка помилка просто лишає поля порожніми.
 // ============================================================
 
 import { qidByImdbId, enrichByQid } from './wiki.js';
-import { translateGenres } from './utils.js';
 
 const WD_ENDPOINT = 'https://query.wikidata.org/sparql';
 
@@ -30,21 +29,22 @@ async function enrichByImdbId(imdbId) {
   if (!imdbId || !/^tt\d+$/.test(imdbId)) return {};
 
   const query = `
-SELECT ?ukLabel ?ukDesc ?directorLabel ?genreLabel ?actorLabel ?duration ?date ?ukWikiTitle WHERE {
+SELECT ?ukLabel ?enLabel ?enDesc ?enWikiTitle ?directorLabel ?genreLabel ?actorLabel ?duration ?date WHERE {
   ?film wdt:P345 "${imdbId}" .
   OPTIONAL { ?film rdfs:label ?ukLabel . FILTER(LANG(?ukLabel) = "uk") }
-  OPTIONAL { ?film schema:description ?ukDesc . FILTER(LANG(?ukDesc) = "uk") }
+  OPTIONAL { ?film rdfs:label ?enLabel . FILTER(LANG(?enLabel) = "en") }
+  OPTIONAL { ?film schema:description ?enDesc . FILTER(LANG(?enDesc) = "en") }
   OPTIONAL {
-    ?ukArt schema:about ?film ;
-           schema:isPartOf <https://uk.wikipedia.org/> ;
-           schema:name ?ukWikiTitle .
+    ?enArt schema:about ?film ;
+           schema:isPartOf <https://en.wikipedia.org/> ;
+           schema:name ?enWikiTitle .
   }
   OPTIONAL { ?film wdt:P57 ?director . }
   OPTIONAL { ?film wdt:P2047 ?duration . }
   OPTIONAL { ?film wdt:P577 ?date . }
   OPTIONAL { ?film wdt:P136 ?genre . }
   OPTIONAL { ?film wdt:P161 ?actor . }
-  SERVICE wikibase:label { bd:serviceParam wikibase:language "uk,en" . }
+  SERVICE wikibase:label { bd:serviceParam wikibase:language "en,uk" . }
 } LIMIT 150`;
 
   const data = await fetchJSON(
@@ -59,13 +59,14 @@ SELECT ?ukLabel ?ukDesc ?directorLabel ?genreLabel ?actorLabel ?duration ?date ?
   const out = {};
   const first = rows[0];
   if (first.ukLabel) out.titleUk = first.ukLabel.value;
-  if (first.ukDesc) out.desc = first.ukDesc.value;
+  if (first.enLabel) out.titleEn = first.enLabel.value;
+  if (first.enDesc) out.desc = first.enDesc.value;
   if (first.directorLabel) out.director = first.directorLabel.value;
   if (first.duration) out.runtime = parseInt(first.duration.value, 10) || null;
-  // Точна назва статті uk.Вікіпедії про ЦЕЙ фільм/серіал (з sitelink
-  // Вікіданих). Врятуовує від «сліпого» пошуку: «Теорія великого вибуху»
+  // Точні назви статей en/uk Вікіпедії про ЦЕЙ фільм/серіал (sitelink
+  // Вікіданих). Рятує від «сліпого» пошуку: «Теорія великого вибуху»
   // без уточнення — стаття про космологію, а серіал — «(телесеріал)».
-  if (first.ukWikiTitle) out.ukWikiTitle = first.ukWikiTitle.value;
+  if (first.enWikiTitle) out.enWikiTitle = first.enWikiTitle.value;
 
   const genres = [...new Set(rows.map(r => r.genreLabel && r.genreLabel.value).filter(Boolean))];
   if (genres.length) out.genres = genres.slice(0, 6);
@@ -96,10 +97,10 @@ SELECT ?ukLabel ?ukDesc ?directorLabel ?genreLabel ?actorLabel ?duration ?date ?
   return out;
 }
 
-// Пошук статті в українській Вікіпедії -> вступний текст + мініатюра
-async function wikiSummary(search) {
+// Пошук статті у Вікіпедії (lang) -> вступний текст + мініатюра
+async function wikiSummary(lang, search) {
   const url =
-    'https://uk.wikipedia.org/w/api.php?action=query&format=json&origin=*' +
+    `https://${lang}.wikipedia.org/w/api.php?action=query&format=json&origin=*` +
     '&generator=search&gsrlimit=1&prop=extracts|pageimages&exintro=1&explaintext=1&exlimit=1' +
     '&piprop=thumbnail&pithumbsize=500&gsrsearch=' + encodeURIComponent(search);
 
@@ -153,26 +154,31 @@ function extractLooksLikeFilm(extract, expectTitles) {
   });
 }
 
-// Головна функція: повертає { titleUk, director, genres[], runtime, plot,
-// poster, year, premiere, ukWikiTitle, enWikiTitle }
-export async function enrichFilm({ imdbId, title, year, titleUkHint }) {
+// Головна функція: повертає { titleUk, titleEn, director, genres[], runtime,
+// plot, poster, year, premiere, enWikiTitle, ukWikiTitle, desc }
+// qid — якщо вже відомий (фільм обрано з Вікіпедії): пропускаємо надійний,
+// але зайвий крок qidByImdbId і читаємо Вікідані напряму.
+export async function enrichFilm({ imdbId, qid, title, year, titleUkHint }) {
   let out = {};
 
-  // ---- 1) ШВИДКИЙ ШЛЯХ: IMDb ID -> QID -> wbgetentities (кілька сотень мс,
-  // надійніше за SPARQL — без черг і довгих таймаутів).
-  let qid = null;
+  // ---- 1) ШВИДКИЙ ШЛЯХ: QID (або IMDb ID -> QID) -> wbgetentities
+  // (кілька сотень мс, надійніше за SPARQL — без черг і довгих таймаутів)
   try {
-    qid = await qidByImdbId(imdbId);
-    if (qid) out = await enrichByQid(qid);
+    if (qid && /^Q\d+$/.test(qid)) {
+      out = await enrichByQid(qid);
+    } else if (imdbId) {
+      const q = await qidByImdbId(imdbId);
+      if (q) out = await enrichByQid(q);
+    }
   } catch (e) { out = {}; }
 
   // ---- 2) СПАРКЛ-РЕЗЕРВ: лише якщо швидкий шлях не дав основних полів
-  // (він же дає короткий uk-опис ukDesc — запасний сюжет)
+  // (він же дає короткий en-опис enDesc — запасний сюжет)
   const coreOk = out.titleUk || out.director || (out.genres && out.genres.length);
-  if (!coreOk) {
+  if (!coreOk && imdbId) {
     try {
       const d = await enrichByImdbId(imdbId);
-      for (const k of ['titleUk', 'director', 'runtime', 'ukWikiTitle', 'year', 'premiere', 'desc']) {
+      for (const k of ['titleUk', 'titleEn', 'director', 'runtime', 'enWikiTitle', 'ukWikiTitle', 'year', 'premiere', 'desc']) {
         if (d[k] && !out[k]) out[k] = d[k];
       }
       if ((d.genres || []).length && !(out.genres || []).length) out.genres = d.genres;
@@ -182,26 +188,30 @@ export async function enrichFilm({ imdbId, title, year, titleUkHint }) {
     }
   }
 
-  // Жанри могли прийти англійськими мітками — переводимо словником
-  out.genres = translateGenres(out.genres || []);
-
-  // ---- 3) УКРАЇНСЬКИЙ СЮЖЕТ: спершу точна стаття з sitelink Вікіданих,
-  // потім пошук — ЗАВЖДИ з роком у запиті (відсіює омоніми), і лише потім
-  // «голі» назви. Кожен результат пошуку перевіряємо: це має бути стаття
-  // про фільм/серіал.
-  if (!out.plot) {
-    if (out.ukWikiTitle) {
-      try {
-        const r = await wikiArticleByTitle('uk', out.ukWikiTitle);
-        if (r.plot) {
-          out.plot = r.plot;
-          if (!out.poster && r.poster) out.poster = r.poster;
-        }
-      } catch (e) { /* наступні варіанти */ }
-    }
+  // ---- 3) СЮЖЕТ — АНГЛІЙСЬКИЙ ПЕРШИМ (усі дані окрім назви — англійською,
+  // домовленість з користувачем); український — як страховка.
+  // Порядок: точна en-стаття (sitelink Вікіданих) -> точна uk-стаття ->
+  // пошук uk -> пошук en. Кожен результат перевіряємо «це фільм/серіал».
+  if (!out.plot && (out.enWikiTitle || title)) {
+    try {
+      const r = await wikiArticleByTitle('en', out.enWikiTitle || title);
+      if (r.plot && extractLooksLikeFilm(r.plot, [out.titleEn || title, title, titleUkHint])) {
+        out.plot = r.plot;
+        if (!out.poster && r.poster) out.poster = r.poster;
+      }
+    } catch (e) { /* наступні варіанти */ }
+  }
+  if (!out.plot && out.ukWikiTitle) {
+    try {
+      const r = await wikiArticleByTitle('uk', out.ukWikiTitle);
+      if (r.plot) {
+        out.plot = r.plot;
+        if (!out.poster && r.poster) out.poster = r.poster;
+      }
+    } catch (e) { /* наступні варіанти */ }
   }
   if (!out.plot) {
-    const expect = [out.titleUk, titleUkHint, title].filter(Boolean);
+    const expect = [out.titleUk, titleUkHint, title, out.titleEn].filter(Boolean);
     const queries = [
       out.titleUk && year ? `${out.titleUk} ${year}` : null,
       title && year ? `${title} ${year}` : null,
@@ -212,7 +222,7 @@ export async function enrichFilm({ imdbId, title, year, titleUkHint }) {
     ].filter(Boolean);
     for (const q of queries) {
       try {
-        const r = await wikiSummary(q);
+        const r = await wikiSummary('uk', q);
         if (r.plot && extractLooksLikeFilm(r.plot, expect)) {
           out.plot = r.plot;
           if (!out.poster && r.poster) out.poster = r.poster;
@@ -221,26 +231,18 @@ export async function enrichFilm({ imdbId, title, year, titleUkHint }) {
       } catch (e) { /* наступний варіант */ }
     }
   }
+  if (!out.plot && title) {
+    try {
+      const r = await wikiSummary('en', title);
+      if (r.plot && extractLooksLikeFilm(r.plot, [out.titleEn || title, title])) {
+        out.plot = r.plot;
+        if (!out.poster && r.poster) out.poster = r.poster;
+      }
+    } catch (e) { /* сюжет не критичний */ }
+  }
 
   // Якщо з Wikidata прийшов лише короткий опис — використаємо його як запасний сюжет
   if (out.desc && !out.plot) out.plot = out.desc;
-
-  // ---- 4) АНГЛІЙСЬКА СТРАХОВКА: укр. сюжету немає ніде (у нових і
-  // малоїзвестних фільмів uk.статті часто просто немає). Краще англійський
-  // опис, ніж порожнє поле: беремо ТОЧНУ статтю en.Вікіпедії (sitelink з
-  // Вікіданих або оригінальна назва) з перевіркою «це фільм/серіал».
-  if (!out.plot) {
-    const enTitle = out.enWikiTitle || title;
-    if (enTitle) {
-      try {
-        const r = await wikiArticleByTitle('en', enTitle);
-        if (r.plot && extractLooksLikeFilm(r.plot, [out.titleEn || title, enTitle])) {
-          out.plot = r.plot;
-          if (!out.poster && r.poster) out.poster = r.poster;
-        }
-      } catch (e) { /* сюжет не критичний */ }
-    }
-  }
 
   if (out.plot && out.plot.length > 700) {
     out.plot = out.plot.slice(0, 697).trimEnd() + '…';

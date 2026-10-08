@@ -188,11 +188,20 @@ function filtered() {
   const q = query.trim().toLowerCase();
   let list = filmsList;
   if (q) {
-    list = list.filter(f => [
-      f.title, f.titleUk, f.director,
-      ...(f.genres || []),
-      ...(f.cast || [])
-    ].some(x => String(x || '').toLowerCase().includes(q)));
+    // Жанри в базі двомовні (старі записи укр., нові англ.) — «драма»
+    // має знаходити і фільми з жанром "drama", і навпаки
+    const qEn = U.genreEn(q);
+    list = list.filter(f => {
+      const hay = [f.title, f.titleUk, f.director,
+        ...(f.genres || []), ...(f.cast || [])]
+        .map(x => String(x || '').toLowerCase());
+      if (hay.some(x => x.includes(q))) return true;
+      if (qEn && qEn !== q) {
+        const gEn = (f.genres || []).map(g => String(U.genreEn(g) || '').toLowerCase());
+        if (gEn.some(x => x.includes(qEn))) return true;
+      }
+      return false;
+    });
   }
   const withAvg = f => { const a = U.avg(f.ratings); return a == null ? -1 : a; };
   switch (sort) {
