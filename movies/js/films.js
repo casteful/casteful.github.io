@@ -370,7 +370,7 @@ function cardHTML(f) {
 
   const friendChips = USERS
     .filter(u => (f.ratings || {})[u.id] != null)
-    .map(u => `<span class="fchip" title="${U.escapeHtml(u.name)}: ${f.ratings[u.id]}"><i style="background:${u.color}"></i>${f.ratings[u.id]}</span>`)
+    .map(u => `<span class="fchip" title="${U.escapeHtml(u.name)}: ${f.ratings[u.id]}" style="background:${u.color}">${f.ratings[u.id]}</span>`)
     .join('');
 
   return `

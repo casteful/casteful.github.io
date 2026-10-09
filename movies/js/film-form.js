@@ -12,6 +12,7 @@ import { toast, openModal, confirmDialog, icons } from './ui.js';
 import { suggestFilms, typeLabel, imdbTemporarilyDown, imdbById } from './imdb.js';
 import { searchWikiFilms, fetchPoster, posterQuick, premiereInfo, cleanWikiTitle } from './wiki.js';
 import { enrichFilm } from './enrich.js';
+import { translateToUk } from './translate.js';
 import { notifyFilmAdded, notifyFilmDeleted } from './telegram.js';
 
 // ============================================================
@@ -222,6 +223,28 @@ export function openFormModal({ film = null, currentUserId, allFilms = [] }) {
   const val = id => ($(id) ? $(id).value : '');
   const set = (id, v) => { if ($(id)) $(id).value = v ?? ''; };
 
+  // ---------- Автопереклад укр. назви ----------
+  // Джерела (Вікідані, укр. вікі) не завжди мають готову укр. назву —
+  // тоді перекладаємо оригінал машинно і тихо підставляємо в поле,
+  // доки користувач не встиг увести своє. Офіційна uk-назва з Вікіданих
+  // (titleUkAuto = машинний переклад) має право перезаписати його.
+  let titleUkAuto = false;
+  let tukGen = 0; // захист від перегонів кількох автоперекладів
+
+  async function autoFillTitleUk(srcText) {
+    const src = String(srcText || '').trim();
+    if (!src) return;
+    if (val('fTitleUk').trim()) return; // уже заповнено (вручну або з джерел)
+    const gen = ++tukGen;
+    const translated = await translateToUk(src);
+    if (gen !== tukGen) return;             // почався новіший переклад
+    if (val('fTitleUk').trim()) return;     // користувач випередив
+    if (translated) {
+      set('fTitleUk', translated);
+      titleUkAuto = true;
+    }
+  }
+
   if (film) {
     set('fTitleUk', film.titleUk || '');
     set('fTitle', film.title || '');
@@ -234,6 +257,9 @@ export function openFormModal({ film = null, currentUserId, allFilms = [] }) {
     set('fPoster', film.poster || '');
     if (film.poster) showPoster(box, film.poster);
     if (film.premiere) showPremiereHint();
+    // Старі фільми без укр. назви — одразу пропонуємо машинний переклад
+    // (поле редаговане: користувач бачить його і може виправити)
+    if (!film.titleUk && film.title) autoFillTitleUk(film.title);
   }
 
   // ---------- Автозаповнення (лише в режимі додавання) ----------
@@ -444,6 +470,10 @@ export function openFormModal({ film = null, currentUserId, allFilms = [] }) {
 
     searchInput.value = `${tUk || tOrig || s.title}${s.year ? ` (${s.year})` : ''}`;
     hideSug();
+    // Укр. назви немає в жодному джерелі — автоматично перекладаємо
+    // оригінал (якщо Wikidata потім знайде офіційну uk-назву, вона
+    // перезапише машинний переклад у runEnrichment)
+    if (!tUk) autoFillTitleUk(tOrig || s.title);
     runEnrichment();
   }
 
@@ -488,7 +518,14 @@ export function openFormModal({ film = null, currentUserId, allFilms = [] }) {
       // Знайшли IMDb ID через Wikidata — збережемо його разом із фільмом,
       // АЛЕ не повертаємо щойно відкинутий помилковий
       if (!picked.imdbId && d.imdbId && d.imdbId !== droppedImdbId) picked.imdbId = d.imdbId;
-      fillIfEmpty('fTitleUk', d.titleUk);
+      // Офіційна укр. назва з Вікіданих сильніша за машинний переклад:
+      // перезаписуємо нею й автопереклад, якщо він уже встиг підставитись
+      if (d.titleUk && (titleUkAuto || !val('fTitleUk').trim())) {
+        set('fTitleUk', cleanWikiTitle(d.titleUk).title);
+        titleUkAuto = false;
+      }
+      // Досі порожньо — перекладаємо оригінальну назву автоматично
+      if (!val('fTitleUk').trim()) autoFillTitleUk(val('fTitle').trim() || picked.title);
       // d.titleEn — зі СПАРКЛ-резерву; d.title — зі швидкого шляху (en мітка).
       // cleanWikiTitle — страховка від статтєвих суфіксів «(2004 film)»
       if (!val('fTitle')) fillIfEmpty('fTitle', cleanWikiTitle(d.titleEn || d.title).title);

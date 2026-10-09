@@ -11,6 +11,7 @@ import * as U from './utils.js';
 import { toast, openModal, confirmDialog, icons } from './ui.js';
 import { suggestFilms, typeLabel, imdbTemporarilyDown, imdbById } from './imdb.js';
 import { searchWikiFilms, fetchPoster, posterQuick, premiereInfo } from './wiki.js';
+import { translateToUk } from './translate.js';
 import { enrichFilm } from './enrich.js';
 import { notifyFilmAdded, notifyFilmDeleted } from './telegram.js';
 
@@ -527,9 +528,27 @@ export function openFormModal({ film = null, currentUserId, allFilms = [] }) {
         } catch (e) { /* прем'єра не критична */ }
       }
 
-      const got = [d.titleUk, d.director, (d.genres || []).length, d.runtime, d.plot, val('fPoster')].some(Boolean);
+      // УКР. НАЗВА ПЕРЕКЛАДОМ: після всіх джерел (Wikidata, укр. вікі)
+      // української назви досі немає — перекладаємо оригінальну автоматично.
+      // Лише fillIfEmpty-семантика: рукописну/уже заповнену назву не чіпаємо.
+      let autoTranslated = false;
+      if (!val('fTitleUk') && val('fTitle').trim()) {
+        try {
+          st.textContent = 'Перекладаю назву українською…';
+          const tr = await translateToUk(val('fTitle').trim());
+          // дослівний збіг («1917» -> «1917») — назвою не вважаємо
+          if (tr && tr.toLowerCase() !== val('fTitle').trim().toLowerCase() && !val('fTitleUk')) {
+            set('fTitleUk', tr);
+            autoTranslated = true;
+          }
+        } catch (e) { /* переклад не критичний */ }
+      }
+
+      const got = [d.titleUk, d.director, (d.genres || []).length, d.runtime, d.plot, val('fPoster'), val('fTitleUk')].some(Boolean);
       st.textContent = got
-        ? 'Готово — деталі підтягнуто. Перевірте й за потреби виправте поля.'
+        ? (autoTranslated
+          ? 'Готово — деталі підтягнуто. Укр. назву перекладено автоматично — перевірте й виправте за потреби.'
+          : 'Готово — деталі підтягнуто. Перевірте й за потреби виправте поля.')
         : 'Додаткові дані не знайдено — заповніть поля вручну.';
     } catch (e) {
       st.textContent = 'Не вдалося отримати додаткові дані — заповніть поля вручну.';
