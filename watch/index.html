@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
+  <meta name="description" content="Фільмотека — оцінюйте фільми разом із друзями: спільний список, оцінки, статистика.">
+  <meta name="theme-color" content="#f6f4ee" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#0c0c10" media="(prefers-color-scheme: dark)">
+  <title>Фільмотека — оцінюємо фільми разом</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23dd9a26'/%3E%3Ctext x='32' y='45' font-size='36' font-family='sans-serif' font-weight='700' text-anchor='middle' fill='%23241703'%3E%D0%A4%3C/text%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+  <script>
+    // Set theme before first paint to avoid flash
+    try {
+      var t = localStorage.getItem('films_theme');
+      if (t) { document.documentElement.dataset.theme = t; }
+      else if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+        document.documentElement.dataset.theme = 'dark';
+      }
+    } catch (e) {}
+  </script>
+</head>
+<body>
+  <div id="app">
+    <header class="topbar">
+      <div class="brand">
+        <span class="brand-icon" id="brandIcon"></span>
+        <span class="brand-name">Фільмотека</span>
+      </div>
+      <nav class="tabs" role="tablist" aria-label="Розділи">
+        <button class="tab active" data-tab="films" role="tab" aria-selected="true">Фільми</button>
+        <button class="tab" data-tab="stats" role="tab" aria-selected="false">Статистика</button>
+      </nav>
+      <div class="topbar-actions">
+        <button id="settingsBtn" class="icon-btn" aria-label="Налаштування" title="Налаштування"></button>
+        <button id="themeToggle" class="icon-btn" aria-label="Переключити світлу/темну тему" title="Світла / темна тема"></button>
+        <button id="userBadge" class="user-badge" aria-label="Змінити користувача" title="Змінити користувача"></button>
+      </div>
+    </header>
+
+    <main id="view" class="view" aria-live="polite"></main>
+  </div>
+
+  <button id="fabAdd" class="fab" aria-label="Додати фільм" title="Додати фільм"></button>
+
+  <!-- Profile picker overlay (shown on first visit / on demand) -->
+  <div id="userOverlay" class="user-overlay" hidden>
+    <div class="u-picker" role="dialog" aria-modal="true" aria-labelledby="uPickerTitle">
+      <span class="brand-icon big" id="brandIcon2"></span>
+      <h2 id="uPickerTitle">Хто дивиться?</h2>
+      <p>Оберіть свій профіль — його буде збережено на цьому пристрої.</p>
+      <div class="u-list" id="userList"></div>
+    </div>
+  </div>
+
+  <div id="modalRoot"></div>
+  <div id="toastRoot" class="toast-root" aria-live="assertive"></div>
+
+  <noscript>
+    <div style="padding:24px;text-align:center;font-family:sans-serif">
+      Для роботи Фільмотеки потрібно увімкнути JavaScript.
+    </div>
+  </noscript>
+
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
