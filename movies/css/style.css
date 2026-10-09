@@ -579,17 +579,24 @@ body.no-scroll { overflow: hidden; touch-action: none; }
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  height: 24px;
-  padding: 0 9px;
-  border-radius: 10px; /* як у кнопки оцінки вище — гармонійні прямі кути */
-  color: #fff; /* біла цифра на кольоровому фоні користувача */
-  font-size: 13px;
+  gap: 5px;
+  height: 23px;
+  padding: 0 8px 0 7px;
+  border-radius: 10px;
+  background: var(--surface-2); /* сіруватий нейтральний фон (адаптується до теми) */
+  color: color-mix(in srgb, var(--c, var(--accent-2)) 68%, var(--text)); /* цифра в кольорі користувача */
+  font-size: 12.5px;
   font-weight: 800;
   font-variant-numeric: tabular-nums;
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
-  box-shadow: 0 1px 3px rgba(10, 8, 2, 0.2), inset 0 0 0 1px rgba(255, 255, 255, 0.18);
   flex: 1 1 0; /* чипи розтягуються і ЗАПОВНЮЮТЬ усю ширину картки */
   min-width: 0;
+}
+.fchip i {
+  flex: none;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--c, var(--accent-2)); /* кольоровий значок — колір користувача */
 }
 
 /* Вузька картка (мобільна сітка 2 колонки, найвужча колонка auto-fill 172px):
@@ -598,7 +605,14 @@ body.no-scroll { overflow: hidden; touch-action: none; }
    Container queries — та сама базова лінія 2023, що й color-mix вище. */
 @container (max-width: 212px) {
   .fchips { gap: 3px; }
-  .fchip { height: 22px; padding: 0 6px; font-size: 11.5px; }
+  .fchip { height: 21px; padding: 0 5px 0 4px; gap: 4px; font-size: 11.5px; }
+  .fchip i { width: 7px; height: 7px; }
+}
+/* Дуже вузька картка (телефон 320px): ще щільніше — квадратик-крапка менша,
+   поля мінімальні, цифра дрібніша; головне — жодного обрізання */
+@container (max-width: 160px) {
+  .fchip { height: 20px; padding: 0 3px; gap: 2px; font-size: 10.5px; }
+  .fchip i { width: 5px; height: 5px; }
 }
 
 /* ---------- Табличний вигляд ---------- */
