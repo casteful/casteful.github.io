@@ -1,7 +1,8 @@
 // ============================================================
-// Вкладка «Статистика»: огляд, топ фільмів, розподіл оцінок,
-// десятиліття, режисери, жанри, актори, хронометраж, рекорди,
-// профілі глядачів.
+// Вкладка «Статистика»: огляд, топ-10 фільмів, розподіл оцінок,
+// десятиліття (к-ть і середня), роки випуску, режисери (к-ть і
+// середня), жанри, країни, актори, хронометраж, рекорди, сезони
+// та активність переглядів, профілі глядачів, порівняння учасників.
 // Рядки з фільмами/людьми/жанрами клікабельні:
 //   onFilter(name)  -> відкрити «Фільми» з пошуком за цим значенням
 //   onOpenFilm(id)  -> відкрити вікно фільму (панель «Рекорди»)
@@ -47,7 +48,7 @@ function compute(films) {
     n: Object.keys(f.ratings || {}).length
   }));
   const ratedFilms = filmRows.filter(r => r.a != null);
-  const topFilms = [...ratedFilms].sort((x, y) => y.a - x.a || y.n - x.n).slice(0, 5);
+  const topFilms = [...ratedFilms].sort((x, y) => y.a - x.a || y.n - x.n).slice(0, 10);
 
   const dist = Array(10).fill(0);
   ratingEntries.forEach(r => { dist[Math.min(10, Math.max(1, r.v)) - 1]++; });
@@ -83,6 +84,75 @@ function compute(films) {
   // щоб «драма» і "drama" групувалися разом
   const topGenres = agg(f => (f.genres || []).map(U.genreEn)).slice(0, 6);
   const topCast = agg(f => f.cast || []).slice(0, 6);
+
+  // --- Країни: кількість і середня оцінка (прим. P495, поле country) ---
+  const countryList = f => String(f.country || '').split(',')
+    .map(x => x.trim()).filter(Boolean);
+  const countryRows = agg(countryList).slice(0, 8);
+  const countryAvgRows = agg(countryList)
+    .filter(r => r.avg != null)
+    .sort((a, b) => b.avg - a.avg || b.count - a.count)
+    .slice(0, 8);
+
+  // --- Режисери/жанри за середньою оцінкою (потрібна хоч одна оцінка) ---
+  const dirAvgRows = agg(f => [String(f.director || '').trim()])
+    .filter(r => r.avg != null)
+    .sort((a, b) => b.avg - a.avg || b.count - a.count)
+    .slice(0, 8);
+  const genreAvgRows = agg(f => (f.genres || []).map(U.genreEn))
+    .filter(r => r.avg != null)
+    .sort((a, b) => b.avg - a.avg || b.count - a.count)
+    .slice(0, 8);
+
+  // --- Середня оцінка за десятиліттями ---
+  const decadeAgg = {};
+  filmRows.forEach(({ f, a }) => {
+    if (f.year < 1888 || f.year > 2100) return;
+    const d = Math.floor(f.year / 10) * 10;
+    const o = decadeAgg[d] || (decadeAgg[d] = { count: 0, sum: 0, cnt: 0 });
+    o.count++;
+    if (a != null) { o.sum += a; o.cnt++; }
+  });
+  const decadeAvgRows = Object.entries(decadeAgg)
+    .map(([d, o]) => ({ d: +d, count: o.count, avg: o.cnt ? o.sum / o.cnt : null }))
+    .filter(r => r.avg != null)
+    .sort((a, b) => a.d - b.d);
+
+  // --- Фільми за роком випуску (кожен рік окремо) ---
+  const yearMap = {};
+  films.forEach(f => {
+    if (f.year >= 1888 && f.year <= 2100) yearMap[f.year] = (yearMap[f.year] || 0) + 1;
+  });
+  const yearRows = Object.entries(yearMap)
+    .map(([y, c]) => ({ y: +y, c }))
+    .sort((a, b) => a.y - b.y);
+
+  // --- Коли ми дивилися: дата = момент додавання до списку ---
+  const watchTs = f => f.createdAt || f.updatedAt || null;
+  const SEASONS = [
+    { name: 'Зима', months: [11, 0, 1] },
+    { name: 'Весна', months: [2, 3, 4] },
+    { name: 'Літо', months: [5, 6, 7] },
+    { name: 'Осінь', months: [8, 9, 10] }
+  ];
+  const seasonRows = SEASONS.map(s => ({
+    name: s.name,
+    c: films.filter(f => {
+      const ts = watchTs(f);
+      return ts != null && s.months.includes(new Date(ts).getMonth());
+    }).length
+  })).filter(r => r.c > 0);
+
+  const activityMap = {};
+  films.forEach(f => {
+    const ts = watchTs(f);
+    if (!ts) return;
+    const y = new Date(ts).getFullYear();
+    if (y >= 2000 && y <= 2100) activityMap[y] = (activityMap[y] || 0) + 1;
+  });
+  const activityRows = Object.entries(activityMap)
+    .map(([y, c]) => ({ y: +y, c }))
+    .sort((a, b) => a.y - b.y);
 
   // --- Хронометраж ---
   const withRt = films.filter(f => f.runtime > 0 && f.runtime <= 1200);
@@ -123,9 +193,27 @@ function compute(films) {
   const strict = withTwo.length >= 2 ? [...withTwo].sort((a, b) => a.avg - b.avg)[0] : null;
   const generous = withTwo.length >= 2 ? [...withTwo].sort((a, b) => b.avg - a.avg)[0] : null;
 
+  // --- Порівняння учасників: середня оцінка + розбіжність із групою.
+  // Розбіжність (dev) — середнє |оцінка учасника − сер. фільму| лише по
+  // фільмах із щонайменше двома оцінками (інакше «спільної» немає).
+  const compareRows = userStats.map(u => {
+    let devSum = 0, devCnt = 0;
+    filmRows.forEach(({ f, a }) => {
+      const v = (f.ratings || {})[u.id];
+      if (a == null || typeof v !== 'number') return;
+      if (Object.keys(f.ratings || {}).length < 2) return;
+      devSum += Math.abs(v - a);
+      devCnt++;
+    });
+    return { id: u.id, name: u.name, color: u.color, n: u.n, avg: u.avg,
+             dev: devCnt ? devSum / devCnt : null };
+  }).sort((a, b) => (b.avg != null) - (a.avg != null) || b.avg - a.avg || b.n - a.n);
+
   return {
     films, totalRatings, overallAvg, topFilms, ratedCount: ratedFilms.length,
     dist, decadeRows, topDirectors, topGenres, topCast,
+    countryRows, countryAvgRows, dirAvgRows, genreAvgRows,
+    decadeAvgRows, yearRows, seasonRows, activityRows, compareRows,
     totalMin, avgRt, longest,
     best, worst, mostRated, controversy, oldest, newest,
     userStats, activeUser, strict, generous
@@ -144,6 +232,9 @@ function template(s, handlers) {
 
   const maxDist = Math.max(...s.dist, 1);
   const maxDecade = Math.max(...s.decadeRows.map(r => r.c), 1);
+  const maxYear = Math.max(...s.yearRows.map(r => r.c), 1);
+  const maxSeason = Math.max(...s.seasonRows.map(r => r.c), 1);
+  const maxActivity = Math.max(...s.activityRows.map(r => r.c), 1);
 
   const tile = (icon, value, label, extraCls = '') => `
     <div class="tile">
@@ -171,7 +262,7 @@ function template(s, handlers) {
 
   const topFilms = s.ratedCount === 0 ? '' : `
     <section class="panel">
-      <h3 class="panel-title">Топ-${Math.min(5, s.ratedCount)} фільмів</h3>
+      <h3 class="panel-title">Топ-${Math.min(10, s.ratedCount)} фільмів</h3>
       <div class="bars">
         ${s.topFilms.map((r, i) => `
           <button type="button" class="brow clickable" data-open-film="${r.f.id}" title="${U.escapeHtml(r.f.titleUk || r.f.title || '')}">
@@ -253,6 +344,120 @@ function template(s, handlers) {
       </div>
     </section>`;
 
+  // --- Нові панелі: країни, середні оцінки, роки/сезони, порівняння ---
+
+  const countriesPanel = s.countryRows.length === 0 ? '' : `
+    <section class="panel">
+      <h3 class="panel-title">Країни <span class="panel-hint">— клікніть, щоб побачити фільми</span></h3>
+      <div class="bars">
+        ${s.countryRows.map(c => browBtn({
+          label: U.escapeHtml(c.name),
+          title: `${c.name}: ${c.count} ${U.pluralFilms(c.count)}`,
+          width: Math.round(c.count / s.countryRows[0].count * 60),
+          color: 'var(--accent-2, var(--accent))',
+          value: `${c.count}<small>${c.avg != null ? ` · сер. ${U.fmtAvg(c.avg)}` : ''}</small>`,
+          filter: c.name
+        })).join('')}
+      </div>
+    </section>`;
+
+  const avgBars = (rows, { filterable = false } = {}) => `
+    <div class="bars">
+      ${rows.map(r => {
+        const inner = `
+          <span class="brow-label">${U.escapeHtml(r.name)}</span>
+          <span class="bar"><i style="width:${(r.avg * 10).toFixed(0)}%; background:${U.ratingColor(r.avg)}"></i></span>
+          <span class="brow-value">${U.fmtAvg(r.avg)}<small> · ${r.count}</small></span>`;
+        return filterable
+          ? `<button type="button" class="brow clickable" data-filter="${U.escapeHtml(r.name)}" title="${U.escapeHtml(r.name)}: сер. ${U.fmtAvg(r.avg)} за ${r.count} ${U.pluralFilms(r.count)}">${inner}</button>`
+          : `<div class="brow">${inner}</div>`;
+      }).join('')}
+    </div>`;
+
+  const genreAvgPanel = s.genreAvgRows.length === 0 ? '' : `
+    <section class="panel">
+      <h3 class="panel-title">Середня оцінка за жанром</h3>
+      ${avgBars(s.genreAvgRows, { filterable: true })}
+    </section>`;
+
+  const countryAvgPanel = s.countryAvgRows.length === 0 ? '' : `
+    <section class="panel">
+      <h3 class="panel-title">Середня оцінка за країною</h3>
+      ${avgBars(s.countryAvgRows)}
+    </section>`;
+
+  const dirAvgPanel = s.dirAvgRows.length === 0 ? '' : `
+    <section class="panel">
+      <h3 class="panel-title">Режисери за середньою оцінкою</h3>
+      ${avgBars(s.dirAvgRows, { filterable: true })}
+    </section>`;
+
+  const decadeAvgPanel = s.decadeAvgRows.length === 0 ? '' : `
+    <section class="panel">
+      <h3 class="panel-title">Середня оцінка за десятиліттями</h3>
+      <div class="bars">
+        ${s.decadeAvgRows.map(r => `
+          <div class="brow">
+            <span class="brow-label">${U.decadeLabel(r.d)}</span>
+            <span class="bar"><i style="width:${(r.avg * 10).toFixed(0)}%; background:${U.ratingColor(r.avg)}"></i></span>
+            <span class="brow-value">${U.fmtAvg(r.avg)}<small> · ${r.count}</small></span>
+          </div>`).join('')}
+      </div>
+    </section>`;
+
+  const yearPanel = s.yearRows.length === 0 ? '' : `
+    <section class="panel">
+      <h3 class="panel-title">Фільми за роком випуску</h3>
+      <div class="bars scrollable">
+        ${s.yearRows.map(r => `
+          <div class="brow">
+            <span class="brow-label">${r.y}</span>
+            <span class="bar"><i style="width:${Math.round(r.c / maxYear * 100)}%"></i></span>
+            <span class="brow-value">${r.c}</span>
+          </div>`).join('')}
+      </div>
+    </section>`;
+
+  const seasonsPanel = s.seasonRows.length === 0 ? '' : `
+    <section class="panel">
+      <h3 class="panel-title">Фільми за сезонами <span class="panel-hint">— коли ми їх дивилися</span></h3>
+      <div class="bars">
+        ${s.seasonRows.map(r => `
+          <div class="brow">
+            <span class="brow-label">${r.name}</span>
+            <span class="bar"><i style="width:${Math.round(r.c / maxSeason * 60)}%"></i></span>
+            <span class="brow-value">${r.c}</span>
+          </div>`).join('')}
+      </div>
+    </section>`;
+
+  const activityPanel = s.activityRows.length === 0 ? '' : `
+    <section class="panel">
+      <h3 class="panel-title">Активність переглядів <span class="panel-hint">— за роками</span></h3>
+      <div class="bars">
+        ${s.activityRows.map(r => `
+          <div class="brow">
+            <span class="brow-label">${r.y}</span>
+            <span class="bar"><i style="width:${Math.round(r.c / maxActivity * 100)}%"></i></span>
+            <span class="brow-value">${r.c}</span>
+          </div>`).join('')}
+      </div>
+    </section>`;
+
+  const comparePanel = s.compareRows.some(r => r.n > 0) ? `
+    <section class="panel">
+      <h3 class="panel-title">Порівняння учасників</h3>
+      <div class="bars">
+        ${s.compareRows.filter(r => r.n > 0).map(r => `
+          <div class="brow">
+            <span class="brow-label"><i class="ava-dot" style="background:${r.color}"></i>${U.escapeHtml(r.name)}</span>
+            <span class="bar"><i style="width:${(r.avg * 10).toFixed(0)}%; background:${U.ratingColor(r.avg)}"></i></span>
+            <span class="brow-value">${U.fmtAvg(r.avg)}<small>${r.dev != null ? ` · ±${U.fmtAvg(r.dev)}` : ''}</small></span>
+          </div>`).join('')}
+      </div>
+      <p class="duo-note">± — середня розбіжність із спільною оцінкою фільму: менше значення — частіше згодні з групою.</p>
+    </section>` : '';
+
   const runtimePanel = `
     <section class="panel">
       <h3 class="panel-title">Хронометраж</h3>
@@ -316,7 +521,7 @@ function template(s, handlers) {
         </p>` : ''}
     </section>`;
 
-  return `${tiles}${records}${topFilms}${genresPanel}${castPanel}${directorsPanel}${distPanel}${decadesPanel}${runtimePanel}${viewers}`;
+  return `${tiles}${records}${topFilms}${genresPanel}${genreAvgPanel}${countriesPanel}${countryAvgPanel}${directorsPanel}${dirAvgPanel}${castPanel}${distPanel}${decadesPanel}${decadeAvgPanel}${yearPanel}${seasonsPanel}${activityPanel}${runtimePanel}${viewers}${comparePanel}`;
 }
 
 // Клікабельні рядки: фільтр за людиною/жанром або відкриття фільму.

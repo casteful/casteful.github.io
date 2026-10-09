@@ -192,7 +192,7 @@ function filtered() {
     // має знаходити і фільми з жанром "drama", і навпаки
     const qEn = U.genreEn(q);
     list = list.filter(f => {
-      const hay = [f.title, f.titleUk, f.director,
+      const hay = [f.title, f.titleUk, f.director, f.country,
         ...(f.genres || []), ...(f.cast || [])]
         .map(x => String(x || '').toLowerCase());
       if (hay.some(x => x.includes(q))) return true;
@@ -661,7 +661,12 @@ function detailHTML(f) {
   // Якщо відома повна дата прем'єри («24 вересня 2007») — показуємо її
   // замість голого року; інакше — рік, як раніше
   const prem = U.fmtPremiere(f.premiere);
-  const metaBits = [prem ? `прем'єра ${prem}` : f.year, f.runtime ? `${f.runtime} хв` : ''].filter(Boolean).join(' · ');
+  const metaBits = [
+    // країна — клікабельна (фільтрує список), тому поза metaBits
+    f.country ? `<button type="button" class="person-link" data-person="${U.escapeHtml(f.country)}" title="Фільми цієї країни">${U.escapeHtml(f.country)}</button>` : '',
+    prem ? `прем'єра ${prem}` : f.year,
+    f.runtime ? `${f.runtime} хв` : ''
+  ].filter(Boolean).join(' · ');
   const genres = (f.genres || []).map(g =>
     `<button type="button" class="genre-chip clickable" data-person="${U.escapeHtml(g)}" title="Фільми цього жанру">${U.escapeHtml(g)}</button>`
   ).join('');

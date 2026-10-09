@@ -10,7 +10,7 @@ import * as statsView from './stats.js';
 import { icons, toast } from './ui.js';
 import { escapeHtml, initial } from './utils.js';
 import { fetchPoster } from './wiki.js';
-import * as telegram from './telegram.js';
+import * as settings from './settings.js';
 
 const view = document.getElementById('view');
 const userOverlay = document.getElementById('userOverlay');
@@ -28,7 +28,7 @@ let errNotified = false;
 // ---------- Ініціалізація ----------
 initBrand();
 initTheme();
-initTg();
+initSettings();
 initFab();
 initUser();
 initTabs();
@@ -97,13 +97,9 @@ async function healPoster(film) {
   }
 }
 
-// ---------- Telegram-сповіщення ----------
-function initTg() {
-  const btn = document.getElementById('tgBtn');
-  if (!btn) return;
-  btn.innerHTML = icons.send;
-  btn.addEventListener('click', () => telegram.openTgSetup());
-  telegram.init(); // підписка на спільний конфіг у базі
+// ---------- Налаштування (Telegram + експорт/імпорт бази) ----------
+function initSettings() {
+  settings.init(); // шестерня у шапці: відкриває вікно налаштувань
 }
 
 // ---------- Бренд / іконки ----------

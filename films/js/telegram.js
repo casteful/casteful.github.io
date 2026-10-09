@@ -26,7 +26,8 @@ let cfg = null; // { enabled, token, chatId, chatTitle } | null
 export function init() {
   store.onTgConfig(v => {
     cfg = v;
-    const btn = document.getElementById('tgBtn');
+    // Жовтий індикатор на шестерні «Налаштування»: Telegram підключено
+    const btn = document.getElementById('settingsBtn');
     if (btn) btn.classList.toggle('has-tg', !!(cfg && cfg.enabled !== false && cfg.token && cfg.chatId));
   });
 }

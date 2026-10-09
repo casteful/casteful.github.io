@@ -463,6 +463,7 @@ export function openFormModal({ film = null, currentUserId, allFilms = [] }) {
       if (!val('fYear') && d.year) set('fYear', d.year);
       if (d.premiere && !pickedPremiere) { pickedPremiere = d.premiere; showPremiereHint(); }
       fillIfEmpty('fDirector', d.director);
+      fillIfEmpty('fCountry', d.country);
       fillIfEmpty('fCast', (d.cast || []).join(', '));
       fillIfEmpty('fGenres', (d.genres || []).join(', '));
       fillIfEmpty('fRuntime', d.runtime);
@@ -588,6 +589,7 @@ export function openFormModal({ film = null, currentUserId, allFilms = [] }) {
       // перезапис значенням нової підказки, якщо вона була; в іншому
       // разі лишаємо старий imdbId (режим редагування без вибору)
       imdbId: (picked ? picked.imdbId : null) || (film ? film.imdbId : null) || null,
+      country: val('fCountry').trim() || null,
       director: val('fDirector').trim() || null,
       cast: U.parseGenres(val('fCast')),
       genres: U.parseGenres(val('fGenres')),
@@ -689,6 +691,10 @@ function formHTML(isEdit, film) {
       <label class="field">
         <span class="field-label">Тривалість, хв</span>
         <input id="fRuntime" type="number" min="1" max="1200" placeholder="142">
+      </label>
+      <label class="field">
+        <span class="field-label">Країна</span>
+        <input id="fCountry" type="text" placeholder="США" autocomplete="off">
       </label>
       <label class="field span-2">
         <span class="field-label">Режисер</span>

@@ -9,7 +9,7 @@
 //      -> назва, мініатюра (постер), вступний текст, QID Вікіданих
 //   2) wbgetentities: claims + мітки фільмів одним викликом;
 //      другим швидким викликом — мітки режисерів, жанрів і акторів
-//      -> P31/P345/P57/P577/P2047/P136/P161
+//      -> P31/P345/P57/P577/P2047/P136/P161/P495
 // Пакети результатів малюються поступово (onPartial) — не чекаємо
 // найповільніше джерело. Усе fail-safe: будь-яка помилка лишає
 // список порожнім або з базовими даними (назва/постер/опис).
@@ -105,6 +105,11 @@ async function wdEntities(qids) {
     for (const c of claims.P57 || []) {
       const v = c.mainsnak && c.mainsnak.datavalue && c.mainsnak.datavalue.value;
       if (v && v.id && !e.directorQid) e.directorQid = v.id;
+    }
+    // Країна походження (P495) — для статистики «Країни»
+    for (const c of claims.P495 || []) {
+      const v = c.mainsnak && c.mainsnak.datavalue && c.mainsnak.datavalue.value;
+      if (v && v.id && !e.countryQid) e.countryQid = v.id;
     }
     for (const c of claims.P577 || []) {
       const v = c.mainsnak && c.mainsnak.datavalue && c.mainsnak.datavalue.value;
@@ -208,6 +213,7 @@ async function wikidataByQids(qids, opts = {}) {
   const extra = new Set();
   for (const e of Object.values(ents)) {
     if (e.directorQid) extra.add(e.directorQid);
+    if (e.countryQid) extra.add(e.countryQid);
     for (const g of e.genreQids) extra.add(g);
     for (const a of e.actorQids || []) extra.add(a);
   }
@@ -247,6 +253,7 @@ async function wikidataByQids(qids, opts = {}) {
       titleEn: c.labelEn || null,
       imdbId: c.imdbId || null,
       director: dirLab.en || dirLab.uk || null,
+      country: c.countryQid ? ((labels[c.countryQid] && (labels[c.countryQid].en || labels[c.countryQid].uk)) || null) : null,
       genres: c.genreQids.map(g => (labels[g] ? (labels[g].en || labels[g].uk) : null)).filter(Boolean).slice(0, 6),
       cast: (c.actorQids || []).map(a => (labels[a] ? (labels[a].en || labels[a].uk) : null)).filter(Boolean).slice(0, 6),
       runtime: c.runtime || null,
@@ -509,6 +516,7 @@ export async function enrichByQid(qid) {
     title: e.titleEn || null,
     imdbId: e.imdbId || null,
     director: e.director || null,
+    country: e.country || null,
     genres: e.genres || [],
     cast: e.cast || [],
     runtime: e.runtime || null,

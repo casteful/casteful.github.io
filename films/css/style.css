@@ -1576,6 +1576,13 @@ td.u-col.mine:hover { background: color-mix(in srgb, var(--accent) 9%, var(--sur
 .panel-hint { font-size: 12px; color: var(--muted); font-weight: 600; }
 
 .bars { display: flex; flex-direction: column; gap: 7px; }
+/* Довгі списки (роки випуску) — власна прокрутка, щоб панель не розтягувала сторінку */
+.bars.scrollable {
+  max-height: 300px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-right: 4px;
+}
 
 .brow {
   display: grid;
@@ -1969,9 +1976,9 @@ td.u-col.mine:hover { background: color-mix(in srgb, var(--accent) 9%, var(--sur
 }
 .tg-toggle input { accent-color: var(--accent); width: 17px; height: 17px; }
 
-/* Зелена крапка на кнопці літака, коли сповіщення підключені */
-.icon-btn#tgBtn { position: relative; }
-.icon-btn#tgBtn.has-tg::after {
+/* Зелена крапка на шестерні «Налаштування», коли Telegram підключено */
+.icon-btn#settingsBtn { position: relative; }
+.icon-btn#settingsBtn.has-tg::after {
   content: '';
   position: absolute;
   top: 5px;
@@ -1981,6 +1988,37 @@ td.u-col.mine:hover { background: color-mix(in srgb, var(--accent) 9%, var(--sur
   border-radius: 50%;
   background: #6fce67;
   box-shadow: 0 0 0 2px var(--surface);
+}
+
+/* ---------- Вікно «Налаштування» ---------- */
+.set-sec {
+  padding: 16px 0 18px;
+  border-bottom: 1px solid var(--border);
+}
+.set-sec:first-of-type { padding-top: 4px; }
+.set-title {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin: 0 0 12px;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text);
+}
+.set-title svg { color: var(--accent); flex-shrink: 0; }
+.set-hint {
+  margin: 10px 0 0;
+  font-size: 13px;
+  color: var(--muted);
+  line-height: 1.65;
+}
+.set-hint b { color: var(--text); font-weight: 600; }
+.set-actions {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  flex-wrap: wrap;
+  margin-top: 13px;
 }
 
 /* ---------- Анімації ---------- */

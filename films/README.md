@@ -7,16 +7,18 @@ light/dark theme, built as a **zero-build static site** — perfect for GitHub P
 ## Features
 
 - **Effortless rating — ten golden stars** — one tap on «Оцінити» opens a 10-star scale right next to the button (a large bottom sheet on phones). Stars fill with a red→green ramp up to the chosen value (each star keeps its own level colour), a big number + word caption («Добре», «Шедевр»…) reacts live to hovering, and a tap saves instantly. The same stars live in the film window. Keyboard: digits 1–9, 0 = 10, ←/→, Esc.
-- **Telegram pushes** — an elegant one-line Ukrainian message lands in your group when someone adds or deletes a film, or rates / changes / removes a rating (e.g. «surguy оцінив фільм «Інтерстеллар» на 8/10», «surguy змінив оцінку: 7 → 9»). Setup is one person's job: tap the paper-plane in the header, paste a free @BotFather token, add the bot to the group, send /start there — the app finds the chat automatically and stores the shared config in Firebase. Pushes are sent by the acting device only (no duplicates) and never block or break the UI; failures stay silent. The plane button gets a green dot while notifications are on.
+- **Telegram pushes** — an elegant one-line Ukrainian message lands in your group when someone adds or deletes a film, or rates / changes / removes a rating (e.g. «surguy оцінив фільм «Інтерстеллар» на 8/10», «surguy змінив оцінку: 7 → 9»). Setup is one person's job: open the gear (Налаштування) → Telegram, paste a free @BotFather token, add the bot to the group, send /start there — the app finds the chat automatically and stores the shared config in Firebase. Pushes are sent by the acting device only (no duplicates) and never block or break the UI; failures stay silent. The gear gets a green dot while notifications are on.
 - **Cinematic card grid** — vertical poster cards with the average score on the poster, a full-width rate button and friends' scores as colored chips; 2-column layout on phones. A compact **table** view with a rating column per friend is one tap away; both views remember your choice.
 - **Beautiful film window** — poster blurred into a hero header with the title, director, genres and cast; the 10-star scale for your own score; everyone's scores in one list.
 - **Smart adding** — start typing a film name (Ukrainian or English) and pick it from live suggestions; poster, year, both titles, director, cast, genres, runtime and plot are fetched automatically (IMDb + Wikipedia + Wikidata). **Titles are bilingual** — Ukrainian («Чудовисько: Історія Еда Ґіна») above the English original ("Monster: The Ed Gein Story") in suggestions, cards, the table and the film window; **all other metadata is English-first** (director, cast, genres, plot come from en.Wikipedia / English Wikidata labels, with Ukrainian as fallback). **Series always get their premiere**: the year is filled from the premiere date (IMDb year-range, Wikidata P577, TVMaze) and the exact day shows as «Прем'єра: 24 вересня 2007» under the year field and in the film window. Everything stays manually editable.
-- **Clickable people & genres** — tap any director, actor or genre (in the film window or in statistics) to see all matching films of the club.
-- **Statistics tab** — totals (films, ratings, average, shared cinema-hours, most active viewer), club records (best / worst / most controversial / most discussed / oldest / newest), top films, favourite genres, top actors and directors, rating histogram, decades, runtime stats and per-viewer profiles («strictest critic» vs «most generous viewer»).
+- **Clickable people & genres** — tap any director, actor, genre or country (in the film window or in statistics) to see all matching films of the club.
+- **Statistics tab** — totals (films, ratings, average, shared cinema-hours, most active viewer), club records (best / worst / most controversial / most discussed / oldest / newest), top-10 films, favourite genres and average by genre, countries and average by country, top actors and directors plus directors by average rating, rating histogram, decades (count and average), films by release year, watch activity by year and by season, runtime stats and per-viewer profiles («strictest critic» vs «most generous viewer») with a participants comparison.
 - **Modern UI (v3)** — warm-amber identity with gradient accents, glass topbar, springy micro-animations, refined dark theme, soft “projector” glow, thin scrollbars, reduced-motion support.
 - **iPhone / mobile friendly (v3.1)** — the suggestion dropdown is anchored directly under the search field (fixed a positioning bug that pushed it off-screen), touch selection works via `touchend`, inputs are 16 px on touch devices so iOS never auto-zooms the page, the rating sheet sits above its backdrop (tappable scores), body scroll is locked behind modals/sheets, and safe-area insets keep the UI clear of the notch and home indicator.
 - **Light / dark theme** — toggle in the header, remembered per device (browser UI color adapts too).
 - **Realtime** — all data lives in Firebase Realtime Database, so everyone sees updates instantly. Missing posters are re-fetched automatically in the background.
+- **Settings & backup (v3.4)** — one gear button in the header combines **Telegram notifications** (status, quick on/off, full setup) and **data tools**: **Експортувати JSON** downloads the entire database (`filmoteka-backup-YYYY-MM-DD.json`), **Імпортувати JSON** restores it (with a confirmation; fully replaces the DB, also accepts raw Firebase-console JSON).
+- **Bigger statistics (v3.4)** — top-10 films plus new panels: average rating by decade / genre / country, directors by average rating, films by release year, countries (from Wikidata P495, new «Країна» form field), watch activity by year and by season (winter/spring/summer/autumn — based on the day a film was added), and a participants comparison (average ± disagreement with the group).
 
 ## Deploy to GitHub Pages (no build step needed)
 
@@ -76,7 +78,7 @@ error, open **Firebase Console → Realtime Database → Rules** and publish:
   in `js/config.js`. With a key, OMDb joins the poster fallback chain
   (after TVMaze / Wikidata P18, before the Wikipedia title search);
   without a key the app silently skips it.
-- **Telegram notifications**: none needed in code — use the ✈ button in
+- **Telegram notifications**: none needed in code — use the gear button in
   the header (see above). To move to another bot/chat, just reconnect;
   config lives in the `tgConfig` node of the shared database.
 - Profile choice, theme, list view and sorting are stored in each browser's
@@ -94,6 +96,7 @@ films/
     poster:     "https://m.media-amazon.com/..."
     imdbId:     "tt0111161"
     director:   "Frank Darabont"
+    country:    "United States"       # country of origin (Wikidata P495, optional)
     genres:     ["drama film", "crime film"]
     runtime:    142
     plot:       "The Shawshank Redemption is a 1994 American…"
@@ -109,6 +112,21 @@ tgConfig/
   chatId:     -1002222...      # group chat id (found via getUpdates)
   chatTitle:  "Кіноклуб"
 ```
+
+## Backup: export / import (settings gear)
+
+The gear button in the header (where the Telegram button used to be) opens
+**Налаштування** with two sections:
+
+- **Telegram-сповіщення** — connection status, quick on/off toggle and the
+  full bot setup (same window as before).
+- **Дані** — **Експортувати JSON** downloads the whole database (films,
+  ratings, tgConfig and any other nodes) as `filmoteka-backup-YYYY-MM-DD.json`;
+  **Імпортувати JSON** restores a backup: after picking a file you see a
+  confirmation, and on confirm the database content is fully replaced.
+  The import accepts our own export format as well as a raw root JSON
+  (e.g. from the Firebase console); `films` given as an array is normalized
+  to the key-value shape the app uses.
 
 ## Tech notes
 

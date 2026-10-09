@@ -4,7 +4,7 @@
 
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js';
 import {
-  getDatabase, ref, onValue, push, set, update, remove
+  getDatabase, ref, onValue, push, set, update, remove, get
 } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-database.js';
 import { firebaseConfig } from './config.js';
 
@@ -52,6 +52,22 @@ export async function deleteFilm(filmId) {
 // Поставити/змінити оцінку. score = null прибирає оцінку.
 export async function setRating(filmId, user, score) {
   await set(ref(db, `films/${filmId}/ratings/${user}`), score ?? null);
+}
+
+// ---------- Резервна копія: експорт/імпорт усієї бази у JSON ----------
+
+// Повний знімок кореня бази (films, tgConfig та будь-які майбутні вузли).
+// Повертає {} для порожньої бази.
+export async function exportAll() {
+  const snap = await get(ref(db, '/'));
+  const val = snap.val();
+  return (val && typeof val === 'object') ? val : {};
+}
+
+// Повне відновлення: ПЕРЕЗАПИСУЄ корінь бази даними з резервної копії.
+// Викликається лише після явного підтвердження користувача.
+export async function importAll(data) {
+  await set(ref(db, '/'), data);
 }
 
 // ---------- Налаштування Telegram-сповіщень (спільні для всіх) ----------
