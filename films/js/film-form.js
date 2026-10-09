@@ -134,9 +134,12 @@ function searchFilmsFast(q, onPartial) {
     .then(list => { imdbList = list || []; paint(); return imdbList; });
 
   // Вікіпедія: невелика затримка (щоб не спамити WMF на кожну літеру),
-  // потім шукаємо ЗАВЖДИ і добудовуємо список поступово (onPartial)
+  // потім шукаємо ЗАВЖДИ і добудовуємо список поступово (onPartial).
+  // Рік передаємо опцією: за ним виконуються цільові добірки
+  // («creep 2004» -> префікс «creep (2004» + full-text «creep 2004»),
+  // інакше статті виду «Creep (2004 film)» не було у видачі взагалі.
   const wikiP = new Promise(res => setTimeout(res, imdbDown ? 0 : WIKI_DELAY_MS))
-    .then(() => searchWikiFilms(qTitle, partial => { wikiList = partial || []; paint(); }))
+    .then(() => searchWikiFilms(qTitle, partial => { wikiList = partial || []; paint(); }, { year: qYear }))
     .catch(() => []);
 
   return Promise.all([imdbP, wikiP])

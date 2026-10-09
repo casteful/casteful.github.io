@@ -462,6 +462,8 @@ export async function searchWikiFilms(query, onPartial, opts = {}) {
   // opts.langs — явне обмеження розділів (транслітераційний fallback
   // шукає лише в en.Вікіпедії, щоб не витрачати запити на uk/ru)
   const langs = (opts && opts.langs) || (hasCyrillic ? ['uk', 'en'] : ['en', 'uk']);
+  // opts.year — рік, який користувач вказав у запиті («creep 2004»).
+  const year = opts && opts.year >= 1888 && opts.year <= 2100 ? opts.year : null;
 
   const seen = new Set();    // спільна дедуплікація QID/назв між пакетами
   const thumbs = new Map(); // ключ -> мініатюра (у т.ч. з дублікатів)
@@ -474,10 +476,10 @@ export async function searchWikiFilms(query, onPartial, opts = {}) {
     if (typeof onPartial === 'function' && merged.length) onPartial(merged);
   };
 
-  const runLang = async (lang, { prefix = false } = {}) => {
+  const runLang = async (lang, { prefix = false, query: qq = q } = {}) => {
     let pages = [];
     try {
-      pages = prefix ? await wikiPrefix(lang, q) : await wikiSearch(lang, q);
+      pages = prefix ? await wikiPrefix(lang, qq) : await wikiSearch(lang, qq);
     } catch (e) { return; }
     let batch = [];
     try { batch = await collectItems(pages.slice(0, prefix ? 6 : 10), seen, thumbs, q); } catch (e) { return; }
@@ -486,6 +488,22 @@ export async function searchWikiFilms(query, onPartial, opts = {}) {
 
   const tasks = [runLang(langs[0], { prefix: true }), runLang(langs[0])];
   if (langs[1] && langs[1] !== langs[0]) tasks.push(runLang(langs[1]));
+
+  // Рік у запиті («creep 2004») — цільові добірки повз базовий пошук
+  // за назвою. У full-text пошуку «creep» стаття «Creep (2004 film)»
+  // НЕ потрапляє в топ-10 (там лише фільм 2014 і Creep 2), тож коли
+  // IMDb недоступний (мережа/блокування — тоді він вимкнений на 10 хв),
+  // потрібного фільму у підказках просто не було:
+  //  • префікс «назва (рік» — ловить статті виду «Creep (2004 film)»;
+  //  • повнотекст «назва рік» — CirrusSearch підіймає статтю саме цього
+  //    року («creep 2004» -> «Creep (2004 film)» першим рядком).
+  // Зайві збіги («списки епізодів», біографії) відсіює фільтр Вікіданих
+  // у collectItems, тож шуму в підказках вони не створюють.
+  if (year) {
+    tasks.push(runLang(langs[0], { prefix: true, query: `${q} (${year}` }));
+    tasks.push(runLang(langs[0], { query: `${q} ${year}` }));
+    if (langs[1] && langs[1] !== langs[0]) tasks.push(runLang(langs[1], { query: `${q} ${year}` }));
+  }
   await Promise.allSettled(tasks);
 
   const final = dedupeItems(all).slice(0, 12);
