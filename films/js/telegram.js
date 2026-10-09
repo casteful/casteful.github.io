@@ -3,8 +3,9 @@
 // хтось додає/видаляє фільм або ставить оцінку.
 //
 // Як це працює:
-//  • Хтось один (зазвичай власник) відкриває налаштування (літак ✈
-//    у шапці), вставляє токен бота з @BotFather і додає бота у групу;
+//  • Хтось один (зазвичай власник) відкриває налаштування (шестерня
+//    у шапці), вбудована форма Telegram приймає токен бота з
+//    @BotFather;
 //  • Додаток сам знаходить чат через getUpdates (треба написати
 //    /start у групі) і зберігає конфіг у Firebase (вузол tgConfig) —
 //    він стає спільним для всіх друзів;
@@ -88,7 +89,7 @@ export function notifyRatingRemoved(userId, title) {
   return send(`${userName(userId)} прибрав свою оцінку фільму «${title}»`);
 }
 
-// ---------- Модальне вікно налаштувань ----------
+// ---------- Вбудований блок Telegram у вікні «Налаштування» ----------
 
 // Пошук чатів: ~45 с опитуємо getUpdates, поки користувач напише
 // /start боту в групі (команди доходять навіть із privacy-режимом)
@@ -128,79 +129,86 @@ async function detectChats(token, setStatus) {
   return []; // таймаут
 }
 
-export function openTgSetup() {
-  const cur = cfg || {};
-  const connected = !!(cur.token && cur.chatId);
 
-  const { box, close } = openModal(`
-    <div class="modal-head">
-      <h2>Telegram-сповіщення</h2>
-      <button type="button" class="icon-btn" data-close aria-label="Закрити">${icons.close}</button>
-    </div>
-    <div class="tg-setup">
-      <div class="tg-status ${connected ? 'ok' : ''}" id="tgStatus">
-        <i></i><span>${connected
-          ? `Підключено: <b>${escapeHtml(cur.chatTitle || String(cur.chatId))}</b>${cur.enabled === false ? ' · вимкнено' : ''}`
-          : 'Не підключено'}</span>
-      </div>
+// Малює повну форму Telegram безпосередньо у секції «Налаштувань» —
+// статус, токен, пошук чатів, збереження, тест і відключення. Без
+// окремого вікна: усе на одному екрані. section — елемент .set-sec.
+export function mountSettingsSection(section) {
+  let detected = null;   // знайдені чати поточного токена
+  let pickedChat = null; // обраний чат
 
-      <p class="tg-hint">Створіть бота у <b>@BotFather</b> (команда /newbot), скопіюйте токен,
-      додайте бота у вашу групу друзів і напишіть там <b>/start</b>. Конфіг зберігається
-      у спільній базі — налаштування потрібне лише один раз.</p>
-
-      <label class="field">
-        <span class="field-label">Токен бота</span>
-        <input id="tgToken" type="text" autocomplete="off" spellcheck="false"
-               placeholder="123456789:AAE..." value="${escapeHtml(cur.token || '')}">
-      </label>
-
-      <div class="tg-actions">
-        <button type="button" class="btn" id="tgFind"><span>Знайти чати</span></button>
-        ${connected ? '<button type="button" class="btn" id="tgTest"><span>Тестове повідомлення</span></button>' : ''}
-      </div>
-
-      <div class="tg-chats" id="tgChats"></div>
-
-      <div class="tg-foot">
-        ${connected ? `
-        <label class="tg-toggle">
-          <input type="checkbox" id="tgEnabled" ${cur.enabled === false ? '' : 'checked'}>
-          <span>Увімкнено</span>
-        </label>
-        <button type="button" class="btn danger-ghost" id="tgDisconnect"><span>Відключити</span></button>` : ''}
-      </div>
-    </div>
-    <div class="modal-footer">
-      <button type="button" class="btn primary" id="tgSave" ${connected ? '' : 'disabled'}><span>Зберегти</span></button>
-    </div>
-  `, { width: 520, label: 'Telegram-сповіщення' });
-
-  const $ = id => box.querySelector('#' + id);
-  const tokenInput = $('tgToken');
-  const chatsBox = $('tgChats');
-  const saveBtn = $('tgSave');
-  let pickedChat = null;
-  let detected = null; // знайдені чати поточного токена
+  const q = name => section.querySelector(`[data-tg="${name}"]`);
 
   function setStatusRow(ok, html) {
-    const st = $('tgStatus');
-    st.className = 'tg-status' + (ok ? ' ok' : '');
-    st.innerHTML = `<i></i><span>${html}</span>`;
+    const st = q('status');
+    if (st) {
+      st.className = 'tg-status' + (ok ? ' ok' : '');
+      st.innerHTML = `<i></i><span>${html}</span>`;
+    }
+  }
+
+  function render() {
+    const cur = cfg || {};
+    const connected = !!(cur.token && cur.chatId);
+
+    section.innerHTML = `
+      <h3 class="set-title">${icons.send}<span>Telegram-сповіщення</span></h3>
+      <div class="tg-inline">
+        <div class="tg-status ${connected ? 'ok' : ''}" data-tg="status">
+          <i></i><span>${connected
+            ? `Підключено: <b>${escapeHtml(cur.chatTitle || String(cur.chatId))}</b>${cur.enabled === false ? ' · вимкнено' : ''}`
+            : 'Не підключено'}</span>
+        </div>
+
+        <p class="set-hint">Створіть бота у <b>@BotFather</b> (команда /newbot), скопіюйте
+        токен, додайте бота у вашу групу друзів і напишіть там <b>/start</b>. Конфіг
+        зберігається у спільній базі — налаштування потрібне лише один раз.</p>
+
+        <label class="field">
+          <span class="field-label">Токен бота</span>
+          <input data-tg="token" type="text" autocomplete="off" spellcheck="false"
+                 placeholder="123456789:AAE..." value="${escapeHtml(cur.token || '')}">
+        </label>
+
+        <div class="tg-actions">
+          <button type="button" class="btn" data-tg="find"><span>Знайти чати</span></button>
+          ${connected ? '<button type="button" class="btn" data-tg="test"><span>Тестове повідомлення</span></button>' : ''}
+          <button type="button" class="btn primary" data-tg="save" disabled><span>Зберегти</span></button>
+        </div>
+
+        <div class="tg-chats" data-tg="chats"></div>
+
+        ${connected ? `
+        <div class="tg-foot">
+          <label class="tg-toggle">
+            <input type="checkbox" data-tg="enabled" ${cur.enabled === false ? '' : 'checked'}>
+            <span>Увімкнено</span>
+          </label>
+          <button type="button" class="btn danger-ghost" data-tg="disconnect"><span>Відключити</span></button>
+        </div>` : ''}
+      </div>
+    `;
+
+    detected = null;
+    pickedChat = null;
+    wire(cur, connected);
   }
 
   async function findChats() {
-    const token = tokenInput.value.trim();
+    const token = q('token').value.trim();
     if (!token || !/^\d+:[\w-]+$/.test(token)) {
       toast('Вкажіть коректний токен бота (з @BotFather)', 'err');
       return;
     }
-    $('tgFind').disabled = true;
+    const chatsBox = q('chats');
+    const findBtn = q('find');
+    findBtn.disabled = true;
     chatsBox.innerHTML = '<div class="tg-wait">Шукаю повідомлення боту…</div>';
     const res = await detectChats(token, (msg) => {
       const w = chatsBox.querySelector('.tg-wait');
       if (w) w.textContent = msg;
     });
-    $('tgFind').disabled = false;
+    findBtn.disabled = false;
     if (res === null) { chatsBox.innerHTML = ''; return; } // помилка — статус уже показано
     if (!res.length) {
       chatsBox.innerHTML = '<div class="tg-wait">Повідомлень не знайдено. Переконайтеся, що бот доданий у групу і ви написали /start.</div>';
@@ -214,92 +222,96 @@ export function openTgSetup() {
         <span class="tg-chat-title">${escapeHtml(c.title)}</span>
         <span class="tg-chat-type">${c.type === 'private' ? 'особистий' : 'група'}</span>
       </label>`).join('');
-    saveBtn.disabled = false;
+    q('save').disabled = false;
     if (res.length === 1) setStatusRow(true, `Знайдено чат: <b>${escapeHtml(res[0].title)}</b> — тисніть «Зберегти»`);
     else setStatusRow(false, 'Оберіть чат зі списку нижче і збережіть');
   }
 
-  chatsBox.addEventListener('change', (e) => {
-    const rb = e.target.closest('input[type="radio"]');
-    if (!rb || !detected) return;
-    pickedChat = detected[+rb.value];
-    chatsBox.querySelectorAll('.tg-chat').forEach(el => el.classList.remove('picked'));
-    rb.closest('.tg-chat').classList.add('picked');
-    setStatusRow(true, `Обрано: <b>${escapeHtml(pickedChat.title)}</b>`);
-  });
+  function wire(cur, connected) {
+    q('find').addEventListener('click', findChats);
 
-  async function save(enabled) {
-    const token = tokenInput.value.trim();
-    if (!pickedChat) { toast('Спочатку знайдіть і оберіть чат', 'err'); return; }
-    saveBtn.disabled = true;
-    try {
-      await store.setTgConfig({
-        enabled: enabled !== false,
-        token,
-        chatId: pickedChat.id,
-        chatTitle: pickedChat.title,
-        savedAt: Date.now()
+    const chatsBox = q('chats');
+    chatsBox.addEventListener('change', (e) => {
+      const rb = e.target.closest('input[type="radio"]');
+      if (!rb || !detected) return;
+      pickedChat = detected[+rb.value];
+      chatsBox.querySelectorAll('.tg-chat').forEach(el => el.classList.remove('picked'));
+      rb.closest('.tg-chat').classList.add('picked');
+      setStatusRow(true, `Обрано: <b>${escapeHtml(pickedChat.title)}</b>`);
+    });
+
+    const saveBtn = q('save');
+    saveBtn.addEventListener('click', async () => {
+      const token = q('token').value.trim();
+      if (!pickedChat) { toast('Спочатку знайдіть і оберіть чат', 'err'); return; }
+      saveBtn.disabled = true;
+      try {
+        await store.setTgConfig({
+          enabled: !cfg || cfg.enabled !== false,
+          token,
+          chatId: pickedChat.id,
+          chatTitle: pickedChat.title,
+          savedAt: Date.now()
+        });
+        toast('Telegram підключено');
+        render(); // перечитати конфіг: показати «Тест» і «Відключити»
+      } catch (err) {
+        console.error(err);
+        toast('Не вдалося зберегти налаштування', 'err');
+        saveBtn.disabled = false;
+      }
+    });
+
+    const testBtn = q('test');
+    if (testBtn) {
+      testBtn.addEventListener('click', async () => {
+        testBtn.disabled = true;
+        const token = q('token').value.trim() || cur.token;
+        const chatId = pickedChat ? pickedChat.id : cur.chatId;
+        try {
+          await fetch(`https://api.telegram.org/bot${encodeURIComponent(token)}/sendMessage`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ chat_id: chatId, text: 'Перевірка звʼязку з Фільмотекою — усе працює' })
+          });
+          toast('Тест надіслано — перевірте Telegram');
+        } catch (e) {
+          toast('Не вдалося надіслати тест', 'err');
+        }
+        testBtn.disabled = false;
       });
-      toast(enabled === false ? 'Сповіщення вимкнено' : 'Telegram підключено');
-      close();
-    } catch (err) {
-      console.error(err);
-      toast('Не вдалося зберегти налаштування', 'err');
-      saveBtn.disabled = false;
+    }
+
+    const enabledBox = q('enabled');
+    if (enabledBox) {
+      enabledBox.addEventListener('change', async () => {
+        try {
+          await store.setTgConfig({ ...cfg, enabled: enabledBox.checked });
+          toast(enabledBox.checked ? 'Сповіщення увімкнено' : 'Сповіщення вимкнено');
+          setStatusRow(enabledBox.checked,
+            `Підключено: <b>${escapeHtml(cur.chatTitle || String(cur.chatId))}</b>${enabledBox.checked ? '' : ' · вимкнено'}`);
+        } catch (err) {
+          console.error(err);
+          toast('Не вдалося змінити стан', 'err');
+          enabledBox.checked = !enabledBox.checked;
+        }
+      });
+    }
+
+    const discBtn = q('disconnect');
+    if (discBtn) {
+      discBtn.addEventListener('click', async () => {
+        try {
+          await store.setTgConfig(null);
+          toast('Telegram відключено');
+          render();
+        } catch (err) {
+          console.error(err);
+          toast('Не вдалося відключити', 'err');
+        }
+      });
     }
   }
 
-  saveBtn.addEventListener('click', () => save(true));
-
-  const testBtn = $('tgTest');
-  if (testBtn) {
-    testBtn.addEventListener('click', async () => {
-      testBtn.disabled = true;
-      const token = tokenInput.value.trim() || cur.token;
-      const chatId = pickedChat ? pickedChat.id : cur.chatId;
-      try {
-        await fetch(`https://api.telegram.org/bot${encodeURIComponent(token)}/sendMessage`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ chat_id: chatId, text: 'Перевірка звʼязку з Фільмотекою — усе працює' })
-        });
-        toast('Тест надіслано — перевірте Telegram');
-      } catch (e) {
-        toast('Не вдалося надіслати тест', 'err');
-      }
-      testBtn.disabled = false;
-    });
-  }
-
-  const enabledBox = $('tgEnabled');
-  if (enabledBox) {
-    enabledBox.addEventListener('change', async () => {
-      try {
-        await store.setTgConfig({ ...cur, enabled: enabledBox.checked });
-        toast(enabledBox.checked ? 'Сповіщення увімкнено' : 'Сповіщення вимкнено');
-        setStatusRow(enabledBox.checked,
-          `Підключено: <b>${escapeHtml(cur.chatTitle || String(cur.chatId))}</b>${enabledBox.checked ? '' : ' · вимкнено'}`);
-      } catch (err) {
-        console.error(err);
-        toast('Не вдалося змінити стан', 'err');
-        enabledBox.checked = !enabledBox.checked;
-      }
-    });
-  }
-
-  const discBtn = $('tgDisconnect');
-  if (discBtn) {
-    discBtn.addEventListener('click', async () => {
-      try {
-        await store.setTgConfig(null);
-        toast('Telegram відключено');
-        close();
-      } catch (err) {
-        console.error(err);
-        toast('Не вдалося відключити', 'err');
-      }
-    });
-  }
-
-  $('tgFind').addEventListener('click', findChats);
+  render();
 }

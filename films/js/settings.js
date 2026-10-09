@@ -1,7 +1,8 @@
 // ============================================================
 // Налаштування: одна кнопка-шестерня у шапці, два розділи:
-//   1) Telegram-сповіщення — статус, швидкий перемикач і перехід
-//      до повного підключення (старе вікно «літака», тепер звідси);
+//   1) Telegram-сповіщення — повна форма підключення вбудована
+//      прямо сюди (токен, пошук чатів, тест, перемикач) — без
+//      окремого вікна й кнопки «Змінити підключення»;
 //   2) Дані — експорт усієї бази у JSON-файл та імпорт/відновлення
 //      з файлу (повна заміна вмісту бази після підтвердження).
 // ============================================================
@@ -9,7 +10,6 @@
 import * as store from './store.js';
 import * as telegram from './telegram.js';
 import { toast, openModal, confirmDialog, icons } from './ui.js';
-import { escapeHtml } from './utils.js';
 
 export function init() {
   const btn = document.getElementById('settingsBtn');
@@ -26,32 +26,13 @@ export function setTgIndicator(on) {
 }
 
 export function openSettings() {
-  const cur = telegram.getConfig() || {};
-  const connected = !!(cur.token && cur.chatId);
-
   const { box, close } = openModal(`
     <div class="modal-head">
       <h2>Налаштування</h2>
       <button type="button" class="icon-btn" data-close aria-label="Закрити">${icons.close}</button>
     </div>
 
-    <div class="set-sec">
-      <h3 class="set-title">${icons.send}<span>Telegram-сповіщення</span></h3>
-      <div class="tg-status ${connected ? 'ok' : ''}" id="setTgStatus">
-        <i></i><span>${connected
-          ? `Підключено: <b>${escapeHtml(cur.chatTitle || String(cur.chatId))}</b>${cur.enabled === false ? ' · вимкнено' : ''}`
-          : 'Не підключено'}</span>
-      </div>
-      <p class="set-hint">Коли хтось додає фільм або ставить оцінку — у спільний чат приходить коротке повідомлення.</p>
-      <div class="set-actions">
-        <button type="button" class="btn" id="setTgSetup"><span>${connected ? 'Змінити підключення' : 'Підключити'}</span></button>
-        ${connected ? `
-        <label class="tg-toggle">
-          <input type="checkbox" id="setTgEnabled" ${cur.enabled === false ? '' : 'checked'}>
-          <span>Увімкнено</span>
-        </label>` : ''}
-      </div>
-    </div>
+    <div class="set-sec" id="setTgSec"></div>
 
     <div class="set-sec">
       <h3 class="set-title">${icons.table}<span>Дані</span></h3>
@@ -74,28 +55,8 @@ export function openSettings() {
 
   const $ = id => box.querySelector('#' + id);
 
-  // --- Telegram: перехід до повного вікна підключення ---
-  $('setTgSetup').addEventListener('click', () => {
-    close();
-    telegram.openTgSetup();
-  });
-
-  const enabledBox = $('setTgEnabled');
-  if (enabledBox) {
-    enabledBox.addEventListener('change', async () => {
-      try {
-        await store.setTgConfig({ ...cur, enabled: enabledBox.checked });
-        const st = $('setTgStatus');
-        st.className = 'tg-status ok';
-        st.innerHTML = `<i></i><span>Підключено: <b>${escapeHtml(cur.chatTitle || String(cur.chatId))}</b>${enabledBox.checked ? '' : ' · вимкнено'}</span>`;
-        toast(enabledBox.checked ? 'Сповіщення увімкнено' : 'Сповіщення вимкнено');
-      } catch (err) {
-        console.error(err);
-        toast('Не вдалося змінити стан', 'err');
-        enabledBox.checked = !enabledBox.checked;
-      }
-    });
-  }
+  // --- Telegram: уся форма прямо в секції, без перехідного вікна ---
+  telegram.mountSettingsSection(box.querySelector('#setTgSec'));
 
   // --- Експорт: знімок кореня бази -> JSON-файл ---
   $('setExport').addEventListener('click', async () => {
