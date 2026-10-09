@@ -98,6 +98,27 @@ export function normTitle(s) {
     .replace(/\([^)]*\)/g, ' ')
     .replace(/[^a-zа-яіїєґ0-9]/g, '');
 }
+
+// Хвостове уточнення Вікіпедії в назві («Creep (2004 film)», «Casablanca
+// (film)», «Касабланка (фільм, 1942)», «House (TV series)») — не частина
+// назви: рік і тип зберігаються окремими полями форми. Обрізаємо лише
+// КІНЦЕВУ дужку, всередині якої є рік і/або «кінематографічне» слово, —
+// справжні назви з дужками («(500) Days of Summer», «Birdman or
+// (The Unexpected Virtue of Ignorance)») лишаються недоторканими.
+const DAB_YEAR_RE = /(?:18|19|20)\d{2}/;
+const DAB_WORD_RE = /film|movie|series|television|\btv\b|documentary|animated|animation|фільм|серіал|анімаційн|документальн|короткометражн|телевізійн/i;
+
+export function stripDab(s) {
+  let t = String(s || '').trim();
+  // до двох уточнень підряд: «1984 (1984 film)» -> «1984»
+  for (let i = 0; i < 2; i++) {
+    const m = t.match(/\s*\(([^)]*)\)$/);
+    if (!m) break;
+    if (!DAB_YEAR_RE.test(m[1]) && !DAB_WORD_RE.test(m[1])) break;
+    t = t.slice(0, m.index).trim();
+  }
+  return t;
+}
 const GENRE_UK = {
   'drama': 'драма', 'comedy': 'комедія', 'action': 'бойовик',
   'thriller': 'трилер', 'psychological thriller': 'психологічний трилер',

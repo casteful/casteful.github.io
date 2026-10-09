@@ -303,6 +303,23 @@ function origTitleFromExtract(text) {
   return m ? m[1].trim() : null;
 }
 
+// Суфікс назв вікі-статей у дужках: «Creep (2004 film)», «Кріп (фільм, 2004)»,
+// «2012 (film)», «Кріп (фільм)». Прибираємо хвіст і витягаємо звідти рік —
+// у полях назв має лишатися чиста назва фільму, а не службове уточнення
+// статті. Обидва формати (рік до/після слова типу) і голі типи без року.
+// Дужки всередині назви не чіпаємо («Birdman or (The Unexpected Virtue
+// of Ignorance)» лишається як є — хвіст шукаємо лише в кінці).
+const WIKI_PAREN_TYPES = 'film|movie|short film|TV series|television series|miniseries|TV movie|television film|web series|фільм|серіал|телесеріал|телефільм|мультфільм|мультсеріал|анімаційний фільм';
+const WIKI_TITLE_PAREN_RE = new RegExp(
+  '^(.{2,}?)\\s*\\((?:[^)]*?\\b(\\d{4})\\b[^)]*|' + WIKI_PAREN_TYPES + ')\\)$', 'i');
+
+export function cleanWikiTitle(t) {
+  const s = String(t || '').trim();
+  const m = s.match(WIKI_TITLE_PAREN_RE);
+  if (!m) return { title: s, year: null };
+  return { title: m[1].trim(), year: m[2] ? parseInt(m[2], 10) : null };
+}
+
 function truncPlot(s) {
   s = String(s || '').trim();
   return s.length > 700 ? s.slice(0, 697).trimEnd() + '…' : (s || null);
@@ -361,14 +378,28 @@ async function collectItems(pages, seen, thumbs, rescueQuery = '') {
     // Charley Varrick»).
     if (!(qid && wdOk && e) && !looksLikeFilmByExtract(p.extract)) continue;
 
-    const titleUk = p._lang === 'uk'
+    let titleUk = p._lang === 'uk'
       ? (e && e.titleUk) || p.title
       : (e && e.titleUk) || null;
+    // укр. назва теж буває статтєвою («Кріп (фільм, 2004)») — чистимо хвіст
+    if (titleUk) {
+      const cUk = cleanWikiTitle(titleUk);
+      if (cUk.title) titleUk = cUk.title;
+    }
     const origTitle = p._lang === 'en'
       ? p.title
       : ((e && e.titleEn) || origTitleFromExtract(p.extract) || null);
-    const title = origTitle || titleUk || p.title;
+    let title = origTitle || titleUk || p.title;
     if (!title) continue;
+    // Рік: спершу Вікідані, потім вступний текст статті
+    let year = (e && e.year) || yearFromExtract(p.extract);
+    // Назви статей виду «Creep (2004 film)» / «Кріп (фільм, 2004)»: прибираємо
+    // дужковий хвіст і витягаємо з нього рік — підказка показує чисту назву
+    // («Creep · 2004»), зливається з IMDb-дублікатом, а в поле «Оригінальна
+    // назва» потрапляє саме назва фільму, а не уточнення статті вікі
+    const cT = cleanWikiTitle(title);
+    if (cT.title) title = cT.title;
+    if (year == null && cT.year) year = cT.year;
 
     // мініатюра сторінки або з дубліката-статті того ж фільму (інший розділ)
     const poster = cleanThumb(p.thumbnail && p.thumbnail.source) || cleanThumb(thumbs.get(key));
@@ -390,7 +421,7 @@ async function collectItems(pages, seen, thumbs, rescueQuery = '') {
       qid,
       title,
       titleUk: titleUk || null,
-      year: (e && e.year) || yearFromExtract(p.extract),
+      year,
       premiere: (e && e.premiere) || null,
       poster,
       type,
@@ -419,14 +450,37 @@ async function collectItems(pages, seen, thumbs, rescueQuery = '') {
 
 function dedupeItems(items) {
   const out = [];
-  const idx = new Map(); // ключ -> позиція в out
+  const idx = new Map(); // нормалізована назва -> [позиції в out]
   const norm = s => String(s || '').toLowerCase().replace(/[^a-zа-яіїєґ0-9]/g, '');
+  const reg = (t, pos) => {
+    if (!t) return;
+    const arr = idx.get(t);
+    if (arr) { if (!arr.includes(pos)) arr.push(pos); }
+    else idx.set(t, [pos]);
+  };
   for (const it of items) {
     // два ключі: оригінальна назва + укр. назва («Інтерстеллар» і
     // "Interstellar" — та сама стаття, просто з різних розділів вікі)
     const k = norm(it.title);
     const ku = norm(it.titleUk);
-    const at = (k ? idx.get(k) : undefined) ?? (ku ? idx.get(ku) : undefined);
+    const y = it.year != null ? Number(it.year) : null;
+    // однакова назва + РІЗНІ роки = різні фільми («Creep» 2004 ≠ «Creep» 2014):
+    // зливаємо лише «той самий рік» або «запис без року» — інакше після
+    // витягування року з назв («Creep (2004 film)» -> «Creep» + 2004)
+    // різні однойменні фільми злилися б в один рядок
+    const findAt = t => {
+      if (!t) return undefined;
+      const positions = idx.get(t);
+      if (!positions || !positions.length) return undefined;
+      if (y != null) {
+        const same = positions.find(p => Number(out[p].year) === y);
+        if (same !== undefined) return same;
+        return positions.find(p => out[p].year == null);
+      }
+      return positions[0];
+    };
+    let at = findAt(k);
+    if (at === undefined) at = findAt(ku);
     if (at !== undefined) {
       // дублікат назви: доповнюємо перший елемент тим, що є в другому
       const keep = out[at];
@@ -435,13 +489,13 @@ function dedupeItems(items) {
       }
       if ((!keep.genres || !keep.genres.length) && it.genres && it.genres.length) keep.genres = it.genres;
       if ((!keep.cast || !keep.cast.length) && it.cast && it.cast.length) keep.cast = it.cast;
-      if (k && !idx.has(k)) idx.set(k, at);
-      if (ku && !idx.has(ku)) idx.set(ku, at);
+      reg(k, at);
+      reg(ku, at);
       continue;
     }
     const pos = out.length;
-    if (k) idx.set(k, pos);
-    if (ku) idx.set(ku, pos);
+    reg(k, pos);
+    reg(ku, pos);
     out.push(it);
   }
   return out;
@@ -455,6 +509,10 @@ export async function searchWikiFilms(query, onPartial, opts = {}) {
   // opts.langs — явне обмеження розділів (транслітераційний fallback
   // шукає лише в en.Вікіпедії, щоб не витрачати запити на uk/ru)
   const langs = (opts && opts.langs) || (hasCyrillic ? ['uk', 'en'] : ['en', 'uk']);
+  // opts.textQuery — запит для ПОВНОТЕКСТОВОГО пошуку (може включати рік:
+  // «creep 2004» знаходить «Creep (2004 film)», якої немає у топ-10 видачі
+  // за голою назвою). Префіксний пошук завжди лишається за голою назвою.
+  const qText = String((opts && opts.textQuery) || '').trim() || q;
 
   const seen = new Set();    // спільна дедуплікація QID/назв між пакетами
   const thumbs = new Map(); // ключ -> мініатюра (у т.ч. з дублікатів)
@@ -470,7 +528,7 @@ export async function searchWikiFilms(query, onPartial, opts = {}) {
   const runLang = async (lang, { prefix = false } = {}) => {
     let pages = [];
     try {
-      pages = prefix ? await wikiPrefix(lang, q) : await wikiSearch(lang, q);
+      pages = prefix ? await wikiPrefix(lang, q) : await wikiSearch(lang, qText);
     } catch (e) { return; }
     let batch = [];
     try { batch = await collectItems(pages.slice(0, prefix ? 6 : 10), seen, thumbs, q); } catch (e) { return; }

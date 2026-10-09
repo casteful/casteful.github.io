@@ -10,7 +10,7 @@ import * as store from './store.js';
 import * as U from './utils.js';
 import { toast, openModal, confirmDialog, icons } from './ui.js';
 import { suggestFilms, typeLabel, imdbTemporarilyDown, imdbById } from './imdb.js';
-import { searchWikiFilms, fetchPoster, posterQuick, premiereInfo } from './wiki.js';
+import { searchWikiFilms, fetchPoster, posterQuick, premiereInfo, cleanWikiTitle } from './wiki.js';
 import { enrichFilm } from './enrich.js';
 import { notifyFilmAdded, notifyFilmDeleted } from './telegram.js';
 
@@ -65,14 +65,37 @@ function mergeLists(imdbList, wikiList, query, expectedYear = null) {
   const normQ = String(query || '').toLowerCase().replace(/[^a-zа-яіїєґ0-9]/g, '');
   const norm = s => String(s || '').toLowerCase().replace(/[^a-zа-яіїєґ0-9]/g, '');
   const out = [];
-  const idx = new Map();
+  const idx = new Map(); // нормалізована назва -> [позиції в out]
+  const reg = (t, pos) => {
+    if (!t) return;
+    const arr = idx.get(t);
+    if (arr) { if (!arr.includes(pos)) arr.push(pos); }
+    else idx.set(t, [pos]);
+  };
   const add = it => {
     if (!it || !it.title) return;
     // два ключі: оригінальна назва і укр. назва — "Interstellar" та
     // «Інтерстеллар» це той самий фільм, дублювати його не можна
     const k = norm(it.title);
     const ku = norm(it.titleUk);
-    const at = (k ? idx.get(k) : undefined) ?? (ku ? idx.get(ku) : undefined);
+    const y = it.year != null ? Number(it.year) : null;
+    // Однойменні фільми РІЗНИХ років («Creep» 2014 і «Creep» 2004) —
+    // це РІЗНІ фільми: зливаємо лише «той самий рік» або «запис без року».
+    // Інакше IMDb давав Creep 2014 + Creep 2004 + Creep 1995, а в
+    // підказках лишався один «Creep» — решта «проковтувалася» дедуплікацією.
+    const findAt = t => {
+      if (!t) return undefined;
+      const positions = idx.get(t);
+      if (!positions || !positions.length) return undefined;
+      if (y != null) {
+        const same = positions.find(p => Number(out[p].year) === y);
+        if (same !== undefined) return same;
+        return positions.find(p => out[p].year == null);
+      }
+      return positions[0];
+    };
+    let at = findAt(k);
+    if (at === undefined) at = findAt(ku);
     if (at !== undefined) {
       const keep = out[at];
       for (const f of ['poster', 'plot', 'year', 'premiere', 'director', 'runtime', 'imdbId', 'qid', 'titleUk', 'type', 'enWikiTitle']) {
@@ -80,13 +103,13 @@ function mergeLists(imdbList, wikiList, query, expectedYear = null) {
       }
       if ((!keep.genres || !keep.genres.length) && it.genres && it.genres.length) keep.genres = it.genres;
       if ((!keep.cast || !keep.cast.length) && it.cast && it.cast.length) keep.cast = it.cast;
-      if (k && !idx.has(k)) idx.set(k, at);
-      if (ku && !idx.has(ku)) idx.set(ku, at);
+      reg(k, at);
+      reg(ku, at);
       return;
     }
     const pos = out.length;
-    if (k) idx.set(k, pos);
-    if (ku) idx.set(ku, pos);
+    reg(k, pos);
+    reg(ku, pos);
     out.push(it);
   };
   (imdbList || []).forEach(add);
@@ -134,9 +157,13 @@ function searchFilmsFast(q, onPartial) {
     .then(list => { imdbList = list || []; paint(); return imdbList; });
 
   // Вікіпедія: невелика затримка (щоб не спамити WMF на кожну літеру),
-  // потім шукаємо ЗАВЖДИ і добудовуємо список поступово (onPartial)
+  // потім шукаємо ЗАВЖДИ і добудовуємо список поступово (onPartial).
+  // Якщо користувач вказав рік — повнотекстово шукаємо ЩЕ і «назва рік»:
+  // «creep 2004» підіймає статтю «Creep (2004 film)», якої НЕМАЄ у топ-10
+  // видачі за голою назвою (префіксний пошук при цьому лишається за назвою).
   const wikiP = new Promise(res => setTimeout(res, imdbDown ? 0 : WIKI_DELAY_MS))
-    .then(() => searchWikiFilms(qTitle, partial => { wikiList = partial || []; paint(); }))
+    .then(() => searchWikiFilms(qTitle, partial => { wikiList = partial || []; paint(); },
+      qYear ? { textQuery: q } : {}))
     .catch(() => []);
 
   return Promise.all([imdbP, wikiP])
@@ -390,15 +417,19 @@ export function openFormModal({ film = null, currentUserId, allFilms = [] }) {
     // ЯВНИЙ вибір підказки замінює дані полів (а не лише заповнює порожні):
     // так у режимі редагування можна «перезібрати» неправильно доданий
     // фільм — напр., замінити випадкові режисера/сюжет правильними.
-    if (s.titleUk) set('fTitleUk', s.titleUk);
+    // Страховка від службових уточнень вікі-статей: у поля назв потрапляє
+    // лише чиста назва («Creep», «Кріп»), без «(2004 film)» / «(фільм, 2004)».
+    const tUk = s.titleUk ? cleanWikiTitle(s.titleUk).title : null;
+    const tOrig = s.title ? cleanWikiTitle(s.title).title : null;
+    if (tUk) set('fTitleUk', tUk);
     if (s.source === 'wiki') {
-      if (s.title && (!s.titleUk || s.title.toLowerCase() !== s.titleUk.toLowerCase())) {
-        set('fTitle', s.title);
+      if (tOrig && (!tUk || tOrig.toLowerCase() !== tUk.toLowerCase())) {
+        set('fTitle', tOrig);
       } else {
-        set('fTitle', s.titleUk || s.title);
+        set('fTitle', tUk || tOrig);
       }
     } else {
-      set('fTitle', s.title);
+      set('fTitle', tOrig || s.title);
     }
     if (s.year != null) set('fYear', s.year);
     pickedPremiere = s.premiere || null; showPremiereHint();
@@ -411,7 +442,7 @@ export function openFormModal({ film = null, currentUserId, allFilms = [] }) {
     if (s.runtime) set('fRuntime', s.runtime);
     if (s.plot) set('fPlot', s.plot);
 
-    searchInput.value = `${s.titleUk || s.title}${s.year ? ` (${s.year})` : ''}`;
+    searchInput.value = `${tUk || tOrig || s.title}${s.year ? ` (${s.year})` : ''}`;
     hideSug();
     runEnrichment();
   }
@@ -458,8 +489,9 @@ export function openFormModal({ film = null, currentUserId, allFilms = [] }) {
       // АЛЕ не повертаємо щойно відкинутий помилковий
       if (!picked.imdbId && d.imdbId && d.imdbId !== droppedImdbId) picked.imdbId = d.imdbId;
       fillIfEmpty('fTitleUk', d.titleUk);
-      // d.titleEn — зі СПАРКЛ-резерву; d.title — зі швидкого шляху (en мітка)
-      if (!val('fTitle')) fillIfEmpty('fTitle', d.titleEn || d.title);
+      // d.titleEn — зі СПАРКЛ-резерву; d.title — зі швидкого шляху (en мітка).
+      // cleanWikiTitle — страховка від статтєвих суфіксів «(2004 film)»
+      if (!val('fTitle')) fillIfEmpty('fTitle', cleanWikiTitle(d.titleEn || d.title).title);
       if (!val('fYear') && d.year) set('fYear', d.year);
       if (d.premiere && !pickedPremiere) { pickedPremiere = d.premiere; showPremiereHint(); }
       fillIfEmpty('fDirector', d.director);

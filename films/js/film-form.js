@@ -234,9 +234,13 @@ export function openFormModal({ film = null, currentUserId, allFilms = [] }) {
         sugIndex = -1;
         sugList.innerHTML = list.map((s, i) => {
           // Назва двомовною парою: осн. рядок — укр. назва, під ним —
-          // оригінальна англійська (якщо відрізняється)
-          const main = s.titleUk || s.title;
-          const alt = (s.titleUk && s.title && s.titleUk !== s.title) ? s.title : '';
+          // оригінальна англійська (якщо відрізняється).
+          // Хвостове уточнення вікі («Creep (2004 film)») у підказці
+          // зайве — рік і так показано окремим рядком; у даних (sugItems)
+          // назва лишається повною, бо нею зливаються дублікати.
+          const main = U.stripDab(s.titleUk || s.title);
+          const altRaw = (s.titleUk && s.title) ? U.stripDab(s.title) : '';
+          const alt = altRaw && altRaw !== main ? altRaw : '';
           return `
           <button type="button" class="s-item" data-i="${i}">
             <span class="s-thumb">${icons.film}${s.poster
@@ -393,15 +397,20 @@ export function openFormModal({ film = null, currentUserId, allFilms = [] }) {
     // ЯВНИЙ вибір підказки замінює дані полів (а не лише заповнює порожні):
     // так у режимі редагування можна «перезібрати» неправильно доданий
     // фільм — напр., замінити випадкові режисера/сюжет правильними.
-    if (s.titleUk) set('fTitleUk', s.titleUk);
+    // У поля назв уточнення вікі не потрапляють: «Creep (2004 film)» ->
+    // «Creep» — рік зберігається окремим полем, а «(2004 film)» у полі
+    // «Оригінальна назва» — це службове уточнення статті, не назва.
+    if (s.titleUk) set('fTitleUk', U.stripDab(s.titleUk));
+    const cleanOrig = U.stripDab(s.title);
+    const cleanUk = U.stripDab(s.titleUk);
     if (s.source === 'wiki') {
       if (s.title && (!s.titleUk || s.title.toLowerCase() !== s.titleUk.toLowerCase())) {
-        set('fTitle', s.title);
+        set('fTitle', cleanOrig);
       } else {
-        set('fTitle', s.titleUk || s.title);
+        set('fTitle', cleanUk || cleanOrig);
       }
     } else {
-      set('fTitle', s.title);
+      set('fTitle', cleanOrig);
     }
     if (s.year != null) set('fYear', s.year);
     pickedPremiere = s.premiere || null; showPremiereHint();
@@ -414,7 +423,7 @@ export function openFormModal({ film = null, currentUserId, allFilms = [] }) {
     if (s.runtime) set('fRuntime', s.runtime);
     if (s.plot) set('fPlot', s.plot);
 
-    searchInput.value = `${s.titleUk || s.title}${s.year ? ` (${s.year})` : ''}`;
+    searchInput.value = `${U.stripDab(s.titleUk || s.title)}${s.year ? ` (${s.year})` : ''}`;
     hideSug();
     runEnrichment();
   }
@@ -460,9 +469,9 @@ export function openFormModal({ film = null, currentUserId, allFilms = [] }) {
       // Знайшли IMDb ID через Wikidata — збережемо його разом із фільмом,
       // АЛЕ не повертаємо щойно відкинутий помилковий
       if (!picked.imdbId && d.imdbId && d.imdbId !== droppedImdbId) picked.imdbId = d.imdbId;
-      fillIfEmpty('fTitleUk', d.titleUk);
+      fillIfEmpty('fTitleUk', U.stripDab(d.titleUk));
       // d.titleEn — зі СПАРКЛ-резерву; d.title — зі швидкого шляху (en мітка)
-      if (!val('fTitle')) fillIfEmpty('fTitle', d.titleEn || d.title);
+      if (!val('fTitle')) fillIfEmpty('fTitle', U.stripDab(d.titleEn || d.title));
       if (!val('fYear') && d.year) set('fYear', d.year);
       if (d.premiere && !pickedPremiere) { pickedPremiere = d.premiere; showPremiereHint(); }
       fillIfEmpty('fDirector', d.director);
