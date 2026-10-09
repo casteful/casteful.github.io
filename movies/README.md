@@ -15,6 +15,7 @@ light/dark theme, built as a **zero-build static site** — perfect for GitHub P
 - **Statistics tab** — totals (films, ratings, average, shared cinema-hours, most active viewer), club records (best / worst / most controversial / most discussed / oldest / newest), top films, favourite genres, top actors and directors, rating histogram, decades, runtime stats and per-viewer profiles («strictest critic» vs «most generous viewer»).
 - **Modern UI (v3)** — warm-amber identity with gradient accents, glass topbar, springy micro-animations, refined dark theme, soft “projector” glow, thin scrollbars, reduced-motion support.
 - **iPhone / mobile friendly (v3.1)** — the suggestion dropdown is anchored directly under the search field (fixed a positioning bug that pushed it off-screen), touch selection works via `touchend`, inputs are 16 px on touch devices so iOS never auto-zooms the page, the rating sheet sits above its backdrop (tappable scores), body scroll is locked behind modals/sheets, and safe-area insets keep the UI clear of the notch and home indicator.
+- **Settings: one-tap DB backup (JSON)** — the ⚙ button in the header opens a small window with a full database export: every film with all ratings plus the shared Telegram config, downloaded as `filmmoteka-db-YYYY-MM-DD.json`. Generated entirely in the browser (no server needed) — perfect for backups or moving to another Firebase project.
 - **Light / dark theme** — toggle in the header, remembered per device (browser UI color adapts too).
 - **Realtime** — all data lives in Firebase Realtime Database, so everyone sees updates instantly. Missing posters are re-fetched automatically in the background.
 
@@ -214,5 +215,15 @@ tgConfig/
 - On phones the modal overlay drops `backdrop-filter` (a WebKit bug prevents
   dynamically shown children from painting inside a fixed, scrollable,
   backdrop-filtered element).
+- **Phones get a 2×2 profile grid (portrait and landscape)** — the
+  «Хто дивиться?» login sheet always shows two columns (Діма Денис /
+  Ігор Юра) on touch devices: portrait via
+  `@media (orientation: portrait) and (max-width: 640px)` (original
+  avatar-above-name cards, just 2×2), landscape via
+  `@media (orientation: landscape) and (max-height: 500px)` with compact
+  horizontal rows (avatar beside the name) so everything fits on short
+  screens. Both use the `(pointer: coarse), (hover: none)` touch-only
+  pattern the app already relies on for 16 px inputs. Desktops and
+  tablets keep the original layout.
 - The mobile rating sheet uses `z-index` below its panel, so taps reach the
   score segments instead of the backdrop.

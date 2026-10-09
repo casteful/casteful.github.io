@@ -2005,6 +2005,20 @@ td.u-col.mine:hover { background: color-mix(in srgb, var(--accent) 9%, var(--sur
   box-shadow: 0 0 0 2px var(--surface);
 }
 
+/* ---------- Налаштування: експорт бази ---------- */
+
+.export-note {
+  font-size: 12.5px;
+  color: var(--muted);
+  font-weight: 600;
+  line-height: 1.55;
+  min-height: 18px;
+  overflow-wrap: anywhere;
+}
+.export-note:not(:empty) { color: var(--text); }
+.btn#dbExport svg { flex-shrink: 0; }
+.btn#dbExport:disabled { opacity: 0.55; pointer-events: none; }
+
 /* ---------- Анімації ---------- */
 
 @keyframes shimmer {
@@ -2179,6 +2193,44 @@ td.u-col.mine:hover { background: color-mix(in srgb, var(--accent) 9%, var(--sur
 /* Тонкі поправки для телефонів у альбомній орієнтації */
 @media (max-width: 640px) and (min-height: 420px) {
   .modal { max-height: 100vh; max-height: 100dvh; }
+}
+
+/* Телефон в альбомній орієнтації: профілі 2×2 (Діма Денис / Ігор Юра).
+   Лише сенсорні пристрої (та сам патерн, що й для 16px-інпутів) —
+   десктоп і планшети залишаються без змін. */
+@media (orientation: landscape) and (max-height: 500px) and (pointer: coarse),
+(orientation: landscape) and (max-height: 500px) and (hover: none) {
+  .u-picker {
+    padding: 20px 24px;
+    max-height: 100%;
+    overflow-y: auto;
+  }
+  .u-picker h2 { font-size: 19px; }
+  .u-picker p { margin: 5px 0 14px; font-size: 13px; }
+  .u-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+  .u-btn {
+    flex-direction: row;
+    justify-content: flex-start;
+    padding: 10px 14px;
+    gap: 11px;
+  }
+  .u-btn .avatar.xl { width: 44px; height: 44px; font-size: 18px; }
+  .u-btn-name { font-size: 14.5px; }
+}
+
+/* Телефон у портретній орієнтації: також 2×2 (Діма Денис / Ігор Юра).
+   Кнопки лишаються вертикальними (аватар над ім'ям, як на десктопі) —
+   по висоті місця вистачає. Таблетки й десктоп не чіпаємо. */
+@media (orientation: portrait) and (max-width: 640px) and (pointer: coarse),
+(orientation: portrait) and (max-width: 640px) and (hover: none) {
+  .u-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    max-width: 360px;
+    margin: 0 auto;
+  }
 }
 
 /* Повага до reduces motion */

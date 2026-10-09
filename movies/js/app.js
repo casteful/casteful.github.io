@@ -11,6 +11,7 @@ import { icons, toast } from './ui.js';
 import { escapeHtml, initial } from './utils.js';
 import { fetchPoster } from './wiki.js';
 import * as telegram from './telegram.js';
+import { openSettings } from './settings.js';
 
 const view = document.getElementById('view');
 const userOverlay = document.getElementById('userOverlay');
@@ -32,6 +33,7 @@ initTg();
 initFab();
 initUser();
 initTabs();
+initSettings();
 
 // Клік на людину/жанр у модалці фільму або статистиці:
 // переключає вкладку «Фільми» (якщо потрібно) і фільтрує список
@@ -104,6 +106,14 @@ function initTg() {
   btn.innerHTML = icons.send;
   btn.addEventListener('click', () => telegram.openTgSetup());
   telegram.init(); // підписка на спільний конфіг у базі
+}
+
+// ---------- Налаштування (експорт бази в JSON) ----------
+function initSettings() {
+  const btn = document.getElementById('settingsBtn');
+  if (!btn) return;
+  btn.innerHTML = icons.gear;
+  btn.addEventListener('click', openSettings);
 }
 
 // ---------- Бренд / іконки ----------
