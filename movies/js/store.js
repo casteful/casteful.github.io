@@ -26,6 +26,31 @@ export function onFilms(cb) {
   );
 }
 
+// Підрахунок реальних (не-null) оцінок у словнику фільмів
+function countRatings(films) {
+  let n = 0;
+  for (const k of Object.keys(films || {})) {
+    const r = films[k] && films[k].ratings;
+    if (r && typeof r === 'object') {
+      n += Object.values(r).filter(v => v != null).length;
+    }
+  }
+  return n;
+}
+
+// Нормалізація словника фільмів: прибирає null-записи, масив перетворює
+// на об'єкт з текстовими ключами (RTDB не приймає масиви з дірами)
+function normalizeFilms(films) {
+  const src = Array.isArray(films)
+    ? films.map((f, i) => [String(i), f])
+    : Object.entries(films || {});
+  const out = {};
+  for (const [k, f] of src) {
+    if (f && typeof f === 'object') out[k] = f;
+  }
+  return out;
+}
+
 // Додати новий фільм. Повертає ключ нового запису.
 export async function addFilm(data) {
   const r = push(ref(db, 'films'));
@@ -64,13 +89,6 @@ export async function exportAll() {
   ]);
   const films = filmsSnap.val() || {};
   const keys = Object.keys(films);
-  let ratings = 0;
-  for (const k of keys) {
-    const r = films[k] && films[k].ratings;
-    if (r && typeof r === 'object') {
-      ratings += Object.values(r).filter(v => v != null).length;
-    }
-  }
   return {
     meta: {
       app: 'Фільмотека',
@@ -78,12 +96,42 @@ export async function exportAll() {
       databaseURL: firebaseConfig.databaseURL,
       exportedAt: new Date().toISOString(),
       films: keys.length,
-      ratings,
+      ratings: countRatings(films),
       members: (USERS_LIST || []).map(u => u.id)
     },
     films,
     tgConfig: tgSnap.val() ?? null
   };
+}
+
+// ---------- Відновлення бази з файлу експорту ----------
+// Перевірка структури файлу БЕЗ запису: повертає { ok, films, ratings, hasTg }
+// або { ok: false, msg } з поясненням українською.
+export function validateImport(data) {
+  if (!data || typeof data !== 'object' || Array.isArray(data)) {
+    return { ok: false, msg: 'Це не файл експорту Фільмотеки' };
+  }
+  if (!data.films || typeof data.films !== 'object' || Array.isArray(data.films)) {
+    return { ok: false, msg: 'У файлі немає розділу «films» — це не експорт Фільмотеки' };
+  }
+  const films = normalizeFilms(data.films);
+  return {
+    ok: true,
+    films: Object.keys(films).length,
+    ratings: countRatings(films),
+    hasTg: !!(data.tgConfig && typeof data.tgConfig === 'object' && data.tgConfig.token)
+  };
+}
+
+// Атомарна заміна films + tgConfig вмістом файлу. Один multi-path
+// update по кореню: або все запишеться, або нічого.
+export async function importAll(data) {
+  const check = validateImport(data);
+  if (!check.ok) throw new Error(check.msg);
+  const films = normalizeFilms(data.films);
+  const tg = (data.tgConfig && typeof data.tgConfig === 'object') ? data.tgConfig : null;
+  await update(ref(db), { films, tgConfig: tg });
+  return { films: Object.keys(films).length, ratings: countRatings(films), tg: !!tg };
 }
 
 // ---------- Налаштування Telegram-сповіщень (спільні для всіх) ----------

@@ -1991,9 +1991,9 @@ td.u-col.mine:hover { background: color-mix(in srgb, var(--accent) 9%, var(--sur
 }
 .tg-toggle input { accent-color: var(--accent); width: 17px; height: 17px; }
 
-/* Зелена крапка на кнопці літака, коли сповіщення підключені */
-.icon-btn#tgBtn { position: relative; }
-.icon-btn#tgBtn.has-tg::after {
+/* Зелена крапка на ⚙ «Налаштування», коли сповіщення підключені */
+.icon-btn#settingsBtn { position: relative; }
+.icon-btn#settingsBtn.has-tg::after {
   content: '';
   position: absolute;
   top: 5px;
@@ -2005,7 +2005,7 @@ td.u-col.mine:hover { background: color-mix(in srgb, var(--accent) 9%, var(--sur
   box-shadow: 0 0 0 2px var(--surface);
 }
 
-/* ---------- Налаштування: експорт бази ---------- */
+/* ---------- Налаштування: Telegram-сповіщення + база даних ---------- */
 
 .export-note {
   font-size: 12.5px;
@@ -2016,8 +2016,25 @@ td.u-col.mine:hover { background: color-mix(in srgb, var(--accent) 9%, var(--sur
   overflow-wrap: anywhere;
 }
 .export-note:not(:empty) { color: var(--text); }
-.btn#dbExport svg { flex-shrink: 0; }
-.btn#dbExport:disabled { opacity: 0.55; pointer-events: none; }
+.set-sep { height: 1px; background: var(--border); margin: 2px 0; }
+.set-section { padding: 14px 0 6px; }
+.set-section:first-of-type { padding-top: 4px; }
+.set-section:last-of-type { padding-bottom: 18px; }
+.set-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 20px;
+  margin-bottom: 6px;
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--muted);
+}
+.set-title svg { width: 15px; height: 15px; color: var(--accent); flex-shrink: 0; }
+.btn#dbExport svg, .btn#dbImport svg { flex-shrink: 0; }
+.tg-actions .btn:disabled { opacity: 0.55; pointer-events: none; }
 
 /* ---------- Анімації ---------- */
 

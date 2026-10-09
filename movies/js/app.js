@@ -29,7 +29,6 @@ let errNotified = false;
 // ---------- Ініціалізація ----------
 initBrand();
 initTheme();
-initTg();
 initFab();
 initUser();
 initTabs();
@@ -99,21 +98,13 @@ async function healPoster(film) {
   }
 }
 
-// ---------- Telegram-сповіщення ----------
-function initTg() {
-  const btn = document.getElementById('tgBtn');
-  if (!btn) return;
-  btn.innerHTML = icons.send;
-  btn.addEventListener('click', () => telegram.openTgSetup());
-  telegram.init(); // підписка на спільний конфіг у базі
-}
-
-// ---------- Налаштування (експорт бази в JSON) ----------
+// ---------- Налаштування (⚙ = Telegram-сповіщення + база даних) ----------
 function initSettings() {
   const btn = document.getElementById('settingsBtn');
   if (!btn) return;
   btn.innerHTML = icons.gear;
   btn.addEventListener('click', openSettings);
+  telegram.init(); // спільний конфіг Telegram у базі (крапка на ⚙, коли підключено)
 }
 
 // ---------- Бренд / іконки ----------
