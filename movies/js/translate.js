@@ -51,6 +51,14 @@ function looksLikeJunk(out, src) {
   return false;
 }
 
+// Укр. назви фільмів завжди починаються з великої літери, а перекладачі
+// інколи віддають усе з малої («повзучість» → «Повзучість»). Піднімаємо
+// першу ЛІТЕРУ (перед нею можуть стояти лапки/дужки/цифри — їх не чіпаємо).
+function capitalizeFirst(s) {
+  return s.replace(/^([^A-Za-zА-Яа-яІіЇїЄєҐґ]*)([A-Za-zА-Яа-яІіЇїЄєҐґ])/,
+    (m, pre, ch) => pre + ch.toUpperCase());
+}
+
 export async function translateToUk(text) {
   const src = String(text || '').trim();
   if (!src || src.length > MAX_LEN) return null;
@@ -86,6 +94,7 @@ export async function translateToUk(text) {
     return null;
   }
 
+  out = capitalizeFirst(out);
   cache.set(key, out);
   return out;
 }
