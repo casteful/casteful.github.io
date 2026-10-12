@@ -70,23 +70,38 @@ async function send(text) {
 
 // ---------- Готові повідомлення (українською, коротко) ----------
 
+// Пряме посилання на фільм у застосунку: отримувач пуша клікає — і
+// одразу бачить картку фільму зі шкалою оцінювання. Адресу будуємо з
+// поточної сторінки, тож однаково працює і на GitHub Pages, і локально.
+function filmLink(film) {
+  if (!film || !film.id) return '';
+  try {
+    return `${location.origin}${location.pathname}?film=${encodeURIComponent(String(film.id))}`;
+  } catch (e) {
+    return '';
+  }
+}
+
 export function notifyFilmAdded(userId, film) {
-  return send(`${userName(userId)} додав фільм «${filmTitle(film)}»${film && film.year ? ` (${film.year})` : ''}`);
+  const link = filmLink(film);
+  const base = `${userName(userId)} додав фільм «${filmTitle(film)}»${film && film.year ? ` (${film.year})` : ''}`;
+  return send(link ? `${base}\nОцінити: ${link}` : base);
 }
 
 export function notifyFilmDeleted(userId, title) {
   return send(`${userName(userId)} видалив фільм «${title}»`);
 }
 
-export function notifyRatingSet(userId, title, score, prev) {
-  const text = (prev != null && prev !== score)
-    ? `${userName(userId)} змінив оцінку «${title}»: ${prev} → ${score}`
-    : `${userName(userId)} оцінив фільм «${title}» на ${score}/10`;
-  return send(text);
+export function notifyRatingSet(userId, film, score, prev) {
+  const link = filmLink(film);
+  const base = (prev != null && prev !== score)
+    ? `${userName(userId)} змінив оцінку «${filmTitle(film)}»: ${prev} → ${score}`
+    : `${userName(userId)} оцінив фільм «${filmTitle(film)}» на ${score}/10`;
+  return send(link ? `${base}\nОцінити теж: ${link}` : base);
 }
 
-export function notifyRatingRemoved(userId, title) {
-  return send(`${userName(userId)} прибрав свою оцінку фільму «${title}»`);
+export function notifyRatingRemoved(userId, film) {
+  return send(`${userName(userId)} прибрав свою оцінку фільму «${filmTitle(film)}»`);
 }
 
 // ---------- Вбудований блок Telegram у вікні «Налаштування» ----------

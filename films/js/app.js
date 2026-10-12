@@ -25,6 +25,14 @@ let mountedTab = null;    // яку вкладку зараз змонтован
 let currentUser = null;
 let errNotified = false;
 
+// ---------- Глибоке посилання: index.html?film=<id> ----------
+// Telegram-сповіщення ведуть прямо на фільм: щойно список прийде з
+// бази — відкриваємо картку цього фільму, і друг може одразу ставити
+// свою оцінку. Якщо профіль ще не обрано, спершу покажеться вибір
+// профілю, а картка чекатиме під ним.
+let deepLinkFilmId = null;
+try { deepLinkFilmId = new URLSearchParams(location.search).get('film'); } catch (e) {}
+
 // ---------- Ініціалізація ----------
 initBrand();
 initTheme();
@@ -55,7 +63,23 @@ store.onFilms((list, err) => {
   filmsArr = list;
   renderTab();
   healMissingPosters(list); // тихо підтягуємо постери для фільмів без них
+  handleDeepLink(list);
 });
+
+// Відкрити фільм із ?film=<id> (одноразово, на першому знімку бази).
+// Параметр із адреси прибираємо, щоб F5 не відкривав картку знову.
+function handleDeepLink(list) {
+  if (!deepLinkFilmId) return;
+  const id = deepLinkFilmId;
+  deepLinkFilmId = null;
+  try { history.replaceState(null, '', location.pathname); } catch (e) {}
+  if (Array.isArray(list) && list.some(f => f.id === id)) {
+    if (activeTab !== 'films') switchTab('films');
+    filmsView.openFilmById(id);
+  } else {
+    toast('Фільм за посиланням не знайдено — можливо, його вже видалили', 'err');
+  }
+}
 
 // ---------- Автоматичне підтягування постерів ----------
 // Фільми, додані раніше (коли en.вікі ховала fair-use постери через
