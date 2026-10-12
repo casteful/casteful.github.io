@@ -579,8 +579,8 @@ function openRatePop(anchor, film) {
     try {
       await store.setRating(film.id, currentUserId, next);
       toast(next == null ? 'Оцінку прибрано' : `Ваша оцінка: ${next}${next >= 9 ? ' ✨' : ''}`);
-      if (next == null) notifyRatingRemoved(currentUserId, fTitle(film));
-      else notifyRatingSet(currentUserId, fTitle(film), next, cur != null ? cur : null);
+      if (next == null) notifyRatingRemoved(currentUserId, fTitle(film), film.id);
+      else notifyRatingSet(currentUserId, fTitle(film), next, cur != null ? cur : null, film.id);
       closeRatePop();
     } catch (err) {
       console.error(err);
@@ -775,8 +775,8 @@ function wireDetail(box) {
       try {
         await store.setRating(film.id, currentUserId, next);
         toast(next == null ? 'Оцінку прибрано' : `Ваша оцінка: ${next}${next >= 9 ? ' ✨' : ''}`);
-        if (next == null) notifyRatingRemoved(currentUserId, fTitle(film));
-        else notifyRatingSet(currentUserId, fTitle(film), next, cur != null ? cur : null);
+        if (next == null) notifyRatingRemoved(currentUserId, fTitle(film), film.id);
+        else notifyRatingSet(currentUserId, fTitle(film), next, cur != null ? cur : null, film.id);
       } catch (err) {
         console.error(err);
         toast('Не вдалося зберегти оцінку', 'err');
@@ -789,7 +789,7 @@ function wireDetail(box) {
       try {
         await store.setRating(film.id, currentUserId, null);
         toast('Оцінку прибрано');
-        notifyRatingRemoved(currentUserId, fTitle(film));
+        notifyRatingRemoved(currentUserId, fTitle(film), film.id);
       } catch (err) {
         console.error(err);
         toast('Не вдалося прибрати оцінку', 'err');

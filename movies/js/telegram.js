@@ -44,25 +44,47 @@ export function filmTitle(f) {
   return (f && (f.titleUk || f.title)) || 'Без назви';
 }
 
-// Надсилання: fire-and-forget, жодних тостів про помилки Telegram
-async function send(text) {
+// Посилання на фільм у застосунку: ?film=<id> — клік у Telegram відкриває
+// Фільмотеку одразу з вікном цього фільму. Базу беремо з адреси того,
+// хто надсилає сповіщення (усі користуються одним і тим самим URL),
+// тож жодних додаткових налаштувань не потрібно.
+export function filmLink(filmId) {
+  if (!filmId) return '';
+  try {
+    const u = new URL(location.href);
+    u.hash = '';
+    u.search = '?film=' + encodeURIComponent(filmId);
+    return u.toString();
+  } catch (e) {
+    return ''; // немає location (наприклад, worker) — повідомлення без посилання
+  }
+}
+
+// Надсилання: fire-and-forget, жодних тостів про помилки Telegram.
+// Другий аргумент plain — запасний чистий текст (без HTML): він летить
+// у no-cors-запиті, де parse_mode:'HTML' міг би показати теги як текст.
+async function send(text, plain) {
   if (!cfg || cfg.enabled === false || !cfg.token || !cfg.chatId) return;
   const url = `https://api.telegram.org/bot${encodeURIComponent(cfg.token)}/sendMessage`;
-  const body = JSON.stringify({ chat_id: cfg.chatId, text, disable_web_page_preview: true });
+  const isHtml = typeof plain === 'string';
+  const payload = isHtml
+    ? { chat_id: cfg.chatId, text, parse_mode: 'HTML', disable_web_page_preview: true }
+    : { chat_id: cfg.chatId, text, disable_web_page_preview: true };
   try {
     const res = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body
+      body: JSON.stringify(payload)
     });
     if (!res.ok) console.warn('[tg] sendMessage ->', res.status);
   } catch (e) {
     // Мережа/CORS: пробуємо form-urlencoded без читання відповіді
     try {
+      const fb = { chat_id: String(cfg.chatId), text: isHtml ? plain : text };
       await fetch(url, {
         method: 'POST',
         mode: 'no-cors',
-        body: new URLSearchParams({ chat_id: String(cfg.chatId), text })
+        body: new URLSearchParams(fb)
       });
     } catch (e2) { console.warn('[tg]', e2 && e2.message); }
   }
@@ -70,23 +92,43 @@ async function send(text) {
 
 // ---------- Готові повідомлення (українською, коротко) ----------
 
-export function notifyFilmAdded(userId, film) {
-  return send(`${userName(userId)} додав фільм «${filmTitle(film)}»${film && film.year ? ` (${film.year})` : ''}`);
+// Клікабельна назва фільму для HTML-повідомлень + парний чистий текст
+function linkedTitle(title, filmId) {
+  const link = filmLink(filmId);
+  if (!link) return null;
+  return `<a href="${escapeHtml(link)}">«${escapeHtml(title)}»</a>`;
+}
+
+export function notifyFilmAdded(userId, film, filmId) {
+  const title = filmTitle(film);
+  const when = film && film.year ? ` (${film.year})` : '';
+  const plain = `${userName(userId)} додав фільм «${title}»${when}`;
+  const t = linkedTitle(title, filmId);
+  if (!t) return send(plain);
+  return send(`${userName(userId)} додав фільм ${t}${when}`, plain);
 }
 
 export function notifyFilmDeleted(userId, title) {
   return send(`${userName(userId)} видалив фільм «${title}»`);
 }
 
-export function notifyRatingSet(userId, title, score, prev) {
-  const text = (prev != null && prev !== score)
+export function notifyRatingSet(userId, title, score, prev, filmId) {
+  const plain = (prev != null && prev !== score)
     ? `${userName(userId)} змінив оцінку «${title}»: ${prev} → ${score}`
     : `${userName(userId)} оцінив фільм «${title}» на ${score}/10`;
-  return send(text);
+  const t = linkedTitle(title, filmId);
+  if (!t) return send(plain);
+  const html = (prev != null && prev !== score)
+    ? `${userName(userId)} змінив оцінку ${t}: ${prev} → ${score}`
+    : `${userName(userId)} оцінив фільм ${t} на ${score}/10`;
+  return send(html, plain);
 }
 
-export function notifyRatingRemoved(userId, title) {
-  return send(`${userName(userId)} прибрав свою оцінку фільму «${title}»`);
+export function notifyRatingRemoved(userId, title, filmId) {
+  const plain = `${userName(userId)} прибрав свою оцінку фільму «${title}»`;
+  const t = linkedTitle(title, filmId);
+  if (!t) return send(plain);
+  return send(`${userName(userId)} прибрав свою оцінку фільму ${t}`, plain);
 }
 
 // ---------- Секція налаштувань (усередині вікна «Налаштування») ----------

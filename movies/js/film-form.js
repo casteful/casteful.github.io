@@ -687,9 +687,9 @@ export function openFormModal({ film = null, currentUserId, allFilms = [] }) {
         await store.updateFilm(film.id, data);
         toast('Зміни збережено');
       } else {
-        await store.addFilm({ ...data, addedBy: currentUserId });
+        const newId = await store.addFilm({ ...data, addedBy: currentUserId });
         toast('Фільм додано');
-        notifyFilmAdded(currentUserId, data);
+        notifyFilmAdded(currentUserId, data, newId);
       }
       close();
     } catch (err) {

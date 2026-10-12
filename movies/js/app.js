@@ -26,6 +26,29 @@ let mountedTab = null;    // яку вкладку зараз змонтован
 let currentUser = null;
 let errNotified = false;
 
+// ---------- Deep-link з Telegram-сповіщень (?film=<id>) ----------
+// Клік за посиланням у пуші відкриває Фільмотеку одразу з вікном фільму.
+// Параметр одразу прибираємо з адреси, щоб F5 не відкривав вікно знову.
+// Вікно чекає на дві речі: завантаження бази і обраний профіль (якщо
+// користувач ще не обраний — відкриємо одразу після вибору в пікері).
+let pendingFilmId = null;
+try {
+  const u = new URL(location.href);
+  pendingFilmId = u.searchParams.get('film');
+  if (pendingFilmId) {
+    u.searchParams.delete('film');
+    history.replaceState(null, '', u.toString());
+  }
+} catch (e) { /* без location/history — просто без deep-link */ }
+
+function tryOpenPendingFilm() {
+  if (!pendingFilmId || !filmsArr || !currentUser) return;
+  const id = pendingFilmId;
+  pendingFilmId = null;
+  if (activeTab !== 'films') switchTab('films');
+  filmsView.openFilmById(id); // якщо фільм вже видалили — тихо нічого не станеться
+}
+
 // ---------- Ініціалізація ----------
 initBrand();
 initTheme();
@@ -55,6 +78,7 @@ store.onFilms((list, err) => {
   }
   filmsArr = list;
   renderTab();
+  tryOpenPendingFilm(); // deep-link ?film=… з Telegram — коли база вже тут
   healMissingPosters(list); // тихо підтягуємо постери для фільмів без них
 });
 
@@ -160,6 +184,7 @@ function initUser() {
     hideUserPicker();
     renderUserBadge();
     filmsView.setUser(currentUser.id);
+    tryOpenPendingFilm(); // користувач обрав профіль за deep-link — відкриваємо фільм
     toast(`Вітаємо, ${currentUser.name}!`);
   });
 
