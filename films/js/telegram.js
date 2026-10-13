@@ -15,6 +15,12 @@
 // CORS: api.telegram.org віддає Access-Control-Allow-Origin: *,
 // тож sendMessage працює прямо з браузера; на випадок жорстких
 // блокувань є запасний no-cors-запит (form-urlencoded).
+//
+// Повідомлення йдуть у HTML-режимі (parse_mode: "HTML"): назва фільму
+// САМА є клікабельним посиланням ?film=<id> — друг тисне на назву і
+// одразу потрапляє на картку фільму з шкалою оцінювання. Увесь текст,
+// що приходить з бази, екрануємо (& < >) — інакше Telegram відхилить
+// повідомлення через «битий» HTML.
 // ============================================================
 
 import { USERS } from './config.js';
@@ -44,11 +50,12 @@ export function filmTitle(f) {
   return (f && (f.titleUk || f.title)) || 'Без назви';
 }
 
-// Надсилання: fire-and-forget, жодних тостів про помилки Telegram
+// Надсилання: fire-and-forget, жодних тостів про помилки Telegram.
+// parse_mode: HTML — щоб назва фільму була клікабельним посиланням.
 async function send(text) {
   if (!cfg || cfg.enabled === false || !cfg.token || !cfg.chatId) return;
   const url = `https://api.telegram.org/bot${encodeURIComponent(cfg.token)}/sendMessage`;
-  const body = JSON.stringify({ chat_id: cfg.chatId, text, disable_web_page_preview: true });
+  const body = JSON.stringify({ chat_id: cfg.chatId, text, parse_mode: 'HTML', disable_web_page_preview: true });
   try {
     const res = await fetch(url, {
       method: 'POST',
@@ -62,19 +69,23 @@ async function send(text) {
       await fetch(url, {
         method: 'POST',
         mode: 'no-cors',
-        body: new URLSearchParams({ chat_id: String(cfg.chatId), text })
+        body: new URLSearchParams({ chat_id: String(cfg.chatId), text, parse_mode: 'HTML' })
       });
     } catch (e2) { console.warn('[tg]', e2 && e2.message); }
   }
 }
 
-// ---------- Готові повідомлення (українською, коротко) ----------
+// ---------- Готові повідомлення (українською, коротко, HTML) ----------
 
-// Пряме посилання на фільм у застосунку: отримувач пуша клікає — і
-// одразу бачить картку фільму зі шкалою оцінювання. Адресу будуємо з
+// Telegram-HTML: достатньо екранувати & < > — лапки в тексті повідомлення
+// безпечні, а href ми загортаємо у свої лапки самі.
+const esc = (s) => String(s ?? '').replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+
+// Пряме посилання на фільм у застосунку: отримувач пуша клікає на назву —
+// і одразу бачить картку фільму зі шкалою оцінювання. Адресу будуємо з
 // поточної сторінки, тож однаково працює і на GitHub Pages, і локально.
 function filmLink(film) {
-  if (!film || !film.id) return '';
+  if (!film || typeof film !== 'object' || !film.id) return '';
   try {
     return `${location.origin}${location.pathname}?film=${encodeURIComponent(String(film.id))}`;
   } catch (e) {
@@ -82,26 +93,53 @@ function filmLink(film) {
   }
 }
 
-export function notifyFilmAdded(userId, film) {
+// Назва фільму для повідомлення: якщо є посилання — назва САМА і є
+// клікабельним посиланням (окремого рядка з URL більше немає).
+// Голий рядок замість об'єкта теж переживаємо (захист від старих викликів):
+// тоді просто виводимо його без посилання.
+function filmNameHTML(film) {
+  const title = (typeof film === 'string' ? film : filmTitle(film)) || 'Без назви';
   const link = filmLink(film);
-  const base = `${userName(userId)} додав фільм «${filmTitle(film)}»${film && film.year ? ` (${film.year})` : ''}`;
-  return send(link ? `${base}\nОцінити: ${link}` : base);
+  const name = esc(`«${title}»`);
+  return link ? `<a href="${esc(link)}">${name}</a>` : name;
+}
+
+// Чисті збирачі тексту (експортовані для тестів — нічого не надсилають)
+export function filmAddedText(userId, film) {
+  const year = film && typeof film === 'object' && film.year ? ` (${film.year})` : '';
+  return `${esc(userName(userId))} додав фільм ${filmNameHTML(film)}${year}`;
+}
+
+export function filmDeletedText(userId, title) {
+  return `${esc(userName(userId))} видалив фільм ${filmNameHTML(String(title || ''))}`;
+}
+
+export function ratingSetText(userId, film, score, prev) {
+  const name = filmNameHTML(film);
+  return (prev != null && prev !== score)
+    ? `${esc(userName(userId))} змінив оцінку ${name}: ${prev} → ${score}`
+    : `${esc(userName(userId))} оцінив фільм ${name} на ${score}/10`;
+}
+
+export function ratingRemovedText(userId, film) {
+  return `${esc(userName(userId))} прибрав свою оцінку фільму ${filmNameHTML(film)}`;
+}
+
+// Надсилання готових повідомлень
+export function notifyFilmAdded(userId, film) {
+  return send(filmAddedText(userId, film));
 }
 
 export function notifyFilmDeleted(userId, title) {
-  return send(`${userName(userId)} видалив фільм «${title}»`);
+  return send(filmDeletedText(userId, title));
 }
 
 export function notifyRatingSet(userId, film, score, prev) {
-  const link = filmLink(film);
-  const base = (prev != null && prev !== score)
-    ? `${userName(userId)} змінив оцінку «${filmTitle(film)}»: ${prev} → ${score}`
-    : `${userName(userId)} оцінив фільм «${filmTitle(film)}» на ${score}/10`;
-  return send(link ? `${base}\nОцінити теж: ${link}` : base);
+  return send(ratingSetText(userId, film, score, prev));
 }
 
 export function notifyRatingRemoved(userId, film) {
-  return send(`${userName(userId)} прибрав свою оцінку фільму «${filmTitle(film)}»`);
+  return send(ratingRemovedText(userId, film));
 }
 
 // ---------- Вбудований блок Telegram у вікні «Налаштування» ----------
