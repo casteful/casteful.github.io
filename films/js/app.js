@@ -7,6 +7,7 @@ import { USERS } from './config.js';
 import * as store from './store.js';
 import * as filmsView from './films.js';
 import * as statsView from './stats.js';
+import * as quizView from './quiz.js';
 import { icons, toast } from './ui.js';
 import { escapeHtml, initial } from './utils.js';
 import { fetchPoster } from './wiki.js';
@@ -179,6 +180,7 @@ function initUser() {
     hideUserPicker();
     renderUserBadge();
     filmsView.setUser(currentUser.id);
+    quizView.setUser(currentUser.id);
     toast(`Вітаємо, ${currentUser.name}!`);
   });
 
@@ -234,6 +236,14 @@ function renderTab() {
     }
     if (currentUser) filmsView.setUser(currentUser.id);
     filmsView.setFilms(filmsArr);
+  } else if (activeTab === 'quiz') {
+    // Гра читає ті самі дані; mount() ідемпотентний — снапшот бази
+    // лише перемальовує поточний стан, не ламаючи рахунок
+    filmsView.setFilms(filmsArr); // тримаємо список живим і поза вкладкою
+    quizView.mount(view);
+    quizView.setUser(currentUser ? currentUser.id : null);
+    quizView.setFilms(filmsArr);
+    mountedTab = 'quiz';
   } else {
     // Список фільмів тримаємо актуальним навіть поза вкладкою —
     // щоб «Рекорди» у статистиці могли відкрити вікно фільму

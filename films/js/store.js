@@ -4,7 +4,7 @@
 
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js';
 import {
-  getDatabase, ref, onValue, push, set, update, remove, get
+  getDatabase, ref, onValue, push, set, update, remove, get, runTransaction
 } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-database.js';
 import { firebaseConfig } from './config.js';
 
@@ -80,4 +80,34 @@ export function onTgConfig(cb) {
 }
 export async function setTgConfig(cfg) {
   await set(ref(db, 'tgConfig'), cfg);
+}
+
+// ---------- Гра «Вгадай оцінку»: таблиця лідерів ----------
+// Невеликий вузол quizScores/{userId}:
+//   { name, best, games, exact, updatedAt } — кращий результат матчу,
+// кількість зіграних матчів і сумарних точних вгадів.
+
+// Жива підписка на таблицю лідерів (оновлюється, коли друзі дограли матч).
+export function onQuizScores(cb) {
+  return onValue(
+    ref(db, 'quizScores'),
+    (snap) => cb(snap.val() || {}),
+    (err) => { console.warn('[store] quizScores:', err && err.code); cb({}); }
+  );
+}
+
+// Результат завершеного матчу. Транзакція (а не read+set), щоб одночасні
+// матчі друзів не затирали один одного: best = max, games/exact — накопичувальні.
+export function saveQuizResult(userId, name, points, exact) {
+  const r = ref(db, `quizScores/${userId}`);
+  return runTransaction(r, (cur) => {
+    const c = cur || {};
+    return {
+      name: name || c.name || userId,
+      best: Math.max(c.best || 0, points || 0),
+      games: (c.games || 0) + 1,
+      exact: (c.exact || 0) + (exact || 0),
+      updatedAt: Date.now()
+    };
+  }).then((res) => (res.snapshot && res.snapshot.val()) || null);
 }

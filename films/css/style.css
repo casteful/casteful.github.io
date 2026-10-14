@@ -2211,3 +2211,477 @@ td.u-col.mine:hover { background: color-mix(in srgb, var(--accent) 9%, var(--sur
     scroll-behavior: auto !important;
   }
 }
+
+/* ---------- Гра «Вгадай оцінку друга» ---------- */
+
+.quiz { max-width: 720px; margin: 0 auto; }
+
+.quiz-head h2 {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 21px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  margin: 4px 0 4px;
+}
+.quiz-head h2 svg { width: 20px; height: 20px; color: var(--accent); }
+.quiz-sub { color: var(--muted); font-size: 13.5px; max-width: 56ch; margin: 0; }
+
+/* Рядок рахунку */
+.quiz-score {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 16px 0 18px;
+}
+.quiz-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: 12.5px;
+  color: var(--muted);
+  box-shadow: var(--shadow);
+}
+.quiz-chip svg { width: 13px; height: 13px; color: var(--accent); }
+.quiz-chip b { color: var(--text); font-size: 13.5px; }
+
+/* Картка питання / результату */
+.quiz-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  overflow: hidden;
+  animation: quizCardIn 0.35s cubic-bezier(0.2, 0.9, 0.3, 1.2);
+}
+@keyframes quizCardIn {
+  from { opacity: 0; transform: translateY(10px) scale(0.98); }
+  to { opacity: 1; transform: none; }
+}
+
+/* Стартовий екран */
+.quiz-start { text-align: center; padding: 44px 24px 40px; }
+.quiz-bigicon {
+  display: inline-flex;
+  width: 64px; height: 64px;
+  align-items: center; justify-content: center;
+  border-radius: 20px;
+  background: var(--grad);
+  color: var(--accent-ink);
+  box-shadow: var(--shadow-lg);
+  margin-bottom: 16px;
+}
+.quiz-bigicon svg { width: 30px; height: 30px; }
+.quiz-start h3 { font-size: 19px; font-weight: 800; letter-spacing: -0.015em; margin: 0 0 8px; }
+.quiz-start p { color: var(--muted); font-size: 14px; max-width: 46ch; margin: 0 auto 20px; }
+.quiz-startbtn { min-width: 200px; justify-content: center; }
+
+/* Фільм у питанні */
+.quiz-film {
+  display: flex;
+  gap: 16px;
+  padding: 20px 20px 4px;
+  align-items: flex-start;
+}
+.quiz-poster {
+  width: 120px;
+  aspect-ratio: 2 / 3;
+  object-fit: cover;
+  border-radius: 12px;
+  box-shadow: var(--shadow-lg);
+  flex-shrink: 0;
+}
+.quiz-poster.placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface-2);
+  color: var(--muted);
+}
+.quiz-poster.placeholder svg { width: 34px; height: 34px; }
+.quiz-poster.broken { display: none; }
+.quiz-title { font-size: 19px; font-weight: 800; letter-spacing: -0.015em; line-height: 1.25; }
+.quiz-orig { color: var(--muted); font-size: 13.5px; margin-top: 3px; }
+.quiz-meta { color: var(--muted); font-size: 12.5px; margin-top: 6px; }
+
+/* Питання: хто і що вгадуємо */
+.quiz-qrow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 20px 4px;
+}
+.quiz-qtext { font-size: 15.5px; font-weight: 600; }
+.quiz-scale { padding: 10px 20px 6px; }
+.quiz-scale .rt-seg { max-width: 40px; }
+
+.quiz-actions {
+  display: flex;
+  gap: 10px;
+  padding: 14px 20px 20px;
+}
+
+/* Результат: вердикт */
+.quiz-verdict {
+  margin: 16px 20px 0;
+  border-radius: var(--radius);
+  padding: 16px 18px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  text-align: center;
+  border: 1px solid var(--border);
+}
+.quiz-verdict.good { background: rgba(47, 191, 124, 0.12); border-color: rgba(47, 191, 124, 0.35); }
+.quiz-verdict.mid  { background: var(--accent-soft); border-color: rgba(221, 154, 38, 0.4); }
+.quiz-verdict.bad  { background: var(--danger-soft); border-color: rgba(214, 69, 69, 0.3); }
+.qv-icon svg { width: 22px; height: 22px; }
+.quiz-verdict.good .qv-icon { color: #2fbf7c; }
+.quiz-verdict.mid .qv-icon { color: var(--accent); }
+.quiz-verdict.bad .qv-icon { color: var(--danger); }
+.qv-title { font-size: 19px; font-weight: 800; letter-spacing: -0.015em; }
+.qv-sub { color: var(--muted); font-size: 13px; }
+.qv-pts {
+  margin-top: 6px;
+  padding: 3px 12px;
+  border-radius: 999px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  font-size: 12.5px;
+  font-weight: 700;
+}
+
+/* Порівняння здогадки з реальною оцінкою */
+.quiz-compare {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 16px 20px 0;
+  flex-wrap: wrap;
+}
+.quiz-cmp {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 13px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+}
+.quiz-cmp-label { font-size: 12.5px; color: var(--muted); }
+.quiz-cmp-val {
+  min-width: 26px;
+  text-align: center;
+  padding: 2px 9px;
+  border-radius: 999px;
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  font-weight: 800;
+  font-size: 13.5px;
+}
+.quiz-cmp-arrow { color: var(--muted); font-size: 15px; }
+
+/* Серія точних */
+.quiz-streak {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  margin-top: 12px;
+  color: var(--accent-2);
+  font-size: 13px;
+}
+.quiz-streak svg { width: 14px; height: 14px; }
+
+/* Оцінки всіх друзів у розкритті */
+.quiz-others {
+  list-style: none;
+  margin: 16px 20px 0;
+  padding: 6px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+}
+.quiz-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 2px;
+}
+.quiz-row + .quiz-row { border-top: 1px solid var(--border); }
+.quiz-row-name { flex: 1; font-size: 13.5px; }
+.quiz-row-score {
+  min-width: 30px;
+  text-align: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  color: #fff;
+  font-weight: 800;
+  font-size: 12.5px;
+}
+.quiz-row-score.empty { background: var(--surface); color: var(--muted); border: 1px dashed var(--border-strong); }
+
+/* Мобільна верстка гри */
+@media (max-width: 560px) {
+  .quiz-film { flex-direction: row; padding: 16px 16px 2px; gap: 13px; }
+  .quiz-poster { width: 92px; }
+  .quiz-title { font-size: 16.5px; }
+  .quiz-qrow { padding: 14px 16px 2px; }
+  .quiz-scale { padding: 8px 12px 4px; }
+  .quiz-scale .rt-seg { max-width: 30px; }
+  .quiz-verdict { margin: 14px 14px 0; }
+  .quiz-others { margin: 14px 14px 0; }
+  .quiz-actions { padding: 12px 14px 16px; }
+  .quiz-start { padding: 34px 18px 30px; }
+}
+
+/* ============================================================
+   Гра v2: режими, слайдер середньої, таблиця лідерів, підсумок
+   ============================================================ */
+
+.btn.ghost {
+  background: var(--surface-2);
+  color: var(--text);
+  border: 1px solid var(--border-strong);
+}
+.btn.ghost:hover {
+  border-color: var(--accent);
+  color: var(--accent-2);
+}
+
+/* Картки режимів */
+.quiz-modes {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  margin-top: 16px;
+}
+.quiz-mode {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  text-align: left;
+  padding: 18px 16px 15px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow);
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+  transition: transform 0.18s var(--ease), border-color 0.18s var(--ease), box-shadow 0.18s var(--ease);
+}
+.quiz-mode:hover {
+  transform: translateY(-2px);
+  border-color: var(--accent);
+  box-shadow: var(--shadow-lg);
+}
+.quiz-mode:active { transform: translateY(0) scale(0.99); }
+.qm-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 13px;
+  background: var(--accent-soft);
+  color: var(--accent-2);
+}
+.qm-icon svg { width: 20px; height: 20px; }
+.qm-title { font-size: 15.5px; font-weight: 800; letter-spacing: -0.01em; }
+.qm-desc { color: var(--muted); font-size: 13px; line-height: 1.45; }
+.qm-pts { color: var(--muted); font-size: 12px; margin-top: 2px; }
+.qm-pts b { color: var(--accent-2); font-weight: 800; }
+
+/* Таблиця лідерів «Хто найкраще знає друзів» */
+.quiz-board {
+  margin-top: 18px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow);
+  padding: 18px 18px 14px;
+}
+.quiz-board-head {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  color: var(--accent-2);
+}
+.quiz-board-head svg { width: 18px; height: 18px; }
+.quiz-board-head h3 { font-size: 16px; font-weight: 800; letter-spacing: -0.01em; color: var(--text); }
+.lb-list { margin-top: 8px; }
+.lb-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 10px;
+  border-radius: 12px;
+}
+.lb-row + .lb-row { border-top: 1px solid var(--border); }
+.lb-row.me {
+  background: var(--accent-soft);
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
+}
+.lb-row + .lb-row.me { border-top-color: transparent; }
+.lb-row.top .lb-place { color: var(--accent-2); }
+.lb-place {
+  width: 18px;
+  text-align: center;
+  font-weight: 800;
+  font-size: 13px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.lb-name {
+  flex: 1;
+  min-width: 0;
+  font-weight: 600;
+  font-size: 13.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.lb-right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  line-height: 1.3;
+}
+.lb-val b {
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--accent-2);
+  font-variant-numeric: tabular-nums;
+}
+.lb-val.muted { color: var(--muted); font-weight: 700; }
+.lb-of { color: var(--muted); font-size: 11.5px; }
+.lb-sub { color: var(--muted); font-size: 11.5px; }
+.lb-empty {
+  color: var(--muted);
+  font-size: 13px;
+  margin-top: 10px;
+  text-align: center;
+}
+
+/* Питання «Середньої команди»: стек аватарів + слайдер */
+.quiz-avs { display: flex; }
+.quiz-avs .avatar { border: 2px solid var(--surface); }
+.quiz-avs .avatar + .avatar { margin-left: -9px; }
+.quiz-qsub { color: var(--muted); font-size: 12.5px; font-weight: 500; margin-top: 3px; }
+.quiz-sliderbox { padding: 10px 20px 4px; }
+.quiz-range {
+  width: 100%;
+  margin: 10px 0 2px;
+  height: 30px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+.quiz-range:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; border-radius: 8px; }
+.quiz-range-ends {
+  display: flex;
+  justify-content: space-between;
+  color: var(--muted);
+  font-size: 11.5px;
+  margin-top: 2px;
+}
+
+/* Підсумок матчу */
+.quiz-sum-head {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 34px 20px 8px;
+}
+.quiz-bigicon.small { width: 54px; height: 54px; border-radius: 17px; margin-bottom: 12px; }
+.quiz-bigicon.small svg { width: 25px; height: 25px; }
+.quiz-total {
+  font-size: 46px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  line-height: 1;
+}
+.quiz-total-of { font-size: 20px; color: var(--muted); font-weight: 700; margin-left: 3px; }
+.quiz-sum-title { font-size: 15.5px; font-weight: 700; margin-top: 7px; }
+.quiz-newrec {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+  background: var(--accent-soft);
+  color: var(--accent-2);
+  border: 1px solid rgba(221, 154, 38, 0.4);
+  font-size: 12.5px;
+  font-weight: 800;
+  padding: 5px 12px;
+  border-radius: 999px;
+}
+.quiz-newrec svg { width: 13px; height: 13px; }
+.quiz-sum-note { color: var(--muted); font-size: 12.5px; margin-top: 10px; max-width: 42ch; }
+.quiz-rounds {
+  list-style: none;
+  margin: 14px 20px 0;
+  padding: 6px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+}
+.quiz-round {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 2px;
+  font-size: 13px;
+}
+.quiz-round + .quiz-round { border-top: 1px solid var(--border); }
+.qr-i { width: 18px; color: var(--muted); font-weight: 700; font-size: 12px; }
+.qr-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+}
+.qr-val { color: var(--muted); font-variant-numeric: tabular-nums; }
+.qr-val b { color: var(--text); }
+.qr-pts {
+  min-width: 34px;
+  text-align: center;
+  font-weight: 800;
+  font-size: 12.5px;
+  border-radius: 999px;
+  padding: 2px 8px;
+}
+.qr-pts.good { background: rgba(47, 191, 124, 0.15); color: #279963; }
+.qr-pts.mid { background: var(--accent-soft); color: var(--accent-2); }
+.qr-pts.bad { background: var(--danger-soft); color: var(--danger); }
+
+/* Кнопки у порожньому стані та перенос дій на вузьких екранах */
+.state-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+  margin-top: 18px;
+  flex-wrap: wrap;
+}
+.quiz-actions { flex-wrap: wrap; }
+
+@media (max-width: 560px) {
+  .quiz-modes { grid-template-columns: 1fr; gap: 10px; }
+  .quiz-mode { padding: 15px 14px 13px; }
+  .quiz-board { padding: 14px 12px 10px; margin-top: 14px; }
+  .quiz-sliderbox { padding: 8px 14px 2px; }
+  .quiz-rounds { margin: 12px 14px 0; }
+  .quiz-sum-head { padding: 26px 16px 4px; }
+}
