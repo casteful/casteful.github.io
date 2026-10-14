@@ -2500,6 +2500,28 @@ td.u-col.mine:hover { background: color-mix(in srgb, var(--accent) 9%, var(--sur
 .qm-desc { color: var(--muted); font-size: 13px; line-height: 1.45; }
 .qm-pts { color: var(--muted); font-size: 12px; margin-top: 2px; }
 .qm-pts b { color: var(--accent-2); font-weight: 800; }
+.qm-best {
+  color: var(--muted);
+  font-size: 12px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--border);
+  width: 100%;
+}
+.qm-best b { color: var(--accent-2); font-weight: 800; }
+
+/* Дві окремі таблиці лідерів — своя для кожного режиму */
+.quiz-boards {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  margin-top: 14px;
+  align-items: start;
+}
+.quiz-boards .quiz-board { margin-top: 0; }
+@media (max-width: 860px) {
+  .quiz-boards { grid-template-columns: 1fr; }
+}
 
 /* Таблиця лідерів «Хто найкраще знає друзів» */
 .quiz-board {
@@ -2571,6 +2593,19 @@ td.u-col.mine:hover { background: color-mix(in srgb, var(--accent) 9%, var(--sur
   font-size: 13px;
   margin-top: 10px;
   text-align: center;
+}
+
+/* Примітка про новий круг, коли всі фільми вже були в грі */
+.quiz-cycle {
+  margin: 12px auto -2px;
+  padding: 5px 12px;
+  width: fit-content;
+  max-width: 100%;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent-2);
+  font-size: 12px;
+  font-weight: 600;
 }
 
 /* Питання «Середньої команди»: стек аватарів + слайдер */

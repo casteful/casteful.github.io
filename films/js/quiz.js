@@ -10,11 +10,17 @@
 //   середня:  похибка ≤ 0,25 = 5, ≤ 1,0 = 3, ≤ 2,0 = 1.
 // Власні оцінки не вгадуємо і в середнє не включаємо.
 //
-// Доведений до кінця матч транзакцією пишеться у вузол quizScores
-// ({name, best, games, exact, updatedAt}) — з нього будується
-// таблиця лідерів «Хто найкраще знає друзів» (live-оновлення).
+// Доведений до кінця матч транзакцією пишеться у вузол quizScores —
+// окремо для кожного режиму: quizScores/{userId} =
+//   { name, updatedAt, friend: {best, games, exact, updatedAt},
+//     average: {best, games, exact, updatedAt} }.
+// З них будуються ДВІ live-таблиці лідерів — своя для кожного режиму.
 // Недограний матч у базу не пишеться (щоб не «витирав» легкі
 // запитання до результату).
+//
+// Фільми в грі не повторюються: відповіджені фільми запам'ятовуються
+// (localStorage, окремо за профіль і режим) і не показуються знову,
+// доки є незіграні. Коли всі фільми вже були — починається новий круг.
 // ============================================================
 
 import { USERS } from './config.js';
@@ -32,18 +38,23 @@ const STAR_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.9l2
 const ROUNDS_TOTAL = 5;               // раундів у матчі
 const MAX_POINTS = ROUNDS_TOTAL * 5;  // 25 — максимум за матч
 
+const BOARD_TITLES = {                // окремі таблиці лідерів за режимами
+  friend: 'Хто найкраще знає друзів',
+  average: 'Хто найкраще відчуває команду'
+};
+
 let container = null;
 let stageEl = null;
 let filmsList = [];
 let currentUserId = null;
 let boardScores = {};        // quizScores із бази (live-підписка)
 let boardStarted = false;
+let playedByMode = { friend: new Set(), average: new Set() }; // зіграні фільми (id)
 
 let phase = 'idle';          // idle | guessing | revealed | summary | empty
 let mode = 'friend';         // friend | average — режим поточного матчу
 let match = null;            // { round, points, exact, streak, rounds[], saved, newRecord }
-let q = null;                // запитання { filmId, friendId, guess, result }
-let lastKey = '';            // щоб не показувати те саме питання двічі поспіль
+let q = null;                // запитання { filmId, friendId, guess, result, freshCycle }
 
 // ---------- Публічний інтерфейс ----------
 
@@ -66,6 +77,7 @@ export function mount(el) {
 
 export function setFilms(list) {
   filmsList = Array.isArray(list) ? list : [];
+  prunePlayed(); // прибрати з наборів зіграних id видалених фільмів
   if (!stageEl || !document.contains(stageEl)) return; // вкладка не активна
   // Фільм поточного питання зник або друзі прибрали оцінки — нове питання
   // (рахунок матчу не чіпаємо)
@@ -81,7 +93,6 @@ export function setUser(userId) {
   phase = 'idle';
   match = null;
   q = null;
-  lastKey = '';
   if (stageEl && document.contains(stageEl)) render();
 }
 
@@ -107,27 +118,70 @@ function questionStillValid() {
     : raters.length >= 2;
 }
 
-function pickQuestion() {
+// ---------- Унікальність фільмів ----------
+// Відповіджені (та й пропущені наскрізь) фільми не показуємо знову, поки є
+// незіграні. Набір зіграних зберігаємо в localStorage окремо за профіль і
+// режим — тож без повторів навіть між матчами й після перезавантаження.
+// Коли вільних фільмів не лишається — новий круг (питання про це повідомить).
+
+function playedKey(m) {
+  return `quiz_played_${currentUserId || 'anon'}_${m}`;
+}
+function loadPlayed(m) {
+  const s = new Set();
+  try {
+    const raw = JSON.parse(localStorage.getItem(playedKey(m)) || '[]');
+    if (Array.isArray(raw)) raw.forEach((id) => { if (typeof id === 'string') s.add(id); });
+  } catch (e) {}
+  return s;
+}
+function savePlayed(m) {
+  try { localStorage.setItem(playedKey(m), JSON.stringify([...playedByMode[m]])); } catch (e) {}
+}
+function prunePlayed() {
+  if (!filmsList.length) return;
+  const ids = new Set(filmsList.map(f => f.id));
+  ['friend', 'average'].forEach((m) => {
+    const s = playedByMode[m];
+    let changed = false;
+    s.forEach((id) => { if (!ids.has(id)) { s.delete(id); changed = true; } });
+    if (changed) savePlayed(m);
+  });
+}
+
+// Чистий вибір фільму: 1) випадковий із незіграних (без excludeId — фільм,
+// щойно пропущений гравцем); 2) якщо все зіграно — новий круг (freshCycle).
+export function chooseFilm(base, playedIds, excludeId) {
+  if (!Array.isArray(base) || !base.length) return null;
+  const played = playedIds instanceof Set ? playedIds : new Set(playedIds || []);
+  let pool = base.filter(f => !played.has(f.id) && f.id !== excludeId);
+  let freshCycle = false;
+  if (!pool.length) pool = base.filter(f => !played.has(f.id));
+  if (!pool.length) {
+    played.clear();
+    freshCycle = true;
+    pool = base.filter(f => f.id !== excludeId);
+    if (!pool.length) pool = base;
+  }
+  return { film: pool[Math.floor(Math.random() * pool.length)], freshCycle };
+}
+
+function pickQuestion(excludeId) {
   const pool = poolFor(mode);
   if (!pool.length) { q = null; phase = 'empty'; return; }
-  let film, friend = null, key, tries = 0;
-  do {
-    film = pool[Math.floor(Math.random() * pool.length)];
-    if (mode === 'friend') {
-      const raters = otherRaters(film);
-      friend = raters[Math.floor(Math.random() * raters.length)];
-      key = `${film.id}:${friend.id}`;
-    } else {
-      key = film.id;
-    }
-    tries++;
-  } while (key === lastKey && pool.length > 1 && tries < 10);
-  lastKey = key;
+  const picked = chooseFilm(pool, playedByMode[mode], excludeId);
+  const film = picked.film;
+  let friend = null;
+  if (mode === 'friend') {
+    const raters = otherRaters(film);
+    friend = raters[Math.floor(Math.random() * raters.length)];
+  }
   q = {
     filmId: film.id,
     friendId: friend ? friend.id : null,
     guess: mode === 'average' ? 6 : null, // стартова позиція слайдера
-    result: null
+    result: null,
+    freshCycle: picked.freshCycle
   };
   phase = 'guessing';
 }
@@ -136,8 +190,18 @@ function pickQuestion() {
 
 function startMatch(m) {
   mode = m;
+  playedByMode[m] = loadPlayed(m); // свіжий набір зіграних для цього профілю
+  // Якщо свіжих (незіграних) фільмів менше, ніж потрібно на матч, — новий
+  // круг на старті: тоді матч складається лише з унікальних фільмів щоразу,
+  // коли бібліотека це взагалі дозволяє (недограні матчі не «палать» пул).
+  const base = poolFor(m);
+  const unplayed = base.filter(f => !playedByMode[m].has(f.id)).length;
+  if (base.length >= ROUNDS_TOTAL && unplayed < ROUNDS_TOTAL) {
+    playedByMode[m].clear();
+    savePlayed(m);
+    toast('Усі фільми вже були в грі — починаємо новий круг');
+  }
   match = { round: 0, points: 0, exact: 0, streak: 0, rounds: [], saved: false, newRecord: false };
-  lastKey = '';
   pickQuestion();
   if (phase === 'empty') match = null;
   render();
@@ -186,15 +250,16 @@ function commitRound(r) {
   if (r.pts === 5) { match.exact++; match.streak++; }
   else match.streak = 0;
   match.rounds.push(r);
+  if (q && q.filmId) { playedByMode[mode].add(q.filmId); savePlayed(mode); }
   q.guess = r.guess;
   q.result = r;
   phase = 'revealed';
   render();
 }
 
-function nextQuestion() {
+function nextQuestion(excludeId) {
   if (!match) { render(); return; }
-  pickQuestion();
+  pickQuestion(excludeId);
   if (phase === 'empty') match = null;
   render();
 }
@@ -204,12 +269,13 @@ function finishMatch() {
   phase = 'summary';
   if (!match.saved) {
     match.saved = true;
-    const prev = (boardScores[currentUserId] && boardScores[currentUserId].best) || 0;
+    const mine = boardScores[currentUserId];
+    const prev = (mine && mine[mode] && mine[mode].best) || 0;
     match.newRecord = match.points > prev && match.points > 0;
     if (currentUserId) {
       const me = USERS.find(u => u.id === currentUserId);
-      store.saveQuizResult(currentUserId, me ? me.name : currentUserId, match.points, match.exact)
-        .then(() => toast('Результат збережено в таблиці лідерів'))
+      store.saveQuizResult(currentUserId, me ? me.name : currentUserId, mode, match.points, match.exact)
+        .then(() => toast(`Результат збережено: «${BOARD_TITLES[mode]}»`))
         .catch((err) => {
           console.warn('[quiz] Не вдалося зберегти результат:', err);
           toast('Не вдалося зберегти результат у таблиці лідерів', 'err');
@@ -224,7 +290,6 @@ async function exitMatch() {
   phase = 'idle';
   match = null;
   q = null;
-  lastKey = '';
   render();
 }
 
@@ -254,7 +319,7 @@ function buildSkeleton() {
       <div class="quiz-head">
         <h2>${icons.spark}<span>Вгадай оцінку</span></h2>
         <p class="quiz-sub">Два режими: вгадай оцінку друга або середню оцінку команди.
-        Матч — ${ROUNDS_TOTAL} раундів; результат потрапляє в таблицю лідерів, і друзі його побачать.</p>
+        Матч — ${ROUNDS_TOTAL} фільмів без повторів; результат потрапляє в таблицю лідерів свого режиму.</p>
       </div>
       <div class="quiz-score" id="quizScore"></div>
       <div id="quizStage"></div>
@@ -326,6 +391,13 @@ function friendRowHTML(u, value) {
 // ---------- Стартовий екран: режими + таблиця лідерів ----------
 
 function modeCardsHTML() {
+  const mine = currentUserId ? (boardScores[currentUserId] || {}) : {};
+  const bestLine = (k) => {
+    const b = mine[k] && mine[k].best != null ? mine[k].best : null;
+    return b != null
+      ? `<span class="qm-best">Твій рекорд: <b>${b}</b>/${MAX_POINTS}</span>`
+      : `<span class="qm-best">Ти ще не грав у цьому режимі</span>`;
+  };
   return `
     <div class="quiz-modes">
       <button type="button" class="quiz-mode" data-quiz="start-friend">
@@ -333,22 +405,25 @@ function modeCardsHTML() {
         <span class="qm-title">Рейтинг друга</span>
         <span class="qm-desc">Показуємо фільм і одного з друзів — вгадай, скільки він поставив.</span>
         <span class="qm-pts">точно <b>+5</b> · помилка на 1 <b>+3</b> · на 2 <b>+1</b></span>
+        ${bestLine('friend')}
       </button>
       <button type="button" class="quiz-mode" data-quiz="start-average">
         <span class="qm-icon">${icons.chart}</span>
         <span class="qm-title">Середня команди</span>
         <span class="qm-desc">Фільм оцінили щонайменше двоє друзів — вгадай їхню середню оцінку.</span>
         <span class="qm-pts">похибка ≤0,25 <b>+5</b> · ≤1 <b>+3</b> · ≤2 <b>+1</b></span>
+        ${bestLine('average')}
       </button>
     </div>`;
 }
 
-function leaderboardHTML() {
+function leaderboardHTML(modeKey) {
   const played = [];
   const notPlayed = [];
   USERS.forEach((u) => {
-    const s = boardScores[u.id];
-    if (s && s.best != null) played.push({ u, s });
+    const rec = boardScores[u.id];
+    const s = rec && rec[modeKey] && rec[modeKey].best != null ? rec[modeKey] : null;
+    if (s) played.push({ u, s });
     else notPlayed.push({ u });
   });
   played.sort((a, b) =>
@@ -357,9 +432,12 @@ function leaderboardHTML() {
     a.u.name.localeCompare(b.u.name));
   notPlayed.sort((a, b) => a.u.name.localeCompare(b.u.name));
   const rows = [...played, ...notPlayed];
+  const emptyText = modeKey === 'friend'
+    ? 'Ще ніхто не дограв матч у цьому режимі — стань першим, хто знає друзів найкраще.'
+    : 'Ще ніхто не дограв матч у цьому режимі — спробуй першим вгадати настрій усієї команди.';
   return `
     <div class="quiz-board">
-      <div class="quiz-board-head">${icons.trophy}<h3>Хто найкраще знає друзів</h3></div>
+      <div class="quiz-board-head">${icons[modeKey === 'friend' ? 'users' : 'chart']}<h3>${BOARD_TITLES[modeKey]}</h3></div>
       <div class="lb-list">
         ${rows.map((r, i) => {
           const me = r.u.id === currentUserId;
@@ -376,7 +454,16 @@ function leaderboardHTML() {
             </div>`;
         }).join('')}
       </div>
-      ${played.length ? '' : '<p class="lb-empty">Ще ніхто не дограв жодного матчу — стань першим, хто знає друзів найкраще.</p>'}
+      ${played.length ? '' : `<p class="lb-empty">${emptyText}</p>`}
+    </div>`;
+}
+
+// Дві окремі таблиці лідерів — своя для кожного режиму
+function boardsHTML() {
+  return `
+    <div class="quiz-boards">
+      ${leaderboardHTML('friend')}
+      ${leaderboardHTML('average')}
     </div>`;
 }
 
@@ -392,11 +479,11 @@ function render() {
       <div class="quiz-card quiz-start">
         <span class="quiz-bigicon">${icons.clapper}</span>
         <h3>Хто знає смаки друзів найкраще?</h3>
-        <p>Обери режим і зіграй матч із ${ROUNDS_TOTAL} фільмів. У кінці результат іде у спільну
-        таблицю лідерів — і ми побачимо, хто тут справжній кінооракул.</p>
+        <p>Обери режим і зіграй матч із ${ROUNDS_TOTAL} фільмів без повторів. У кінці результат іде
+        в таблицю лідерів обраного режиму — і ми побачимо, хто тут справжній кінооракул.</p>
       </div>
       ${modeCardsHTML()}
-      ${leaderboardHTML()}`;
+      ${boardsHTML()}`;
     return;
   }
 
@@ -430,6 +517,7 @@ function renderGuessFriend() {
   stageEl.innerHTML = `
     <div class="quiz-card">
       <div class="quiz-film">${posterHTML(f2)}${filmHeadHTML(f2)}</div>
+      ${q.freshCycle ? '<div class="quiz-cycle">Усі фільми вже були в грі — починаємо новий круг</div>' : ''}
       <div class="quiz-qrow">
         <span class="avatar lg" style="background:${u2.color}">${U.escapeHtml(U.initial(u2.name))}</span>
         <div class="quiz-qtext">Раунд ${match.round + 1} з ${ROUNDS_TOTAL}. Скільки поставив <b>${U.escapeHtml(u2.name)}</b>?</div>
@@ -451,6 +539,7 @@ function renderGuessAverage() {
   stageEl.innerHTML = `
     <div class="quiz-card">
       <div class="quiz-film">${posterHTML(f2)}${filmHeadHTML(f2)}</div>
+      ${q.freshCycle ? '<div class="quiz-cycle">Усі фільми вже були в грі — починаємо новий круг</div>' : ''}
       <div class="quiz-qrow">
         <div class="quiz-avs">${raters.map(u => `<span class="avatar sm" style="background:${u.color}">${U.escapeHtml(U.initial(u.name))}</span>`).join('')}</div>
         <div class="quiz-qtext">Раунд ${match.round + 1} з ${ROUNDS_TOTAL}. Яка середня оцінка друзів?
@@ -544,7 +633,7 @@ function renderSummary() {
     : pts >= MAX_POINTS * 0.2 ? 'Непогано, є куди рости'
     : 'Є над чим працювати';
   const note = currentUserId
-    ? 'Результат збережено в таблиці лідерів — друзі його вже бачать.'
+    ? `Результат збережено в таблиці «${BOARD_TITLES[mode]}» — друзі його вже бачать.`
     : 'Обери профіль у шапці, щоб результат потрапив у таблицю лідерів.';
   stageEl.innerHTML = `
     <div class="quiz-card quiz-sum">
@@ -587,7 +676,8 @@ function onClick(e) {
   if (act === 'start-friend') startMatch('friend');
   else if (act === 'start-average') startMatch('average');
   else if (act === 'retry' || act === 'again') startMatch(mode);
-  else if (act === 'skip' || act === 'next') nextQuestion();
+  else if (act === 'skip') nextQuestion(q ? q.filmId : null); // пропущений фільм не раємо зіграним
+  else if (act === 'next') nextQuestion();
   else if (act === 'answer') answerAverage();
   else if (act === 'finish') finishMatch();
   else if (act === 'menu') exitMatch();

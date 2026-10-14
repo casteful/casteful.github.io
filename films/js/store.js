@@ -82,12 +82,15 @@ export async function setTgConfig(cfg) {
   await set(ref(db, 'tgConfig'), cfg);
 }
 
-// ---------- Гра «Вгадай оцінку»: таблиця лідерів ----------
+// ---------- Гра «Вгадай оцінку»: таблиці лідерів (окремі за режимами) ----------
 // Невеликий вузол quizScores/{userId}:
-//   { name, best, games, exact, updatedAt } — кращий результат матчу,
-// кількість зіграних матчів і сумарних точних вгадів.
+//   { name, updatedAt,
+//     friend:  { best, games, exact, updatedAt },  — режим «Рейтинг друга»
+//     average: { best, games, exact, updatedAt } } — режим «Середня команди»
+// (Старі спільні записи з best/games/exact нагорі більше не читаються —
+// нова статистика ведеться окремо по кожному режиму.)
 
-// Жива підписка на таблицю лідерів (оновлюється, коли друзі дограли матч).
+// Жива підписка на обидві таблиці (оновлюється, коли друзі дограли матч).
 export function onQuizScores(cb) {
   return onValue(
     ref(db, 'quizScores'),
@@ -96,18 +99,28 @@ export function onQuizScores(cb) {
   );
 }
 
-// Результат завершеного матчу. Транзакція (а не read+set), щоб одночасні
-// матчі друзів не затирали один одного: best = max, games/exact — накопичувальні.
-export function saveQuizResult(userId, name, points, exact) {
+// Результат завершеного матчу в конкретному режимі (modeKey: 'friend' | 'average').
+// Транзакція (а не read+set), щоб одночасні матчі друзів не затирали один одного:
+// best = max, games/exact — накопичувальні; статистика другого режиму не чіпається.
+export function saveQuizResult(userId, name, modeKey, points, exact) {
   const r = ref(db, `quizScores/${userId}`);
   return runTransaction(r, (cur) => {
-    const c = cur || {};
-    return {
-      name: name || c.name || userId,
-      best: Math.max(c.best || 0, points || 0),
-      games: (c.games || 0) + 1,
-      exact: (c.exact || 0) + (exact || 0),
-      updatedAt: Date.now()
-    };
+    const c = (cur && typeof cur === 'object') ? cur : {};
+    const m = (c[modeKey] && typeof c[modeKey] === 'object') ? c[modeKey] : {};
+    const now = Date.now();
+    const next = { name: name || c.name || userId, updatedAt: now };
+    ['friend', 'average'].forEach((k) => {
+      if (k === modeKey) {
+        next[k] = {
+          best: Math.max(m.best || 0, points || 0),
+          games: (m.games || 0) + 1,
+          exact: (m.exact || 0) + (exact || 0),
+          updatedAt: now
+        };
+      } else if (c[k] && typeof c[k] === 'object') {
+        next[k] = c[k]; // другий режим не чіпаємо
+      }
+    });
+    return next;
   }).then((res) => (res.snapshot && res.snapshot.val()) || null);
 }
