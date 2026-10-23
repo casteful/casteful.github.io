@@ -1,6 +1,6 @@
 // ============================================================
 // Telegram-сповіщення: елегантні маленькі пуші українською, коли
-// хтось додає/видаляє фільм або ставить оцінку.
+// хтось додає/видаляє фільм чи гру або ставить оцінку.
 //
 // Як це працює:
 //  • Хтось один (зазвичай власник) відкриває ⚙ «Налаштування» у шапці,
@@ -44,16 +44,22 @@ export function filmTitle(f) {
   return (f && (f.titleUk || f.title)) || 'Без назви';
 }
 
-// Посилання на фільм у застосунку: ?film=<id> — клік у Telegram відкриває
-// Фільмотеку одразу з вікном цього фільму. Базу беремо з адреси того,
-// хто надсилає сповіщення (усі користуються одним і тим самим URL),
-// тож жодних додаткових налаштувань не потрібно.
-export function filmLink(filmId) {
-  if (!filmId) return '';
+// Слово «фільм»/«гра» у потрібних відмінках для текстів пушів
+const NOUN = {
+  film: { acc: 'фільм', gen: 'фільму' },
+  game: { acc: 'гру',   gen: 'гри' }
+};
+
+// Посилання на фільм/гру в застосунку: ?film=<id> або ?game=<id> —
+// клік у Telegram відкриває Фільмотеку одразу з вікном цього запису.
+// Базу беремо з адреси того, хто надсилає сповіщення (усі користуються
+// одним і тим самим URL), тож жодних додаткових налаштувань не потрібно.
+export function itemLink(kind, id) {
+  if (!id) return '';
   try {
     const u = new URL(location.href);
     u.hash = '';
-    u.search = '?film=' + encodeURIComponent(filmId);
+    u.search = `?${kind === 'game' ? 'game' : 'film'}=` + encodeURIComponent(id);
     return u.toString();
   } catch (e) {
     return ''; // немає location (наприклад, worker) — повідомлення без посилання
@@ -92,43 +98,47 @@ async function send(text, plain) {
 
 // ---------- Готові повідомлення (українською, коротко) ----------
 
-// Клікабельна назва фільму для HTML-повідомлень + парний чистий текст
-function linkedTitle(title, filmId) {
-  const link = filmLink(filmId);
+// Клікабельна назва фільму/гри для HTML-повідомлень + парний чистий текст
+function linkedTitle(title, id, kind) {
+  const link = itemLink(kind, id);
   if (!link) return null;
   return `<a href="${escapeHtml(link)}">«${escapeHtml(title)}»</a>`;
 }
 
-export function notifyFilmAdded(userId, film, filmId) {
-  const title = filmTitle(film);
-  const when = film && film.year ? ` (${film.year})` : '';
-  const plain = `${userName(userId)} додав фільм «${title}»${when}`;
-  const t = linkedTitle(title, filmId);
+export function notifyItemAdded(userId, item, id, kind = 'film') {
+  const n = NOUN[kind] || NOUN.film;
+  const title = filmTitle(item);
+  const when = item && item.year ? ` (${item.year})` : '';
+  const plain = `${userName(userId)} додав ${n.acc} «${title}»${when}`;
+  const t = linkedTitle(title, id, kind);
   if (!t) return send(plain);
-  return send(`${userName(userId)} додав фільм ${t}${when}`, plain);
+  return send(`${userName(userId)} додав ${n.acc} ${t}${when}`, plain);
 }
 
-export function notifyFilmDeleted(userId, title) {
-  return send(`${userName(userId)} видалив фільм «${title}»`);
+export function notifyItemDeleted(userId, title, kind = 'film') {
+  const n = NOUN[kind] || NOUN.film;
+  return send(`${userName(userId)} видалив ${n.acc} «${title}»`);
 }
 
-export function notifyRatingSet(userId, title, score, prev, filmId) {
+export function notifyRatingSet(userId, title, score, prev, id, kind = 'film') {
+  const n = NOUN[kind] || NOUN.film;
   const plain = (prev != null && prev !== score)
     ? `${userName(userId)} змінив оцінку «${title}»: ${prev} → ${score}`
-    : `${userName(userId)} оцінив фільм «${title}» на ${score}/10`;
-  const t = linkedTitle(title, filmId);
+    : `${userName(userId)} оцінив ${n.acc} «${title}» на ${score}/10`;
+  const t = linkedTitle(title, id, kind);
   if (!t) return send(plain);
   const html = (prev != null && prev !== score)
     ? `${userName(userId)} змінив оцінку ${t}: ${prev} → ${score}`
-    : `${userName(userId)} оцінив фільм ${t} на ${score}/10`;
+    : `${userName(userId)} оцінив ${n.acc} ${t} на ${score}/10`;
   return send(html, plain);
 }
 
-export function notifyRatingRemoved(userId, title, filmId) {
-  const plain = `${userName(userId)} прибрав свою оцінку фільму «${title}»`;
-  const t = linkedTitle(title, filmId);
+export function notifyRatingRemoved(userId, title, id, kind = 'film') {
+  const n = NOUN[kind] || NOUN.film;
+  const plain = `${userName(userId)} прибрав свою оцінку ${n.gen} «${title}»`;
+  const t = linkedTitle(title, id, kind);
   if (!t) return send(plain);
-  return send(`${userName(userId)} прибрав свою оцінку фільму ${t}`, plain);
+  return send(`${userName(userId)} прибрав свою оцінку ${n.gen} ${t}`, plain);
 }
 
 // ---------- Секція налаштувань (усередині вікна «Налаштування») ----------

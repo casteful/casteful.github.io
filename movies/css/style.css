@@ -242,6 +242,13 @@ body.no-scroll { overflow: hidden; touch-action: none; }
 .avatar.xl { width: 56px; height: 56px; font-size: 21px; }
 .avatar.ghost { background: var(--surface-2); color: var(--muted); }
 .avatar.ghost svg { width: 15px; height: 15px; }
+/* Аватарка-ФОТО: <img class="avatar … photo"> обрізається у те саме коло,
+   що й літерна (розміри задає клас avatar/u-head — «той самий розмір») */
+.avatar.photo, .u-head.photo {
+  object-fit: cover;
+  display: block;
+  padding: 0;
+}
 
 /* ---------- Кнопки ---------- */
 
@@ -2060,6 +2067,30 @@ td.u-col.mine:hover { background: color-mix(in srgb, var(--accent) 9%, var(--sur
 .set-title svg { width: 15px; height: 15px; color: var(--accent); flex-shrink: 0; }
 .btn#dbExport svg, .btn#dbImport svg { flex-shrink: 0; }
 .tg-actions .btn:disabled { opacity: 0.55; pointer-events: none; }
+
+/* Рядки учасників у ⚙ «Налаштування»: аватарка + ім'я + керування фото */
+.member-list { display: flex; flex-direction: column; }
+.member-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 20px;
+  border-bottom: 1px solid var(--border);
+}
+.member-row:last-child { border-bottom: none; padding-bottom: 0; }
+.member-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 14.5px;
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.member-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.member-btn { height: 32px; padding: 0 11px; font-size: 12.5px; border-radius: 9px; }
+.member-btn svg { width: 14px; height: 14px; }
+.member-row.busy { opacity: 0.55; pointer-events: none; }
 
 /* ---------- Анімації ---------- */
 

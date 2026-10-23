@@ -13,7 +13,7 @@ import { suggestFilms, typeLabel, imdbTemporarilyDown, imdbById } from './imdb.j
 import { searchWikiFilms, fetchPoster, posterQuick, premiereInfo, cleanWikiTitle } from './wiki.js';
 import { enrichFilm } from './enrich.js';
 import { translateToUk } from './translate.js';
-import { notifyFilmAdded, notifyFilmDeleted } from './telegram.js';
+import { notifyItemAdded, notifyItemDeleted } from './telegram.js';
 
 // ============================================================
 // Швидкий пошук для автозаповнення (спільний між відкриттями).
@@ -630,7 +630,7 @@ export function openFormModal({ film = null, currentUserId, allFilms = [] }) {
       try {
         await store.deleteFilm(film.id);
         toast('Фільм видалено');
-        notifyFilmDeleted(currentUserId, fTitle(film));
+        notifyItemDeleted(currentUserId, fTitle(film), 'film');
         close();
       } catch (err) {
         console.error(err);
@@ -689,7 +689,7 @@ export function openFormModal({ film = null, currentUserId, allFilms = [] }) {
       } else {
         const newId = await store.addFilm({ ...data, addedBy: currentUserId });
         toast('Фільм додано');
-        notifyFilmAdded(currentUserId, data, newId);
+        notifyItemAdded(currentUserId, data, newId, 'film');
       }
       close();
     } catch (err) {

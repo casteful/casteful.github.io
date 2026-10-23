@@ -1,17 +1,19 @@
 // ============================================================
 // Точка входу: тема, профіль користувача, вкладки, підписка на
-// Firebase та зв'язування вкладок
+// Firebase та зв'язування вкладок (Фільми / Ігри / Статистика)
 // ============================================================
 
 import { USERS } from './config.js';
 import * as store from './store.js';
-import * as filmsView from './films.js';
+import { filmsView } from './films.js';
+import { gamesView } from './games.js';
 import * as statsView from './stats.js';
 import { icons, toast } from './ui.js';
-import { escapeHtml, initial } from './utils.js';
+import { escapeHtml } from './utils.js';
 import { fetchPoster } from './wiki.js';
 import * as telegram from './telegram.js';
 import { openSettings } from './settings.js';
+import { initAvatars, avatarHTML } from './avatars.js';
 
 const view = document.getElementById('view');
 const userOverlay = document.getElementById('userOverlay');
@@ -21,32 +23,46 @@ const themeToggle = document.getElementById('themeToggle');
 const fab = document.getElementById('fabAdd');
 
 let filmsArr = null;      // null = ще завантажується з бази
+let gamesArr = null;      // те саме для вкладки «Ігри»
+let gamesErrNotified = false;
 let activeTab = 'films';
 let mountedTab = null;    // яку вкладку зараз змонтовано у #view
 let currentUser = null;
 let errNotified = false;
 
-// ---------- Deep-link з Telegram-сповіщень (?film=<id>) ----------
-// Клік за посиланням у пуші відкриває Фільмотеку одразу з вікном фільму.
-// Параметр одразу прибираємо з адреси, щоб F5 не відкривав вікно знову.
-// Вікно чекає на дві речі: завантаження бази і обраний профіль (якщо
-// користувач ще не обраний — відкриємо одразу після вибору в пікері).
-let pendingFilmId = null;
+// ---------- Deep-link з Telegram-сповіщень (?film=<id> / ?game=<id>) ----------
+// Клік за посиланням у пуші відкриває Фільмотеку одразу з вікном
+// фільму або гри. Параметр одразу прибираємо з адреси, щоб F5 не
+// відкривав вікно знову. Вікно чекає на дві речі: завантаження бази
+// і обраний профіль (якщо профілю ще немає — відкриємо одразу після
+// вибору в пікері).
+let pendingLink = null; // { kind: 'film' | 'game', id }
 try {
   const u = new URL(location.href);
-  pendingFilmId = u.searchParams.get('film');
-  if (pendingFilmId) {
+  const fid = u.searchParams.get('film');
+  const gid = u.searchParams.get('game');
+  if (fid) pendingLink = { kind: 'film', id: fid };
+  else if (gid) pendingLink = { kind: 'game', id: gid };
+  if (pendingLink) {
     u.searchParams.delete('film');
+    u.searchParams.delete('game');
     history.replaceState(null, '', u.toString());
   }
 } catch (e) { /* без location/history — просто без deep-link */ }
 
-function tryOpenPendingFilm() {
-  if (!pendingFilmId || !filmsArr || !currentUser) return;
-  const id = pendingFilmId;
-  pendingFilmId = null;
-  if (activeTab !== 'films') switchTab('films');
-  filmsView.openFilmById(id); // якщо фільм вже видалили — тихо нічого не станеться
+function tryOpenPending() {
+  if (!pendingLink || !currentUser) return;
+  const ready = pendingLink.kind === 'film' ? filmsArr : gamesArr;
+  if (ready == null) return; // колекція ще завантажується
+  const p = pendingLink;
+  pendingLink = null;
+  if (p.kind === 'game') {
+    if (activeTab !== 'games') switchTab('games');
+    gamesView.openItemById(p.id); // якщо гру видалили — тихо нічого не станеться
+  } else {
+    if (activeTab !== 'films') switchTab('films');
+    filmsView.openItemById(p.id);
+  }
 }
 
 // ---------- Ініціалізація ----------
@@ -56,30 +72,62 @@ initFab();
 initUser();
 initTabs();
 initSettings();
+initAvatars(); // підписка на фото аватарок (вузол «users»)
 
-// Клік на людину/жанр у модалці фільму або статистиці:
-// переключає вкладку «Фільми» (якщо потрібно) і фільтрує список
+// Хтось завантажив/прибрав аватарку — перемальовуємо все, де вона видно:
+// шапку, пікер профілю, сітки обох колекцій і статистику
+let statsHandlers = null; // опції останнього монтування статистики
+document.addEventListener('avatars:changed', () => {
+  renderUserBadge();
+  buildUserList();
+  filmsView.rerenderAll();
+  gamesView.rerenderAll();
+  if (mountedTab === 'stats' && statsHandlers) statsView.mount(view, filmsArr, statsHandlers);
+});
+
+// Клік на людину/жанр/платформу у модалці або статистиці:
+// переключає потрібну вкладку і фільтрує список
 document.addEventListener('films:filter', (e) => {
   if (activeTab !== 'films') switchTab('films');
   filmsView.setFilter(e.detail);
 });
+document.addEventListener('games:filter', (e) => {
+  if (activeTab !== 'games') switchTab('games');
+  gamesView.setFilter(e.detail);
+});
 
 store.onFilms((list, err) => {
   if (err) {
-    console.error('[store] Помилка Firebase:', err);
+    console.error('[store] Помилка Firebase (films):', err);
     if (!errNotified) {
       errNotified = true;
       const code = err && err.code ? ` (${err.code})` : '';
       toast(`Немає доступу до бази даних${code}. Перевірте правила безпеки Firebase.`, 'err');
     }
     filmsView.setError(err);
-    filmsView.setFilms(null);
+    filmsView.setList(null);
     return;
   }
   filmsArr = list;
   renderTab();
-  tryOpenPendingFilm(); // deep-link ?film=… з Telegram — коли база вже тут
+  tryOpenPending(); // deep-link ?film=… з Telegram — коли база вже тут
   healMissingPosters(list); // тихо підтягуємо постери для фільмів без них
+});
+
+store.onList('games', (list, err) => {
+  if (err) {
+    console.error('[store] Помилка Firebase (games):', err);
+    if (!gamesErrNotified) {
+      gamesErrNotified = true;
+      toast('Немає доступу до розділу «Ігри» в базі даних. Перевірте правила безпеки Firebase.', 'err');
+    }
+    gamesView.setError(err);
+    gamesView.setList(null);
+    return;
+  }
+  gamesArr = list;
+  renderTab();
+  tryOpenPending(); // deep-link ?game=… — коли база вже тут
 });
 
 // ---------- Автоматичне підтягування постерів ----------
@@ -87,6 +135,7 @@ store.onFilms((list, err) => {
 // дефолтний pilicense=free), могли зберегтися без постера.
 // Ланцюжок: IMDb за tt-ID -> Wikidata sitelinks (en перша) -> Вікіпедія.
 // Кулдаун 3 доби на фільм, щоб не спамити API після невдачі.
+// (Ігри не зцілюємо: обкладинки вписуються вручну.)
 
 const HEAL_COOLDOWN_MS = 3 * 24 * 60 * 60 * 1000;
 const healingNow = new Set();
@@ -142,9 +191,17 @@ function initBrand() {
 function initFab() {
   fab.innerHTML = icons.plus;
   fab.addEventListener('click', () => {
+    if (activeTab === 'games') { gamesView.openAdd(); return; }
     if (activeTab !== 'films') switchTab('films');
     filmsView.openAdd();
   });
+  updateFab();
+}
+
+function updateFab() {
+  const t = activeTab === 'games' ? 'Додати гру' : 'Додати фільм';
+  fab.setAttribute('aria-label', t);
+  fab.setAttribute('title', t);
 }
 
 // ---------- Тема ----------
@@ -170,11 +227,7 @@ function initUser() {
     currentUser = USERS.find(u => u.id === id) || null;
   } catch (e) { currentUser = null; }
 
-  userList.innerHTML = USERS.map(u => `
-    <button class="u-btn" data-uid="${u.id}" aria-label="Обрати профіль ${u.name}">
-      <span class="avatar xl" style="background:${u.color}">${escapeHtml(initial(u.name))}</span>
-      <span class="u-btn-name">${escapeHtml(u.name)}</span>
-    </button>`).join('');
+  buildUserList();
 
   userList.addEventListener('click', (e) => {
     const btn = e.target.closest('.u-btn');
@@ -184,7 +237,8 @@ function initUser() {
     hideUserPicker();
     renderUserBadge();
     filmsView.setUser(currentUser.id);
-    tryOpenPendingFilm(); // користувач обрав профіль за deep-link — відкриваємо фільм
+    gamesView.setUser(currentUser.id);
+    tryOpenPending(); // користувач обрав профіль за deep-link — відкриваємо вікно
     toast(`Вітаємо, ${currentUser.name}!`);
   });
 
@@ -200,9 +254,17 @@ function initUser() {
   if (!currentUser) showUserPicker();
 }
 
+function buildUserList() {
+  userList.innerHTML = USERS.map(u => `
+    <button class="u-btn" data-uid="${u.id}" aria-label="Обрати профіль ${u.name}">
+      ${avatarHTML(u, 'avatar xl')}
+      <span class="u-btn-name">${escapeHtml(u.name)}</span>
+    </button>`).join('');
+}
+
 function renderUserBadge() {
   userBadge.innerHTML = currentUser
-    ? `<span class="avatar" style="background:${currentUser.color}">${escapeHtml(initial(currentUser.name))}</span>
+    ? `${avatarHTML(currentUser, 'avatar')}
        <span class="ub-name">${escapeHtml(currentUser.name)}</span>`
     : `<span class="avatar ghost">${icons.users}</span><span class="ub-name">Обрати профіль</span>`;
 }
@@ -230,6 +292,7 @@ function renderTab() {
     b.classList.toggle('active', on);
     b.setAttribute('aria-selected', on ? 'true' : 'false');
   });
+  updateFab();
 
   if (activeTab === 'films') {
     // Каркас монтуємо лише при переключенні вкладки — оновлення даних
@@ -239,15 +302,24 @@ function renderTab() {
       mountedTab = 'films';
     }
     if (currentUser) filmsView.setUser(currentUser.id);
-    filmsView.setFilms(filmsArr);
+    filmsView.setList(filmsArr);
+  } else if (activeTab === 'games') {
+    if (mountedTab !== 'games') {
+      gamesView.mount(view);
+      mountedTab = 'games';
+    }
+    if (currentUser) gamesView.setUser(currentUser.id);
+    gamesView.setList(gamesArr);
   } else {
-    // Список фільмів тримаємо актуальним навіть поза вкладкою —
-    // щоб «Рекорди» у статистиці могли відкрити вікно фільму
-    filmsView.setFilms(filmsArr);
-    statsView.mount(view, filmsArr, {
+    // Списки тримаємо актуальними навіть поза вкладками — щоб
+    // «Рекорди» у статистиці могли відкрити вікно фільму
+    filmsView.setList(filmsArr);
+    gamesView.setList(gamesArr);
+    statsHandlers = {
       onFilter: (q) => { switchTab('films'); filmsView.setFilter(q); },
-      onOpenFilm: (id) => filmsView.openFilmById(id)
-    });
+      onOpenFilm: (id) => filmsView.openItemById(id)
+    };
+    statsView.mount(view, filmsArr, statsHandlers);
     mountedTab = 'stats';
   }
 }

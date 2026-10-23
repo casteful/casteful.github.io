@@ -10,6 +10,7 @@
 import { USERS } from './config.js';
 import * as U from './utils.js';
 import { icons } from './ui.js';
+import { avatarHTML } from './avatars.js';
 
 export function mount(container, filmsArr, handlers = {}) {
   if (filmsArr === null) {
@@ -540,7 +541,7 @@ function template(s, handlers) {
       <div class="u-cards">
         ${s.userStats.map(u => `
           <div class="u-card ${u.n === 0 ? 'inactive' : ''}">
-            <span class="avatar lg" style="background:${u.color}">${U.escapeHtml(U.initial(u.name))}</span>
+            ${avatarHTML(u, 'avatar lg')}
             <span class="u-name">${U.escapeHtml(u.name)}</span>
             <span class="u-avg" style="color:${u.avg != null ? U.ratingColor(u.avg) : 'inherit'}">${u.avg != null ? U.fmtAvg(u.avg) : '—'}</span>
             <span class="u-sub">${u.n ? `${u.n} ${U.pluralRatingsGen(u.n)}` : 'ще не оцінював'}</span>

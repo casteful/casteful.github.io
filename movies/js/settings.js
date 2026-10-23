@@ -11,9 +11,11 @@
 // ============================================================
 
 import * as store from './store.js';
-import { firebaseConfig } from './config.js';
+import { firebaseConfig, USERS } from './config.js';
 import { toast, openModal, confirmDialog, icons } from './ui.js';
 import { renderTgSetup } from './telegram.js';
+import { avatarHTML, fileToAvatarDataUrl, getAvatarUrl } from './avatars.js';
+import * as U from './utils.js';
 
 // Завантаження об'єкта як файл (працює і на мобільних браузерах)
 function downloadJson(obj, filename) {
@@ -55,12 +57,25 @@ export function openSettings() {
     <div class="set-sep"></div>
 
     <section class="set-section">
+      <h3 class="set-title">${icons.users}<span>Учасники</span></h3>
+      <div class="tg-setup">
+        <p class="tg-hint">Завантажте фото — і аватарка друга скрізь стане його фото
+        (шапка, профіль, таблиця, статистика). Фото обрізається у квадрат
+        і стискається до 160×160 (кілька КБ), зберігається у базі — його
+        одразу бачать усі друзі.</p>
+        <div class="member-list" id="membersList"></div>
+      </div>
+    </section>
+
+    <div class="set-sep"></div>
+
+    <section class="set-section">
       <h3 class="set-title">${icons.db}<span>База даних</span></h3>
       <div class="tg-setup">
         <div class="tg-status ok"><i></i><span>База даних: <b>${dbName}</b></span></div>
 
-        <p class="tg-hint">Експортує всю базу в один JSON-файл: усі фільми з оцінками
-        та налаштування Telegram. Зручно для резервної копії або перенесення
+        <p class="tg-hint">Експортує всю базу в один JSON-файл: усі фільми та ігри з оцінками,
+        а також налаштування Telegram. Зручно для резервної копії або перенесення
         в інший проєкт Firebase.</p>
 
         <div class="tg-actions">
@@ -69,7 +84,7 @@ export function openSettings() {
           </button>
         </div>
 
-        <p class="tg-hint">Відновлення з файлу <b>повністю замінює</b> усі фільми,
+        <p class="tg-hint">Відновлення з файлу <b>повністю замінює</b> усі фільми, ігри,
         оцінки та конфіг Telegram у базі даними з раніше збереженого експорту.
         Спочатку файл буде перевірено — зміни стануться лише після підтвердження.</p>
 
@@ -88,6 +103,88 @@ export function openSettings() {
   // Секція Telegram: рендериться й живе своїми обробниками
   renderTgSetup(box.querySelector('#tgSection'));
 
+  // ---------- Секція «Учасники»: аватарки ----------
+  const membersList = box.querySelector('#membersList');
+
+  function renderMembers() {
+    membersList.innerHTML = USERS.map(u => {
+      const has = !!getAvatarUrl(u.id);
+      return `
+      <div class="member-row ${u._busy ? 'busy' : ''}" data-uid="${u.id}">
+        ${avatarHTML(u, 'avatar lg')}
+        <span class="member-name">${U.escapeHtml(u.name)}</span>
+        <span class="member-actions">
+          ${has
+            ? `<button type="button" class="btn member-btn" data-remove title="Прибрати фото">${icons.close}<span>Прибрати</span></button>`
+            : ''}
+          <button type="button" class="btn primary member-btn" data-pick>${icons.camera}<span>${has ? 'Змінити' : 'Завантажити'}</span></button>
+          <input type="file" accept="image/*" hidden>
+        </span>
+      </div>`;
+    }).join('');
+
+    membersList.querySelectorAll('.member-row').forEach(row => {
+      const u = USERS.find(x => x.id === row.dataset.uid);
+      const pick = row.querySelector('[data-pick]');
+      const fileInput = row.querySelector('input[type=file]');
+      const removeBtn = row.querySelector('[data-remove]');
+
+      pick.addEventListener('click', () => { if (!u._busy) fileInput.click(); });
+
+      fileInput.addEventListener('change', async () => {
+        const file = fileInput.files && fileInput.files[0];
+        fileInput.value = ''; // щоб можна було обрати той самий файл повторно
+        if (!file || u._busy) return;
+        u._busy = true;
+        row.classList.add('busy');
+        pick.disabled = true;
+        try {
+          const dataUrl = await fileToAvatarDataUrl(file);
+          await store.setUserAvatar(u.id, dataUrl);
+          toast(`Аватарку «${u.name}» оновлено — тепер її бачать усі`);
+        } catch (err) {
+          console.error('[avatar]', err);
+          toast('Не вдалося завантажити фото: ' + ((err && err.message) || 'помилка'), 'err');
+        } finally {
+          u._busy = false;
+          row.classList.remove('busy');
+          pick.disabled = false;
+          // Ререндер прийде подією avatars:changed (onValue у базі),
+          // але якщо запис не вдався — прибираємо busy вручну вище
+        }
+      });
+
+      if (removeBtn) {
+        removeBtn.addEventListener('click', async () => {
+          if (u._busy) return;
+          u._busy = true;
+          row.classList.add('busy');
+          try {
+            await store.setUserAvatar(u.id, null);
+            toast(`Аватарку «${u.name}» прибрано`);
+          } catch (err) {
+            console.error('[avatar]', err);
+            toast('Не вдалося прибрати фото', 'err');
+          } finally {
+            u._busy = false;
+            row.classList.remove('busy');
+          }
+        });
+      }
+    });
+  }
+
+  renderMembers();
+  // Хтось (можливо, друг з іншого пристрою) змінив фото — оновлюємо список
+  const onAvatars = () => renderMembers();
+  document.addEventListener('avatars:changed', onAvatars);
+  // Коли модалку закриють — слухач більше не потрібен
+  new MutationObserver(() => {
+    if (!document.body.contains(box)) {
+      document.removeEventListener('avatars:changed', onAvatars);
+    }
+  }).observe(document.getElementById('modalRoot'), { childList: true });
+
   const exportBtn = box.querySelector('#dbExport');
   const importBtn = box.querySelector('#dbImport');
   const fileInput = box.querySelector('#dbImportFile');
@@ -103,7 +200,8 @@ export function openSettings() {
       const fname = `filmmoteka-db-${stamp}.json`;
       downloadJson(data, fname);
       const m = data.meta || {};
-      const msg = `Експортовано: ${m.films || 0} фільмів, ${m.ratings || 0} оцінок → ${fname}`;
+      const msg = `Експортовано: ${m.films || 0} фільмів, ${m.games || 0} ${U.plural(m.games || 0, ['гру', 'ігри', 'ігор'])}, ${m.ratings || 0} оцінок` +
+        (m.avatars ? `, ${m.avatars} ${U.plural(m.avatars, ['аватарка', 'аватарки', 'аватарок'])}` : '') + ` → ${fname}`;
       note.textContent = msg;
       toast(msg);
     } catch (err) {
@@ -143,6 +241,8 @@ export function openSettings() {
       const ok = await confirmDialog({
         title: 'Відновити базу даних?',
         text: `У файлі: ${check.films} фільмів, ${check.ratings} оцінок` +
+              (check.hasGames ? `, ${check.games} ${U.plural(check.games, ['гру', 'ігри', 'ігор'])}` : '') +
+              (check.avatars ? `, ${check.avatars} ${U.plural(check.avatars, ['аватарка', 'аватарки', 'аватарок'])}` : '') +
               (check.hasTg ? ', Telegram-конфіг' : '') +
               '. Усі поточні фільми, оцінки та Telegram-конфіг у базі буде замінено. Дію не можна скасувати.',
         confirmText: 'Замінити дані'
@@ -152,7 +252,9 @@ export function openSettings() {
       // 4. Атомарний запис
       note.textContent = 'Записую до бази…';
       const res = await store.importAll(data);
-      const msg = `Базу відновлено: ${res.films} фільмів, ${res.ratings} оцінок`;
+      const msg = `Базу відновлено: ${res.films} фільмів, ${res.ratings} оцінок` +
+              (res.games != null ? `, ${res.games} ${U.plural(res.games, ['гру', 'ігри', 'ігор'])}` : '') +
+              (res.avatars != null ? `, ${res.avatars} ${U.plural(res.avatars, ['аватарка', 'аватарки', 'аватарок'])}` : '');
       note.textContent = msg;
       toast(msg);
     } catch (err) {
