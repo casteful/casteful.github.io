@@ -22,6 +22,7 @@ light/dark theme, built as a **zero-build static site** — perfect for GitHub P
 - **Light / dark theme** — toggle in the header, remembered per device (browser UI color adapts too).
 - **Realtime** — all data lives in Firebase Realtime Database, so everyone sees updates instantly. Missing posters are re-fetched automatically in the background.
 - **Settings & backup (v3.4)** — one gear button in the header combines **Telegram notifications** (status, quick on/off, full setup) and **data tools**: **Експортувати JSON** downloads the entire database (`filmoteka-backup-YYYY-MM-DD.json`), **Імпортувати JSON** restores it (with a confirmation; fully replaces the DB, also accepts raw Firebase-console JSON).
+- **Cache-busting & stuck-load watchdog (v4.1)** — every JS module and the stylesheet are loaded with a build stamp (`js/app.js?v=4.1`), so after each update browsers can never mix old and new files (the classic “films stuck on skeletons after upload” symptom). On top of that, a **watchdog** fires if the film list hasn't arrived within 12 seconds and shows a small dismissible banner — «Оновити» re-opens the app on a unique URL, forcing every file to be fetched fresh (one tap instead of clearing the browser cache).
 - **Bigger statistics (v3.4)** — top-10 films plus new panels: average rating by decade / genre / country, directors by average rating, films by release year, countries (from Wikidata P495, new «Країна» form field), watch activity by year and by season (winter/spring/summer/autumn — based on the day a film was added), and a participants comparison (average ± disagreement with the group).
 
 ## Deploy to GitHub Pages (no build step needed)
@@ -52,6 +53,8 @@ light/dark theme, built as a **zero-build static site** — perfect for GitHub P
 4. In a minute the app will be live at `https://<your-username>.github.io/<repo>/`.
 
 All paths are relative, so the app works under any repository subpath. Nothing to install, nothing to build.
+
+> **Updating an already deployed app:** upload **all files again, replacing the old ones** (the JS/CSS links carry a version stamp like `?v=4.1` — after each code change bump it, e.g. with `node scripts/stamp-version.mjs 4.2`, so every friend's browser fetches the fresh set instead of mixing cached old modules with new ones).
 
 ## Firebase setup
 

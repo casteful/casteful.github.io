@@ -5,15 +5,15 @@
 //  - збереження в Firebase
 // ============================================================
 
-import { USERS } from './config.js';
-import * as store from './store.js';
-import * as U from './utils.js';
-import { toast, openModal, confirmDialog, icons } from './ui.js';
-import { suggestFilms, typeLabel, imdbTemporarilyDown, imdbById } from './imdb.js';
-import { searchWikiFilms, fetchPoster, posterQuick, premiereInfo } from './wiki.js';
-import { translateToUk } from './translate.js';
-import { enrichFilm } from './enrich.js';
-import { notifyFilmAdded, notifyFilmDeleted } from './telegram.js';
+import { USERS } from './config.js?v=4.1';
+import * as store from './store.js?v=4.1';
+import * as U from './utils.js?v=4.1';
+import { toast, openModal, confirmDialog, icons } from './ui.js?v=4.1';
+import { suggestFilms, typeLabel, imdbTemporarilyDown, imdbById } from './imdb.js?v=4.1';
+import { searchWikiFilms, fetchPoster, posterQuick, premiereInfo } from './wiki.js?v=4.1';
+import { translateToUk } from './translate.js?v=4.1';
+import { enrichFilm } from './enrich.js?v=4.1';
+import { notifyFilmAdded, notifyFilmDeleted } from './telegram.js?v=4.1';
 
 // ============================================================
 // Швидкий пошук для автозаповнення (спільний між відкриттями).

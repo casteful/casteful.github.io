@@ -3,17 +3,17 @@
 // Firebase та зв'язування вкладок
 // ============================================================
 
-import { USERS } from './config.js';
-import * as store from './store.js';
-import * as filmsView from './films.js';
-import * as gamesView from './games.js';
-import * as statsView from './stats.js';
-import * as quizView from './quiz.js';
-import * as avatars from './avatars.js';
-import { icons, toast } from './ui.js';
-import { escapeHtml } from './utils.js';
-import { fetchPoster } from './wiki.js';
-import * as settings from './settings.js';
+import { USERS } from './config.js?v=4.1';
+import * as store from './store.js?v=4.1';
+import * as filmsView from './films.js?v=4.1';
+import * as gamesView from './games.js?v=4.1';
+import * as statsView from './stats.js?v=4.1';
+import * as quizView from './quiz.js?v=4.1';
+import * as avatars from './avatars.js?v=4.1';
+import { icons, toast } from './ui.js?v=4.1';
+import { escapeHtml } from './utils.js?v=4.1';
+import { fetchPoster } from './wiki.js?v=4.1';
+import * as settings from './settings.js?v=4.1';
 
 const view = document.getElementById('view');
 const userOverlay = document.getElementById('userOverlay');
@@ -70,10 +70,54 @@ store.onFilms((list, err) => {
     return;
   }
   filmsArr = list;
+  removeSlowLoadHint(); // список прийшов — прибрати підказку про зависле завантаження
   renderTab();
   healMissingPosters(list); // тихо підтягуємо постери для фільмів без них
   handleDeepLink(list);
 });
+
+// ---------- Watchdog: зависле завантаження ----------
+// Якщо за 12 секунд зі списком фільмів не сталося нічого (жодного знімка
+// з бази) — найімовірніше, браузер закешував стару суміш файлів під час
+// останнього оновлення сайту (новий index.html + старі js-модулі).
+// Показуємо м'яку підказку з кнопкою примусового оновлення: перехід на
+// URL із унікальним ?_=... гарантує свіжі index.html і всі ?v=модулі.
+setTimeout(() => {
+  if (filmsArr !== null) return;
+  showSlowLoadHint();
+}, 12000);
+
+function showSlowLoadHint() {
+  if (document.getElementById('slowLoadHint')) return;
+  const el = document.createElement('div');
+  el.id = 'slowLoadHint';
+  el.className = 'slow-hint';
+  el.setAttribute('role', 'alert');
+  el.innerHTML = `
+    <span class="sh-icon" aria-hidden="true">${icons.info}</span>
+    <span class="sh-text">Фільми довго не завантажуються — можливо, браузер тримає закешовану стару версію сайту.</span>
+    <button type="button" class="btn sh-btn">Оновити</button>
+    <button type="button" class="sh-x" aria-label="Приховати підказку">${icons.close}</button>`;
+  document.body.appendChild(el);
+  requestAnimationFrame(() => el.classList.add('show'));
+  el.querySelector('.sh-btn').addEventListener('click', () => {
+    try {
+      location.replace(location.pathname + '?_=' + Date.now());
+    } catch (e) { location.reload(); }
+  });
+  el.querySelector('.sh-x').addEventListener('click', () => {
+    el.classList.remove('show');
+    setTimeout(() => el.remove(), 200);
+  });
+}
+
+function removeSlowLoadHint() {
+  const el = document.getElementById('slowLoadHint');
+  if (el) {
+    el.classList.remove('show');
+    setTimeout(() => el.remove(), 200);
+  }
+}
 
 store.onGames((list, err) => {
   if (err) {

@@ -10,8 +10,8 @@
 // що виїжджає знизу. Клавіатура: 1–9, 0 (=10), ←/→, Esc.
 // ============================================================
 
-import * as U from './utils.js';
-import { toast, lockScroll, unlockScroll } from './ui.js';
+import * as U from './utils.js?v=4.1';
+import { toast, lockScroll, unlockScroll } from './ui.js?v=4.1';
 
 export const RATE_LABELS = {
   1: 'Жах', 2: 'Дуже погано', 3: 'Погано', 4: 'Слабко', 5: 'Так собі',
