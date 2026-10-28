@@ -225,6 +225,10 @@ body.no-scroll { overflow: hidden; touch-action: none; }
 }
 
 /* Аватарки */
+/* hidden-атрибут перемагає будь-які display-правила компонентів
+   (.btn тощо інакше перебивали display:none і «приховані» кнопки
+   залишалися видимими) */
+[hidden] { display: none !important; }
 .avatar {
   width: 28px;
   height: 28px;
@@ -236,6 +240,17 @@ body.no-scroll { overflow: hidden; touch-action: none; }
   font-weight: 800;
   flex-shrink: 0;
   text-transform: uppercase;
+  position: relative;
+  overflow: hidden;
+}
+/* Фото поверх кольору профілю (хто не завантажив — бачить ініціали) */
+.avatar img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: inherit;
 }
 .avatar.sm { width: 24px; height: 24px; font-size: 11px; }
 .avatar.lg { width: 46px; height: 46px; font-size: 18px; }
@@ -2024,6 +2039,15 @@ td.u-col.mine:hover { background: color-mix(in srgb, var(--accent) 9%, var(--sur
   flex-wrap: wrap;
   margin-top: 13px;
 }
+/* Секція «Мій аватар» у налаштуваннях */
+.avatar-edit {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+}
+.avatar-edit .avatar.xl { width: 64px; height: 64px; font-size: 24px; }
+.avatar-actions { flex: 1; min-width: 0; }
+.avatar-actions .hint { display: block; margin-top: 9px; }
 
 /* ---------- Анімації ---------- */
 
@@ -2594,6 +2618,10 @@ td.u-col.mine:hover { background: color-mix(in srgb, var(--accent) 9%, var(--sur
   margin-top: 10px;
   text-align: center;
 }
+
+/* Примітка про видавця у вікні гри */
+.pub-note { color: var(--muted); font-size: 13.5px; margin: 10px 0 0; }
+.pub-note b { color: var(--text); }
 
 /* Примітка про новий круг, коли всі фільми вже були в грі */
 .quiz-cycle {

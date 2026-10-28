@@ -6,10 +6,12 @@
 import { USERS } from './config.js';
 import * as store from './store.js';
 import * as filmsView from './films.js';
+import * as gamesView from './games.js';
 import * as statsView from './stats.js';
 import * as quizView from './quiz.js';
+import * as avatars from './avatars.js';
 import { icons, toast } from './ui.js';
-import { escapeHtml, initial } from './utils.js';
+import { escapeHtml } from './utils.js';
 import { fetchPoster } from './wiki.js';
 import * as settings from './settings.js';
 
@@ -21,18 +23,24 @@ const themeToggle = document.getElementById('themeToggle');
 const fab = document.getElementById('fabAdd');
 
 let filmsArr = null;      // null = ще завантажується з бази
+let gamesArr = null;
 let activeTab = 'films';
 let mountedTab = null;    // яку вкладку зараз змонтовано у #view
 let currentUser = null;
 let errNotified = false;
+let gamesErrNotified = false;
 
-// ---------- Глибоке посилання: index.html?film=<id> ----------
-// Telegram-сповіщення ведуть прямо на фільм: щойно список прийде з
-// бази — відкриваємо картку цього фільму, і друг може одразу ставити
-// свою оцінку. Якщо профіль ще не обрано, спершу покажеться вибір
-// профілю, а картка чекатиме під ним.
+// ---------- Глибоке посилання: index.html?film=<id> / ?game=<id> ----------
+// Telegram-сповіщення ведуть прямо на фільм або гру: щойно список прийде
+// з бази — відкриваємо картку, і друг може одразу ставити свою оцінку.
+// Якщо профіль ще не обрано, спершу покажеться вибір профілю, а картка
+// чекатиме під ним.
 let deepLinkFilmId = null;
-try { deepLinkFilmId = new URLSearchParams(location.search).get('film'); } catch (e) {}
+let deepLinkGameId = null;
+try {
+  deepLinkFilmId = new URLSearchParams(location.search).get('film');
+  deepLinkGameId = new URLSearchParams(location.search).get('game');
+} catch (e) {}
 
 // ---------- Ініціалізація ----------
 initBrand();
@@ -67,8 +75,25 @@ store.onFilms((list, err) => {
   handleDeepLink(list);
 });
 
-// Відкрити фільм із ?film=<id> (одноразово, на першому знімку бази).
-// Параметр із адреси прибираємо, щоб F5 не відкривав картку знову.
+store.onGames((list, err) => {
+  if (err) {
+    console.error('[store] Помилка Firebase (games):', err);
+    if (!gamesErrNotified) {
+      gamesErrNotified = true;
+      toast('Немає доступу до ігор у базі даних. Перевірте правила безпеки Firebase.', 'err');
+    }
+    gamesView.setError(err);
+    gamesView.setGames(null);
+    return;
+  }
+  gamesArr = list;
+  renderTab();
+  handleGameDeepLink(list);
+});
+
+// Відкрити фільм/гру з ?film=<id> / ?game=<id> (одноразово, на першому
+// знімку бази). Параметр із адреси прибираємо, щоб F5 не відкривав картку
+// знову.
 function handleDeepLink(list) {
   if (!deepLinkFilmId) return;
   const id = deepLinkFilmId;
@@ -79,6 +104,19 @@ function handleDeepLink(list) {
     filmsView.openFilmById(id);
   } else {
     toast('Фільм за посиланням не знайдено — можливо, його вже видалили', 'err');
+  }
+}
+
+function handleGameDeepLink(list) {
+  if (!deepLinkGameId) return;
+  const id = deepLinkGameId;
+  deepLinkGameId = null;
+  try { history.replaceState(null, '', location.pathname); } catch (e) {}
+  if (Array.isArray(list) && list.some(g => g.id === id)) {
+    if (activeTab !== 'games') switchTab('games');
+    gamesView.openGameById(id);
+  } else {
+    toast('Гру за посиланням не знайдено — можливо, її вже видалили', 'err');
   }
 }
 
@@ -138,6 +176,10 @@ function initBrand() {
 function initFab() {
   fab.innerHTML = icons.plus;
   fab.addEventListener('click', () => {
+    if (activeTab === 'games') {
+      gamesView.openAdd();
+      return;
+    }
     if (activeTab !== 'films') switchTab('films');
     filmsView.openAdd();
   });
@@ -166,11 +208,7 @@ function initUser() {
     currentUser = USERS.find(u => u.id === id) || null;
   } catch (e) { currentUser = null; }
 
-  userList.innerHTML = USERS.map(u => `
-    <button class="u-btn" data-uid="${u.id}" aria-label="Обрати профіль ${u.name}">
-      <span class="avatar xl" style="background:${u.color}">${escapeHtml(initial(u.name))}</span>
-      <span class="u-btn-name">${escapeHtml(u.name)}</span>
-    </button>`).join('');
+  renderUserList();
 
   userList.addEventListener('click', (e) => {
     const btn = e.target.closest('.u-btn');
@@ -180,6 +218,7 @@ function initUser() {
     hideUserPicker();
     renderUserBadge();
     filmsView.setUser(currentUser.id);
+    gamesView.setUser(currentUser.id);
     quizView.setUser(currentUser.id);
     toast(`Вітаємо, ${currentUser.name}!`);
   });
@@ -196,9 +235,17 @@ function initUser() {
   if (!currentUser) showUserPicker();
 }
 
+function renderUserList() {
+  userList.innerHTML = USERS.map(u => `
+    <button class="u-btn" data-uid="${u.id}" aria-label="Обрати профіль ${u.name}">
+      ${avatars.avatarHTML(u, 'xl')}
+      <span class="u-btn-name">${escapeHtml(u.name)}</span>
+    </button>`).join('');
+}
+
 function renderUserBadge() {
   userBadge.innerHTML = currentUser
-    ? `<span class="avatar" style="background:${currentUser.color}">${escapeHtml(initial(currentUser.name))}</span>
+    ? `${avatars.avatarHTML(currentUser)}
        <span class="ub-name">${escapeHtml(currentUser.name)}</span>`
     : `<span class="avatar ghost">${icons.users}</span><span class="ub-name">Обрати профіль</span>`;
 }
@@ -212,6 +259,14 @@ function initTabs() {
     btn.addEventListener('click', () => switchTab(btn.dataset.tab));
   });
   renderTab();
+  // Аватарки живуть у базі: хтось завантажив/прибрав фото — перемалюємо
+  // бейдж, вибір профілю й активну вкладку
+  avatars.onChange(() => {
+    renderUserList();
+    renderUserBadge();
+    renderTab();
+  });
+  avatars.initAvatars();
 }
 
 function switchTab(name) {
@@ -236,6 +291,13 @@ function renderTab() {
     }
     if (currentUser) filmsView.setUser(currentUser.id);
     filmsView.setFilms(filmsArr);
+  } else if (activeTab === 'games') {
+    if (mountedTab !== 'games') {
+      gamesView.mount(view);
+      mountedTab = 'games';
+    }
+    if (currentUser) gamesView.setUser(currentUser.id);
+    gamesView.setGames(gamesArr);
   } else if (activeTab === 'quiz') {
     // Гра читає ті самі дані; mount() ідемпотентний — снапшот бази
     // лише перемальовує поточний стан, не ламаючи рахунок

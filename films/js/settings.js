@@ -1,5 +1,8 @@
 // ============================================================
-// Налаштування: одна кнопка-шестерня у шапці, два розділи:
+// Налаштування: одна кнопка-шестерня у шапці, три розділи:
+//   0) Мій аватар — завантаження фото профілю (квадрат 144×144,
+//      стискається тут, у браузері; зберігається в базі і його
+//      бачать усі друзі замість буквеної аватарки);
 //   1) Telegram-сповіщення — повна форма підключення вбудована
 //      прямо сюди (токен, пошук чатів, тест, перемикач) — без
 //      окремого вікна й кнопки «Змінити підключення»;
@@ -7,8 +10,10 @@
 //      з файлу (повна заміна вмісту бази після підтвердження).
 // ============================================================
 
+import { USERS } from './config.js';
 import * as store from './store.js';
 import * as telegram from './telegram.js';
+import * as avatars from './avatars.js';
 import { toast, openModal, confirmDialog, icons } from './ui.js';
 
 export function init() {
@@ -26,10 +31,35 @@ export function setTgIndicator(on) {
 }
 
 export function openSettings() {
+  // Аватар — особиста річ: читаємо профіль на момент відкриття вікна
+  let me = null;
+  try {
+    const id = localStorage.getItem('films_user');
+    me = USERS.find(u => u.id === id) || null;
+  } catch (e) { me = null; }
+
   const { box, close } = openModal(`
     <div class="modal-head">
       <h2>Налаштування</h2>
       <button type="button" class="icon-btn" data-close aria-label="Закрити">${icons.close}</button>
+    </div>
+
+    <div class="set-sec" id="setAvatarSec">
+      <h3 class="set-title">${icons.camera}<span>Мій аватар</span></h3>
+      ${me ? `
+      <div class="avatar-edit">
+        <span class="avatar xl" id="avPreview"></span>
+        <div class="avatar-actions">
+          <div class="set-actions">
+            <button type="button" class="btn" id="avPick">${icons.upload}<span>Завантажити фото…</span></button>
+            <button type="button" class="btn danger-ghost" id="avRemove" ${avatars.get(me.id) ? '' : 'hidden'}>${icons.trash}<span>Видалити</span></button>
+            <input type="file" id="avFile" accept="image/*" hidden>
+          </div>
+          <span class="hint">Квадрат 144×144 — обрізаємо та стискаємо автоматично.
+          Аватар зберігається в базі, і його бачать усі друзі замість ініціалів.</span>
+        </div>
+      </div>`
+      : `<p class="set-hint">Спочатку оберіть профіль у шапці — потім тут можна завантажити його фото.</p>`}
     </div>
 
     <div class="set-sec" id="setTgSec"></div>
@@ -54,6 +84,70 @@ export function openSettings() {
   `, { width: 520, label: 'Налаштування' });
 
   const $ = id => box.querySelector('#' + id);
+
+  // --- Аватар: попередній перегляд, вибір файлу, стискання, збереження ---
+  const paintPreview = () => {
+    const el = $('avPreview');
+    if (!el || !me) return;
+    // preview показує ТЕ, що збережеться: поточний аватар або ініціали
+    const inner = avatars.get(me.id);
+    if (inner) {
+      el.innerHTML = `<img src="${inner}" alt="">`;
+    } else {
+      el.textContent = (me.name || '?').trim().charAt(0).toUpperCase();
+      el.style.background = me.color;
+    }
+  };
+  paintPreview();
+
+  const unsub = avatars.onChange(() => paintPreview());
+
+  const fileInput = $('avFile');
+  if (fileInput) {
+    $('avPick').addEventListener('click', () => fileInput.click());
+    fileInput.addEventListener('change', async () => {
+      const file = fileInput.files && fileInput.files[0];
+      fileInput.value = '';
+      if (!file || !me) return;
+      try {
+        const dataUrl = await avatars.fileToAvatarDataUrl(file);
+        // одразу зберігаємо — аватар легко змінити новим фото
+        await store.setAvatar(me.id, dataUrl);
+        toast('Аватар оновлено — друзі його вже бачать');
+        const rm = $('avRemove');
+        if (rm) rm.hidden = false;
+      } catch (err) {
+        console.error(err);
+        toast((err && err.message) || 'Не вдалося обробити зображення', 'err');
+      }
+    });
+
+    $('avRemove').addEventListener('click', async () => {
+      if (!me) return;
+      const ok = await confirmDialog({
+        title: 'Видалити аватар?',
+        text: 'Повернеться буквена аватарка з ініціалами. Фото зникне для всіх друзів.',
+        confirmText: 'Видалити'
+      });
+      if (!ok) return;
+      try {
+        await store.setAvatar(me.id, null);
+        toast('Аватар видалено');
+        const rm = $('avRemove');
+        if (rm) rm.hidden = true;
+      } catch (err) {
+        console.error(err);
+        toast('Не вдалося видалити аватар', 'err');
+      }
+    });
+  }
+
+  // Поки вікно відкрите — живий прев'ю (unsub оголошено вище); після
+  // закриття (бокс зникає з DOM) відписуємось від змін аватарів
+  const mo = new MutationObserver(() => {
+    if (!document.contains(box)) { unsub(); mo.disconnect(); }
+  });
+  mo.observe(document.body, { childList: true, subtree: true });
 
   // --- Telegram: уся форма прямо в секції, без перехідного вікна ---
   telegram.mountSettingsSection(box.querySelector('#setTgSec'));

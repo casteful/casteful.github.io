@@ -54,6 +54,64 @@ export async function setRating(filmId, user, score) {
   await set(ref(db, `films/${filmId}/ratings/${user}`), score ?? null);
 }
 
+// ---------- Ігри (вкладка «Ігри») ----------
+// Той самий формат, що й у фільмів, але в окремому вузлі games/:
+//   { title, titleUk, year, cover, developer, publisher,
+//     platforms: [], genres: [], plot, wikiUrl, qid,
+//     ratings: { userId: score }, addedBy, createdAt, updatedAt }
+
+export function onGames(cb) {
+  return onValue(
+    ref(db, 'games'),
+    (snap) => cb(toList(snap.val())),
+    (err) => cb(null, err)
+  );
+}
+
+export async function addGame(data) {
+  const r = push(ref(db, 'games'));
+  const now = Date.now();
+  await set(r, {
+    ratings: {},
+    ...data,
+    createdAt: now,
+    updatedAt: now
+  });
+  return r.key;
+}
+
+export async function updateGame(gameId, patch) {
+  await update(ref(db, `games/${gameId}`), { ...patch, updatedAt: Date.now() });
+}
+
+export async function deleteGame(gameId) {
+  await remove(ref(db, `games/${gameId}`));
+}
+
+export async function setGameRating(gameId, user, score) {
+  await set(ref(db, `games/${gameId}/ratings/${user}`), score ?? null);
+}
+
+// ---------- Аватарки профілів ----------
+// Невеликий вузол avatars/{userId} = data:image/jpeg;base64,… (квадрат
+// 144×144, стиснутий у браузері — зазвичай 3–8 КБ). Класичні буквені
+// аватарки лишаються резервом: хто не завантажив фото — бачить ініціали.
+
+export function onAvatars(cb) {
+  return onValue(
+    ref(db, 'avatars'),
+    (snap) => cb(snap.val() || {}),
+    (err) => { console.warn('[store] avatars:', err && err.code); cb({}); }
+  );
+}
+
+// dataUrl = null/'' — видалити аватар (повернутися до ініціалів)
+export async function setAvatar(userId, dataUrl) {
+  const r = ref(db, `avatars/${userId}`);
+  if (dataUrl) await set(r, String(dataUrl));
+  else await remove(r);
+}
+
 // ---------- Резервна копія: експорт/імпорт усієї бази у JSON ----------
 
 // Повний знімок кореня бази (films, tgConfig та будь-які майбутні вузли).

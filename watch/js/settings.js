@@ -1,5 +1,8 @@
 // ============================================================
-// Налаштування: одна кнопка-шестерня у шапці, два розділи:
+// Налаштування: одна кнопка-шестерня у шапці, три розділи:
+//   0) Профілі друзів — завантаження фото-аватарок (квадрат ~192px
+//      стискається на пристрої і зберігається у базі, щоб фото
+//      бачили всі учасники замість літери);
 //   1) Telegram-сповіщення — повна форма підключення вбудована
 //      прямо сюди (токен, пошук чатів, тест, перемикач) — без
 //      окремого вікна й кнопки «Змінити підключення»;
@@ -7,9 +10,11 @@
 //      з файлу (повна заміна вмісту бази після підтвердження).
 // ============================================================
 
+import { USERS } from './config.js';
 import * as store from './store.js';
 import * as telegram from './telegram.js';
 import { toast, openModal, confirmDialog, icons } from './ui.js';
+import { escapeHtml, avatarHTML, getAvatarsMap, setAvatarsMap } from './utils.js';
 
 export function init() {
   const btn = document.getElementById('settingsBtn');
@@ -31,6 +36,8 @@ export function openSettings() {
       <h2>Налаштування</h2>
       <button type="button" class="icon-btn" data-close aria-label="Закрити">${icons.close}</button>
     </div>
+
+    <div class="set-sec" id="setProfilesSec"></div>
 
     <div class="set-sec" id="setTgSec"></div>
 
@@ -54,6 +61,9 @@ export function openSettings() {
   `, { width: 520, label: 'Налаштування' });
 
   const $ = id => box.querySelector('#' + id);
+
+  // --- Профілі: фото-аватарки (секція зверху) ---
+  mountProfilesSection(box.querySelector('#setProfilesSec'));
 
   // --- Telegram: уся форма прямо в секції, без перехідного вікна ---
   telegram.mountSettingsSection(box.querySelector('#setTgSec'));
@@ -157,5 +167,145 @@ export function openSettings() {
       console.error(err);
       toast('Не вдалося відновити базу: ' + ((err && (err.code || err.message)) || ''), 'err');
     }
+  });
+}
+
+// ============================================================
+// Розділ «Профілі друзів»: завантаження фото-аватарок.
+// Файл стискається на пристрої: центрований квадрат 192×192,
+// WebP (fallback JPEG) — у базі лише кілька КБ. Фото миттєво
+// підхоплюють всі пристрої через підписку store.onAvatars().
+// ============================================================
+
+const AVATAR_SIZE = 192;
+
+function mountProfilesSection(sec) {
+  sec.innerHTML = `
+    <h3 class="set-title">${icons.users}<span>Профілі друзів</span></h3>
+    <p class="set-hint">
+      Завантажте фото — воно буде видно всім учасникам замість літери на аватарці:
+      у шапці, у виборі профілю, у таблиці та у вікні фільму.
+      Картинка автоматично обріжається до квадрата й стискається, тож база лишається легкою.
+    </p>
+    <div class="prof-list">
+      ${USERS.map(u => `
+        <div class="prof-row" data-uid="${u.id}">
+          <span class="prof-avatar">${avatarHTML(u, 'lg')}</span>
+          <span class="prof-info">
+            <b>${escapeHtml(u.name)}</b>
+            <span class="prof-state" data-state></span>
+          </span>
+          <span class="prof-actions">
+            <button type="button" class="btn sm" data-upload>${icons.upload}<span>Фото</span></button>
+            <button type="button" class="btn sm danger-ghost" data-remove hidden>${icons.trash}<span>Прибрати</span></button>
+            <input type="file" accept="image/*" data-file hidden>
+          </span>
+        </div>`).join('')}
+    </div>`;
+
+  USERS.forEach(u => {
+    const row = sec.querySelector(`.prof-row[data-uid="${u.id}"]`);
+    const fileInput = row.querySelector('[data-file]');
+    const stateEl = row.querySelector('[data-state]');
+    const rmBtn = row.querySelector('[data-remove]');
+    const upBtn = row.querySelector('[data-upload]');
+    const avEl = row.querySelector('.prof-avatar');
+
+    const refresh = (map) => {
+      const has = !!(map && map[u.id]);
+      avEl.innerHTML = avatarHTML(u, 'lg');
+      rmBtn.hidden = !has;
+      stateEl.textContent = has ? 'Фото завантажено — видно всім' : 'Поки літера-аватарка';
+    };
+    refresh(getAvatarsMap());
+
+    upBtn.addEventListener('click', () => fileInput.click());
+
+    fileInput.addEventListener('change', async () => {
+      const file = fileInput.files && fileInput.files[0];
+      fileInput.value = ''; // дозволити обрати той самий файл повторно
+      if (!file) return;
+      if (!file.type || !file.type.startsWith('image/')) {
+        toast('Це не схоже на зображення', 'err');
+        return;
+      }
+      upBtn.disabled = true;
+      upBtn.innerHTML = '<span class="spinner"></span><span>Обробляю…</span>';
+      try {
+        const dataUrl = await fileToAvatarDataUrl(file);
+        await store.setAvatar(u.id, dataUrl);
+        // миттєве оновлення секції (снапшот бази підтягнеться слідом)
+        const next = { ...getAvatarsMap(), [u.id]: dataUrl };
+        setAvatarsMap(next);
+        refresh(next);
+        toast(`Фото профілю «${u.name}» оновлено`);
+      } catch (err) {
+        console.error(err);
+        toast('Не вдалося обробити зображення', 'err');
+      }
+      upBtn.disabled = false;
+      upBtn.innerHTML = `${icons.upload}<span>Фото</span>`;
+    });
+
+    rmBtn.addEventListener('click', async () => {
+      const ok = await confirmDialog({
+        title: 'Прибрати фото профілю?',
+        text: `Аватарка ${u.name} знову стане літерою. Це для всіх учасників.`,
+        confirmText: 'Прибрати'
+      });
+      if (!ok) return;
+      rmBtn.disabled = true;
+      try {
+        await store.removeAvatar(u.id);
+        const next = { ...getAvatarsMap() };
+        delete next[u.id];
+        setAvatarsMap(next);
+        refresh(next);
+        toast('Фото прибрано');
+      } catch (err) {
+        console.error(err);
+        toast('Не вдалося прибрати фото', 'err');
+      }
+      rmBtn.disabled = false;
+    });
+  });
+}
+
+// Файл -> центрований квадрат AVATAR_SIZE×AVATAR_SIZE -> data-URL.
+// Спочатку пробуємо WebP (менший); якщо браузер його не кодує — JPEG
+// (прозорість PNG попередньо заливається білим, інакше фон чорніє).
+function fileToAvatarDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    const cleanup = () => URL.revokeObjectURL(url);
+    img.onload = () => {
+      try {
+        const canvas = document.createElement('canvas');
+        canvas.width = AVATAR_SIZE;
+        canvas.height = AVATAR_SIZE;
+        const ctx = canvas.getContext('2d');
+        const side = Math.min(img.naturalWidth, img.naturalHeight);
+        if (!side) throw new Error('Порожнє зображення');
+        const sx = (img.naturalWidth - side) / 2;
+        const sy = (img.naturalHeight - side) / 2;
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, AVATAR_SIZE, AVATAR_SIZE);
+        ctx.drawImage(img, sx, sy, side, side, 0, 0, AVATAR_SIZE, AVATAR_SIZE);
+        let out = '';
+        try {
+          const webp = canvas.toDataURL('image/webp', 0.85);
+          if (webp && webp.startsWith('data:image/webp') && webp.length < 80000) out = webp;
+        } catch (e) { /* WebP не кодується — JPEG */ }
+        if (!out) out = canvas.toDataURL('image/jpeg', 0.86);
+        cleanup();
+        resolve(out);
+      } catch (e) {
+        cleanup();
+        reject(e);
+      }
+    };
+    img.onerror = () => { cleanup(); reject(new Error('Не вдалося прочитати зображення')); };
+    img.src = url;
   });
 }

@@ -18,14 +18,13 @@ import { notifyFilmAdded, notifyFilmDeleted } from './telegram.js';
 // ============================================================
 // Швидкий пошук для автозаповнення (спільний між відкриттями).
 //
-// Стратегія «обидва джерела завжди»:
-//   1. IMDb стартує одразу і малюється першим, щойно відповів.
-//   2. Вікіпедія підключається через WIKI_DELAY_MS і ДОБУДОВУЄ список:
-//      IMDb suggestion часто «не знає» серіалів і новинок або віддає
-//      нерелевантні збіги за повної назви — тоді потрібний фільм/серіал
-//      приходить саме з Вікіпедії.
-//   3. Результати зливаються без дублікатів (IMDb зверху, збіги за
-//      назвою доповнюють один одного: постер з IMDb + укр. назва з вікі).
+// Стратегія «Вікіпедія перша, все паралельно»:
+//   1. ВІКІПЕДІЯ стартує НЕГАЙНО: префіксний пошук — найлегший запит
+//      WMF, він дає перші підказки; повнотекстовий uk/en добудовує
+//      список поступово (onPartial).
+//   2. IMDb поруч, без затримки — хто перший відповів, той і малюється.
+//   3. Результати зливаються без дублікатів (вікі-рядки вище; точні
+//      збіги назви та року в запиті піднімаються нагору).
 //   4. Якщо запит кирилицею і знайдено замало — назва ТРАНСЛІТЕРУЄТЬСЯ
 //      латиницею і пошук повторюється нею на IMDb та в en.Вікіпедії
 //      («Інтерстеллар» → "Interstellar", «Джокер» → "Joker").
@@ -33,10 +32,13 @@ import { notifyFilmAdded, notifyFilmDeleted } from './telegram.js';
 //      повний запит (він розуміє рік), Вікіпедія — лише назву (рік у
 //      повнотекстовому пошуку підіймає списки епізодів і сезони), а
 //      результати з роком, що збігається, піднімаються нагору.
-//   6. Усе кешується: повторний запит тієї ж назви — миттєвий.
+//   6. Застарілі запити СКАСОВУЮТЬСЯ (AbortController): кожне натискання
+//      під час набору більше не ганяє п'ять мережевих запитів у повітря —
+//      саме такий бурст вмикав rate-limit Вікімедіа, і підказки ставали
+//      порожніми (баг «Primetime — нічого не знайдено»).
+//   7. Усе кешується: повторний запит тієї ж назви — миттєвий.
 // ============================================================
 
-const WIKI_DELAY_MS = 800;  // фори IMDb; потім вікі-пошук підключається завжди
 const SUG_CACHE_MAX = 60;
 const SUG_MAX = 20;          // максимум рядків у підказках (список гортається)
 const SUG_FALLBACK_MIN = 10; // знайдено менше — добираємо англійською транслітерацією
@@ -113,7 +115,8 @@ function mergeLists(imdbList, wikiList, query, expectedYear = null) {
   return ordered.slice(0, SUG_MAX);
 }
 
-function searchFilmsFast(q, onPartial) {
+function searchFilmsFast(q, onPartial, opts = {}) {
+  const signal = opts.signal || null;
   const imdbDown = imdbTemporarilyDown();
   // Рік відділяємо одразу: IMDb шукає за повним запитом (він розуміє
   // «назва рік» і сам піднімає правильний результат), а Вікіпедія —
@@ -124,24 +127,25 @@ function searchFilmsFast(q, onPartial) {
   let wikiList = [];
 
   const paint = (status) => {
-    const merged = mergeLists(imdbList, wikiList, q, qYear);
+    // Вікі-рядки перші («спочатку вікі»), точні збіги все одно
+    // піднімаються нагору всередині mergeLists
+    const merged = mergeLists(wikiList, imdbList, q, qYear);
     if (typeof onPartial !== 'function') return;
     if (merged.length) onPartial(merged);
     else if (status) onPartial([], status);
   };
 
-  // IMDb стартує одразу і малюється, щойно відповів (навіть якщо вікі ще шукає)
+  // Вікіпедія — ПЕРШЕ джерело: стартує негайно, без колишньої фори IMDb.
+  // Префіксний пошук дає перші рядки, повнотекстові добудовують список.
+  const wikiP = searchWikiFilms(
+    qTitle,
+    partial => { wikiList = partial || []; paint(); },
+    { year: qYear, signal }
+  ).catch(() => []);
+
+  // IMDb поруч — хто перший відповів, той і малюється
   const imdbP = (imdbDown ? Promise.resolve([]) : suggestFilms(q).catch(() => []))
     .then(list => { imdbList = list || []; paint(); return imdbList; });
-
-  // Вікіпедія: невелика затримка (щоб не спамити WMF на кожну літеру),
-  // потім шукаємо ЗАВЖДИ і добудовуємо список поступово (onPartial).
-  // Рік передаємо опцією: за ним виконуються цільові добірки
-  // («creep 2004» -> префікс «creep (2004» + full-text «creep 2004»),
-  // інакше статті виду «Creep (2004 film)» не було у видачі взагалі.
-  const wikiP = new Promise(res => setTimeout(res, imdbDown ? 0 : WIKI_DELAY_MS))
-    .then(() => searchWikiFilms(qTitle, partial => { wikiList = partial || []; paint(); }, { year: qYear }))
-    .catch(() => []);
 
   return Promise.all([imdbP, wikiP])
     .then(async ([il, wl]) => {
@@ -154,12 +158,12 @@ function searchFilmsFast(q, onPartial) {
       // Це дає результати для «Інтерстеллар», «Джокер», «Гладіатор» тощо,
       // які IMDb за кирилицею часто не знаходить узагалі.
       const variants = U.translitVariants(qTitle);
-      if (variants.length && mergeLists(imdbList, wikiList, q, qYear).length < SUG_FALLBACK_MIN) {
+      if (variants.length && mergeLists(wikiList, imdbList, q, qYear).length < SUG_FALLBACK_MIN) {
         paint('Мало збігів — шукаю ще за англійською транслітерацією…');
         const [moreImdb, moreWiki] = await Promise.all([
           Promise.all(variants.map(v => suggestFilms(v).catch(() => [])))
             .then(lists => lists.flat()),
-          Promise.all(variants.map(v => searchWikiFilms(v, null, { langs: ['en'] }).catch(() => [])))
+          Promise.all(variants.map(v => searchWikiFilms(v, null, { langs: ['en'], signal }).catch(() => [])))
             .then(lists => lists.flat())
         ]);
         imdbList = imdbList.concat(moreImdb);
@@ -167,14 +171,17 @@ function searchFilmsFast(q, onPartial) {
         paint();
       }
     })
-    .then(() => mergeLists(imdbList, wikiList, q, qYear));
+    .then(() => mergeLists(wikiList, imdbList, q, qYear));
 }
 
-function cachedSearch(q, onPartial) {
+function cachedSearch(q, onPartial, opts = {}) {
   const key = q.trim().toLowerCase().replace(/\s+/g, ' ');
   let p = sugCache.get(key);
   if (!p) {
-    p = searchFilmsFast(q, onPartial);
+    p = searchFilmsFast(q, onPartial, opts);
+    // позначка завершення — скасовані (застарілі) запити не мають
+    // лишати в кеші обірваних часткових результатів
+    p.catch(() => {}).then(() => { p.__settled = true; });
     sugCache.set(key, p);
     if (sugCache.size > SUG_CACHE_MAX) {
       sugCache.delete(sugCache.keys().next().value);
@@ -222,10 +229,25 @@ export function openFormModal({ film = null, currentUserId, allFilms = [] }) {
   if (searchInput) {
     const note = (icon, text) => `<div class="s-note">${icon}<span>${text}</span></div>`;
     let searchGen = 0; // захист від перегонів повільних запитів
+    let curAbort = null; // скасування застарілого пошуку (економія трафіку і лімітів WMF)
+    let curKey = null;
 
     searchInput.addEventListener('input', U.debounce(async () => {
       const q = searchInput.value.trim();
       if (q.length < 2) { hideSug(); return; }
+      const key = q.toLowerCase().replace(/\s+/g, ' ');
+
+      // Новий запит під час набору: скасовуємо попередній (мережеві
+      // запити вікі обриваються, частина результатів у кеш не лишається).
+      // Саме без цього кожна літера ганяла до 5 запитів у повітря —
+      // бурст вмикав rate-limit Вікімедіа (баг «Primetime»).
+      if (curAbort && curKey && curKey !== key) {
+        curAbort.abort();
+        const prev = sugCache.get(curKey);
+        if (prev && !prev.__settled) sugCache.delete(curKey);
+      }
+      curAbort = new AbortController();
+      curKey = key;
       const gen = ++searchGen;
       sugList.hidden = false;
       sugList.innerHTML = note(icons.search, 'Шукаю…');
@@ -262,8 +284,9 @@ export function openFormModal({ film = null, currentUserId, allFilms = [] }) {
       // Підказки без постера: тихо підтягуємо зображення в фоні.
       // Джерела (швидкі): IMDb за tt-ID -> en.Вікіпедія за точною
       // назвою статті (pilicense=any віддає fair-use постери) -> TVMaze.
+      // Обмежуємо перші 8 рядків — менше фонових запитів, швидший пошук.
       const fillMissingPosters = async (list) => {
-        for (let i = 0; i < list.length && i < 12; i++) {
+        for (let i = 0; i < list.length && i < 8; i++) {
           const s = list[i];
           if (s.poster || (!s.imdbId && !s.title)) continue;
           if (gen !== searchGen || sugList.hidden) return;
@@ -292,7 +315,7 @@ export function openFormModal({ film = null, currentUserId, allFilms = [] }) {
             return;
           }
           renderItems(partial);
-        });
+        }, { signal: curAbort.signal });
       } catch (e) { items = []; }
 
       if (gen !== searchGen) return; // застарілий результат — ігноруємо
@@ -302,7 +325,7 @@ export function openFormModal({ film = null, currentUserId, allFilms = [] }) {
       }
       renderItems(items);
       fillMissingPosters(items);
-    }, 220));
+    }, 120));
 
     searchInput.addEventListener('keydown', (e) => {
       if (sugList.hidden) return;

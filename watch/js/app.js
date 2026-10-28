@@ -8,7 +8,7 @@ import * as store from './store.js';
 import * as filmsView from './films.js';
 import * as statsView from './stats.js';
 import { icons, toast } from './ui.js';
-import { escapeHtml, initial } from './utils.js';
+import { escapeHtml, avatarHTML, setAvatarsMap } from './utils.js';
 import { fetchPoster } from './wiki.js';
 import * as settings from './settings.js';
 
@@ -141,11 +141,16 @@ function initUser() {
     currentUser = USERS.find(u => u.id === id) || null;
   } catch (e) { currentUser = null; }
 
-  userList.innerHTML = USERS.map(u => `
-    <button class="u-btn" data-uid="${u.id}" aria-label="Обрати профіль ${u.name}">
-      <span class="avatar xl" style="background:${u.color}">${escapeHtml(initial(u.name))}</span>
-      <span class="u-btn-name">${escapeHtml(u.name)}</span>
-    </button>`).join('');
+  buildUserList();
+
+  // Аватарки з бази: коли хтось завантажив/змінив фото — оновлюємо
+  // бейдж, список профілів і поточну вкладку (таблицю/модалку/статистику)
+  store.onAvatars((map) => {
+    setAvatarsMap(map);
+    buildUserList();
+    renderUserBadge();
+    renderTab();
+  });
 
   userList.addEventListener('click', (e) => {
     const btn = e.target.closest('.u-btn');
@@ -170,9 +175,17 @@ function initUser() {
   if (!currentUser) showUserPicker();
 }
 
+function buildUserList() {
+  userList.innerHTML = USERS.map(u => `
+    <button class="u-btn" data-uid="${u.id}" aria-label="Обрати профіль ${escapeHtml(u.name)}">
+      ${avatarHTML(u, 'xl')}
+      <span class="u-btn-name">${escapeHtml(u.name)}</span>
+    </button>`).join('');
+}
+
 function renderUserBadge() {
   userBadge.innerHTML = currentUser
-    ? `<span class="avatar" style="background:${currentUser.color}">${escapeHtml(initial(currentUser.name))}</span>
+    ? `${avatarHTML(currentUser)}
        <span class="ub-name">${escapeHtml(currentUser.name)}</span>`
     : `<span class="avatar ghost">${icons.users}</span><span class="ub-name">Обрати профіль</span>`;
 }

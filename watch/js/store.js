@@ -70,6 +70,28 @@ export async function importAll(data) {
   await set(ref(db, '/'), data);
 }
 
+// ---------- Аватарки профілів (вузол avatars/{userId}) ----------
+// Фото зберігається як стиснутий data-URL (квадрат ~192px, webp/jpeg,
+// кілька КБ) — Realtime Database чудово це тримає, окремий Storage
+// не потрібен. Автоматично синхронізується між усіма пристроями.
+
+// Підписка на аватарки: cb({ userId: dataUrl, ... })
+export function onAvatars(cb) {
+  return onValue(
+    ref(db, 'avatars'),
+    (snap) => cb(snap.val() || {}),
+    (err) => { console.warn('[store] avatars:', err && err.code); cb({}); }
+  );
+}
+
+export async function setAvatar(userId, dataUrl) {
+  await set(ref(db, `avatars/${userId}`), dataUrl);
+}
+
+export async function removeAvatar(userId) {
+  await remove(ref(db, `avatars/${userId}`));
+}
+
 // ---------- Налаштування Telegram-сповіщень (спільні для всіх) ----------
 export function onTgConfig(cb) {
   return onValue(

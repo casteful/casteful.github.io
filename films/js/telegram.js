@@ -142,6 +142,64 @@ export function notifyRatingRemoved(userId, film) {
   return send(ratingRemovedText(userId, film));
 }
 
+// ---------- Ігри: ті самі повідомлення, посилання ?game=<id> ----------
+
+export function gameTitle(g) {
+  return (g && (g.titleUk || g.title)) || 'Без назви';
+}
+
+function gameLink(game) {
+  if (!game || typeof game !== 'object' || !game.id) return '';
+  try {
+    return `${location.origin}${location.pathname}?game=${encodeURIComponent(String(game.id))}`;
+  } catch (e) {
+    return '';
+  }
+}
+
+function gameNameHTML(game) {
+  const title = (typeof game === 'string' ? game : gameTitle(game)) || 'Без назви';
+  const link = gameLink(game);
+  const name = esc(`«${title}»`);
+  return link ? `<a href="${esc(link)}">${name}</a>` : name;
+}
+
+export function gameAddedText(userId, game) {
+  const year = game && typeof game === 'object' && game.year ? ` (${game.year})` : '';
+  return `${esc(userName(userId))} додав гру ${gameNameHTML(game)}${year}`;
+}
+
+export function gameDeletedText(userId, title) {
+  return `${esc(userName(userId))} видалив гру ${gameNameHTML(String(title || ''))}`;
+}
+
+export function gameRatingSetText(userId, game, score, prev) {
+  const name = gameNameHTML(game);
+  return (prev != null && prev !== score)
+    ? `${esc(userName(userId))} змінив оцінку ${name}: ${prev} → ${score}`
+    : `${esc(userName(userId))} оцінив гру ${name} на ${score}/10`;
+}
+
+export function gameRatingRemovedText(userId, game) {
+  return `${esc(userName(userId))} прибрав свою оцінку гри ${gameNameHTML(game)}`;
+}
+
+export function notifyGameAdded(userId, game) {
+  return send(gameAddedText(userId, game));
+}
+
+export function notifyGameDeleted(userId, title) {
+  return send(gameDeletedText(userId, title));
+}
+
+export function notifyGameRatingSet(userId, game, score, prev) {
+  return send(gameRatingSetText(userId, game, score, prev));
+}
+
+export function notifyGameRatingRemoved(userId, game) {
+  return send(gameRatingRemovedText(userId, game));
+}
+
 // ---------- Вбудований блок Telegram у вікні «Налаштування» ----------
 
 // Пошук чатів: ~45 с опитуємо getUpdates, поки користувач напише

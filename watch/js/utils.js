@@ -58,6 +58,33 @@ export function initial(name) {
   return String(name || '?').trim().charAt(0).toUpperCase();
 }
 
+// ============================================================
+// Аватарки з фото: фото зберігаються у базі (вузол avatars/{userId}
+// — стиснутий data-URL), літера — запасний варіант. Геометрія та сама,
+// що й у літерних аватарок (класи avatar/u-head керують розміром).
+// ============================================================
+let avatarMap = {}; // userId -> data URL
+
+export function setAvatarsMap(obj) {
+  avatarMap = (obj && typeof obj === 'object') ? obj : {};
+}
+export function getAvatarsMap() {
+  return avatarMap;
+}
+
+// HTML аватарки: <span class="{base} {cls} has-img"><img></span> або
+// літера. base — клас-контейнер ('avatar' за замовчуванням або 'u-head'
+// у таблиці), cls — модифікатор розміру/стану ('sm', 'xl', 'mine'...).
+export function avatarHTML(u, cls = '', base = 'avatar') {
+  if (!u) return '';
+  const style = u.color ? ` style="background:${u.color}"` : '';
+  const url = avatarMap[u.id];
+  if (url) {
+    return `<span class="${base} ${cls} has-img"${style}><img src="${escapeHtml(url)}" alt="" referrerpolicy="no-referrer" loading="lazy"></span>`;
+  }
+  return `<span class="${base} ${cls}"${style}>${escapeHtml(initial(u.name))}</span>`;
+}
+
 // Змінює розмір постера з CDN Amazon/IMDb (економія трафіку)
 export function posterUrl(url, width = 400) {
   if (!url) return null;

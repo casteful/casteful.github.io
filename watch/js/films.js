@@ -91,6 +91,7 @@ function buildSkeleton() {
         <option value="new">Спочатку нові</option>
         <option value="old">Спочатку старі</option>
         <option value="rating">За рейтингом</option>
+        <option value="friends">За оцінками друзів</option>
         <option value="year">За роком</option>
         <option value="title">За назвою (А–Я)</option>
       </select>
@@ -137,7 +138,9 @@ function buildSkeleton() {
       sort = th.dataset.sort;
       localStorage.setItem('films_sort', sort);
       const sel = container.querySelector('#filmSort');
-      if (sel) sel.value = sort;
+      // сортування за конкретним другом ('user:dima') немає власного
+      // пункту в списку — вибір показує найближчий «За оцінками друзів»
+      if (sel) sel.value = [...sel.options].some(o => o.value === sort) ? sort : 'friends';
       refreshGrid();
       return;
     }
@@ -204,9 +207,28 @@ function filtered() {
     });
   }
   const withAvg = f => { const a = U.avg(f.ratings); return a == null ? -1 : a; };
+  // Оцінка конкретного друга (без оцінки — в кінець)
+  const valOf = (f, uid) => {
+    const v = (f.ratings || {})[uid];
+    return (typeof v === 'number' && !Number.isNaN(v)) ? v : -1;
+  };
+  // Середня оцінка ДРУЗІВ — усі, крім поточного користувача:
+  // «які фільми люблять друзі, а не я»
+  const friendAvg = f => {
+    const vals = Object.entries(f.ratings || {})
+      .filter(([uid, v]) => uid !== currentUserId && typeof v === 'number' && !Number.isNaN(v))
+      .map(([, v]) => v);
+    return vals.length ? vals.reduce((s, v) => s + v, 0) / vals.length : -1;
+  };
+  // Сортування за колонкою конкретного друга в таблиці ('user:dima')
+  if (sort.startsWith('user:')) {
+    const uid = sort.slice(5);
+    return [...list].sort((a, b) => valOf(b, uid) - valOf(a, uid));
+  }
   switch (sort) {
     case 'old': return [...list].sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
     case 'rating': return [...list].sort((a, b) => withAvg(b) - withAvg(a));
+    case 'friends': return [...list].sort((a, b) => friendAvg(b) - friendAvg(a));
     case 'year': return [...list].sort((a, b) => (b.year || 0) - (a.year || 0));
     case 'title': return [...list].sort((a, b) => String(a.titleUk || a.title || '').localeCompare(String(b.titleUk || b.title || ''), 'uk'));
     default: return [...list].sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
@@ -295,9 +317,11 @@ function tableHTML(list) {
   const thSort = (key, label, extra = '') =>
     `<th class="sortable ${sort === key ? 'active' : ''} ${extra}" data-sort="${key}" scope="col" title="Сортувати">${label}</th>`;
 
+  // Колонки друзів — клікабельні: сортують список за оцінками цього друга
   const userHeads = USERS.map(u => `
-    <th class="u-col" scope="col" aria-label="Оцінки ${U.escapeHtml(u.name)}">
-      <span class="u-head ${u.id === currentUserId ? 'mine' : ''}" style="background:${u.color}" title="${U.escapeHtml(u.name)}">${U.escapeHtml(U.initial(u.name))}</span>
+    <th class="u-col sortable ${sort === `user:${u.id}` ? 'active' : ''}" data-sort="user:${u.id}" scope="col"
+        title="Сортувати за оцінками: ${U.escapeHtml(u.name)}" aria-label="Сортувати за оцінками ${U.escapeHtml(u.name)}">
+      ${U.avatarHTML(u, u.id === currentUserId ? 'mine' : '', 'u-head')}
     </th>`).join('');
 
   return `
@@ -680,7 +704,7 @@ function detailHTML(f) {
   const friendRows = USERS.map(u => {
     const v = (f.ratings || {})[u.id];
     return `<li class="f-row">
-      <span class="avatar sm" style="background:${u.color}">${U.escapeHtml(U.initial(u.name))}</span>
+      ${U.avatarHTML(u, 'sm')}
       <span class="f-name">${U.escapeHtml(u.name)}</span>
       ${v != null
         ? `<span class="f-score" style="background:${U.ratingColor(v)}">${v}</span>`

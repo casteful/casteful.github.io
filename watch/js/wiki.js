@@ -26,21 +26,70 @@ import { OMDB_API_KEY } from './config.js';
 
 const WD_API = 'https://www.wikidata.org/w/api.php';
 
-async function fetchJSON(url, timeoutMs = 8000, headers = {}) {
+async function fetchJSON(url, timeoutMs = 8000, headers = {}, signal = null) {
   const ctrl = new AbortController();
+  const onAbort = () => ctrl.abort();
+  if (signal) {
+    if (signal.aborted) ctrl.abort();
+    else signal.addEventListener('abort', onAbort, { once: true });
+  }
   const t = setTimeout(() => ctrl.abort(), timeoutMs);
   try {
     const res = await fetch(url, { signal: ctrl.signal, headers });
-    if (!res.ok) throw new Error('HTTP ' + res.status);
+    if (!res.ok) {
+      const err = new Error('HTTP ' + res.status);
+      err.status = res.status;
+      throw err;
+    }
     return await res.json();
   } finally {
     clearTimeout(t);
+    if (signal) signal.removeEventListener('abort', onAbort);
+  }
+}
+
+// ---------- Черга запитів до Вікімедіа (WMF) ----------
+// Поки користувач набирає назву, застосунок стріляє батчем запитів на
+// КОЖНЕ натискання (префіксний + повнотекстовий uk/en + фонові постери).
+// Такий бурст вмикав rate-limit Вікімедіа (HTTP 429 «Too Many Requests»),
+// і тоді УСІ вікі-джерела ставали недоступні одразу — користувач бачив
+// «Нічого не знайдено» для цілком звичайного фільму (баг «Primetime»). 
+// Ліки: черга тримає темп (не частіше одного нового запиту кожні
+// WMF_GAP_MS) + один повтор з невеликою паузою на 429/5xx.
+
+const WMF_GAP_MS = 130;
+let wmfNextAt = 0;
+
+function sleepAbortable(ms, signal) {
+  return new Promise((resolve, reject) => {
+    if (signal && signal.aborted) { reject(new Error('aborted')); return; }
+    const t = setTimeout(resolve, ms);
+    if (signal) {
+      signal.addEventListener('abort', () => { clearTimeout(t); reject(new Error('aborted')); }, { once: true });
+    }
+  });
+}
+
+async function wmfFetch(url, timeoutMs = 6000, signal = null) {
+  const wait = Math.max(0, wmfNextAt - Date.now());
+  wmfNextAt = Math.max(wmfNextAt, Date.now()) + WMF_GAP_MS;
+  if (wait) await sleepAbortable(wait, signal);
+  try {
+    return await fetchJSON(url, timeoutMs, {}, signal);
+  } catch (e) {
+    if (signal && signal.aborted) throw e;
+    const status = e && e.status;
+    if (status === 429 || (status >= 500 && status < 600)) {
+      await sleepAbortable(1400, signal);
+      return await fetchJSON(url, timeoutMs, {}, signal);
+    }
+    throw e;
   }
 }
 
 // ---------- Пошук статей у розділі Вікіпедії ----------
 
-async function wikiSearch(lang, query, limit = 10) {
+async function wikiSearch(lang, query, limit = 10, signal = null) {
   const url =
     `https://${lang}.wikipedia.org/w/api.php?action=query&format=json&origin=*` +
     `&generator=search&gsrlimit=${limit}&gsrsearch=${encodeURIComponent(query)}` +
@@ -48,7 +97,7 @@ async function wikiSearch(lang, query, limit = 10) {
     // pilicense=any: без цього en.вікі НЕ віддає fair-use постери фільмів
     '&piprop=thumbnail&pithumbsize=400&pilicense=any';
 
-  const data = await fetchJSON(url, 6000);
+  const data = await wmfFetch(url, 6000, signal);
   const pages = data && data.query ? Object.values(data.query.pages || {}) : [];
   // index = релевантність видачі
   return pages
@@ -58,14 +107,14 @@ async function wikiSearch(lang, query, limit = 10) {
 
 // Швидкий ПРЕФІКСНИЙ пошук (тільки за назвами статей) — легкий і
 // зазвичай вдвічі-втричі швидший за повнотекстовий; дає найперші підказки
-async function wikiPrefix(lang, query, limit = 6) {
+async function wikiPrefix(lang, query, limit = 6, signal = null) {
   const url =
     `https://${lang}.wikipedia.org/w/api.php?action=query&format=json&origin=*` +
     `&generator=prefixsearch&gpslimit=${limit}&gpssearch=${encodeURIComponent(query)}` +
     '&prop=pageimages|pageprops|extracts&exintro=1&explaintext=1&exlimit=max' +
     '&piprop=thumbnail&pithumbsize=400&pilicense=any';
 
-  const data = await fetchJSON(url, 4000);
+  const data = await wmfFetch(url, 4000, signal);
   const pages = data && data.query ? Object.values(data.query.pages || {}) : [];
   return pages
     .map(p => ({ ...p, _lang: lang }))
@@ -75,11 +124,11 @@ async function wikiPrefix(lang, query, limit = 6) {
 // ---------- Wikidata: claims + мітки фільмів ОДНИМ викликом ----------
 // (швидше, ніж два окремі запити claims і labels)
 
-async function wdEntities(qids) {
+async function wdEntities(qids, signal = null) {
   if (!qids.length) return {};
   const url = `${WD_API}?action=wbgetentities&format=json&origin=*` +
     `&props=claims%7Clabels%7Csitelinks&languages=uk%7Cen&ids=${encodeURIComponent(qids.join('|'))}`;
-  const data = await fetchJSON(url, 5000);
+  const data = await wmfFetch(url, 5000, signal);
 
   const out = {};
   const entities = (data && data.entities) || {};
@@ -148,10 +197,10 @@ async function wdEntities(qids) {
 
 // ---------- Wikidata: українські/англійські мітки (для режисерів і жанрів) ----------
 
-async function wdLabels(qids) {
+async function wdLabels(qids, signal = null) {
   if (!qids.length) return {};
   const url = `${WD_API}?action=wbgetentities&format=json&origin=*&props=labels&languages=uk%7Cen&ids=${encodeURIComponent(qids.slice(0, 50).join('|'))}`;
-  const data = await fetchJSON(url, 5000);
+  const data = await wmfFetch(url, 5000, signal);
 
   const out = {};
   const entities = (data && data.entities) || {};
@@ -191,11 +240,12 @@ const NOT_FILM_CLASSES = new Set([
 
 async function wikidataByQids(qids, opts = {}) {
   if (!qids.length) return { map: {}, ok: true };
+  const signal = opts.signal || null;
 
   // claims + мітки самих фільмів — ОДНИМ викликом (швидше, ніж два)
   let ents;
   try {
-    ents = await wdEntities(qids);
+    ents = await wdEntities(qids, signal);
   } catch (e) {
     return { map: {}, ok: false }; // Wikidata недоступна
   }
@@ -219,7 +269,7 @@ async function wikidataByQids(qids, opts = {}) {
   }
   let labels = {};
   if (extra.size) {
-    try { labels = await wdLabels([...extra]); } catch (e) { /* мітки не критичні */ }
+    try { labels = await wdLabels([...extra], signal); } catch (e) { /* мітки не критичні */ }
   }
 
   // keepAll — явний запит за відомим QID (обрано користувачем): без фільтрів
@@ -334,7 +384,7 @@ function looksLikeFilmByExtract(text) {
 // АЛЕ їхні мініатюри зберігаються тут: якщо в першого пакета мініатюри
 // не було, а в дубліката-статті (інший розділ вікі) — є, постер
 // "перетікає" з дубліката.
-async function collectItems(pages, seen, thumbs, rescueQuery = '') {
+async function collectItems(pages, seen, thumbs, rescueQuery = '', signal = null) {
   // дедуплікація за QID або назвою (seen — спільний між розділами Вікіпедії)
   pages = pages.filter(p => {
     const qid = p.pageprops && p.pageprops.wikibase_item;
@@ -352,7 +402,7 @@ async function collectItems(pages, seen, thumbs, rescueQuery = '') {
   if (!pages.length) return [];
 
   const qids = pages.map(p => p.pageprops && p.pageprops.wikibase_item).filter(Boolean);
-  const { map: wd, ok: wdOk } = await wikidataByQids(qids, { rescueQuery });
+  const { map: wd, ok: wdOk } = await wikidataByQids(qids, { rescueQuery, signal });
 
   const items = [];
   for (const p of pages) {
@@ -457,6 +507,7 @@ function dedupeItems(items) {
 export async function searchWikiFilms(query, onPartial, opts = {}) {
   const q = String(query || '').trim();
   if (q.length < 2) return [];
+  const signal = opts.signal || null;
 
   const hasCyrillic = /[а-яіїєґ]/i.test(q);
   // opts.langs — явне обмеження розділів (транслітераційний fallback
@@ -477,12 +528,15 @@ export async function searchWikiFilms(query, onPartial, opts = {}) {
   };
 
   const runLang = async (lang, { prefix = false, query: qq = q } = {}) => {
+    if (signal && signal.aborted) return; // запит вже застарів — не поспішаємо
     let pages = [];
     try {
-      pages = prefix ? await wikiPrefix(lang, qq) : await wikiSearch(lang, qq);
+      pages = prefix ? await wikiPrefix(lang, qq, 6, signal) : await wikiSearch(lang, qq, 10, signal);
     } catch (e) { return; }
+    if (signal && signal.aborted) return;
     let batch = [];
-    try { batch = await collectItems(pages.slice(0, prefix ? 6 : 10), seen, thumbs, q); } catch (e) { return; }
+    try { batch = await collectItems(pages.slice(0, prefix ? 6 : 10), seen, thumbs, q, signal); } catch (e) { return; }
+    if (signal && signal.aborted) return;
     emit(batch);
   };
 
@@ -549,7 +603,7 @@ export async function enrichByQid(qid) {
 export async function qidByImdbId(tt) {
   if (!tt || !/^tt\d+$/.test(String(tt))) return null;
   try {
-    const sr = await fetchJSON(`${WD_API}?action=query&format=json&list=search&srlimit=1` +
+    const sr = await wmfFetch(`${WD_API}?action=query&format=json&list=search&srlimit=1` +
       `&srsearch=${encodeURIComponent('haswbstatement:P345=' + tt)}`, 5000);
     const found = sr && sr.query && sr.query.search && sr.query.search[0] && sr.query.search[0].title;
     return (found && /^Q\d+$/.test(found)) ? found : null;
@@ -716,7 +770,7 @@ export async function fetchPoster({ imdbId, title, titleUk, year } = {}) {
         `&generator=search&gsrlimit=4&gsrsearch=${encodeURIComponent(query)}` +
         '&prop=pageimages|pageprops|extracts&exintro=1&explaintext=1&exlimit=max' +
         '&piprop=thumbnail&pithumbsize=500&pilicense=any';
-      const data = await fetchJSON(url, 5000);
+      const data = await wmfFetch(url, 5000);
       const pages = data && data.query ? Object.values(data.query.pages || {}) : [];
       pages.sort((a, b) => (a.index || 999) - (b.index || 999));
       for (const p of pages) {
@@ -763,7 +817,7 @@ function yearMatchesPage(page, year) {
 // дефолтний фільтр «free» ховає некомерційні постери (див. коментар зверху).
 export async function posterFromSitelinks(qid) {
   try {
-    const data = await fetchJSON(`${WD_API}?action=wbgetentities&format=json&origin=*` +
+    const data = await wmfFetch(`${WD_API}?action=wbgetentities&format=json&origin=*` +
       `&props=sitelinks%7Cclaims&ids=${encodeURIComponent(qid)}`, 5000);
     const ent = data && data.entities && data.entities[qid];
     if (!ent) return null;
@@ -776,7 +830,7 @@ export async function posterFromSitelinks(qid) {
       try {
         const url = `https://${t.lang}.wikipedia.org/w/api.php?action=query&format=json&origin=*` +
           `&titles=${encodeURIComponent(t.title)}&prop=pageimages&piprop=thumbnail&pithumbsize=500&pilicense=any&redirects=1`;
-        const d = await fetchJSON(url, 5000);
+        const d = await wmfFetch(url, 5000);
         const pages = d && d.query ? Object.values(d.query.pages || {}) : [];
         const p = pages.find(x => x.thumbnail && x.thumbnail.source);
         if (p) return cleanThumb(p.thumbnail.source);
@@ -789,7 +843,7 @@ export async function posterFromSitelinks(qid) {
 // Зображення P18 (кадр/фото, пов'язане саме з цим фільмом) — останній шанс
 export async function posterP18(qid) {
   try {
-    const data = await fetchJSON(`${WD_API}?action=wbgetclaims&format=json&origin=*` +
+    const data = await wmfFetch(`${WD_API}?action=wbgetclaims&format=json&origin=*` +
       `&property=P18&entity=${encodeURIComponent(qid)}`, 5000);
     const claims = (data && data.claims && data.claims.P18) || [];
     const p18 = claims
@@ -836,7 +890,7 @@ export async function enWikiThumb(title, year) {
       '&titles=' + encodeURIComponent(t) + '&redirects=1' +
       '&prop=pageimages|pageprops|extracts&exintro=1&explaintext=1&exlimit=max' +
       '&piprop=thumbnail&pithumbsize=400&pilicense=any';
-    const data = await fetchJSON(url, 4500);
+    const data = await wmfFetch(url, 4500);
     const pages = data && data.query ? Object.values(data.query.pages || {}) : [];
     const p = pages.find(x => x.thumbnail && x.thumbnail.source && filmPage(x));
     if (p) return cleanThumb(p.thumbnail.source);
@@ -851,7 +905,7 @@ export async function enWikiThumb(title, year) {
       '&generator=search&gsrlimit=6&gsrsearch=' + encodeURIComponent(t) +
       '&prop=pageimages|pageprops|extracts&exintro=1&explaintext=1&exlimit=max' +
       '&piprop=thumbnail&pithumbsize=400&pilicense=any';
-    const data = await fetchJSON(url, 4500);
+    const data = await wmfFetch(url, 4500);
     const pages = data && data.query ? Object.values(data.query.pages || {}) : [];
     pages.sort((a, b) => (a.index || 999) - (b.index || 999));
     for (const p of pages) {

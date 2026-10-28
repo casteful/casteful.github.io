@@ -26,6 +26,7 @@
 import { USERS } from './config.js';
 import * as U from './utils.js';
 import * as store from './store.js';
+import * as A from './avatars.js';
 import { icons, toast, confirmDialog } from './ui.js';
 
 const RATE_LABELS = {
@@ -380,7 +381,7 @@ function scaleHTML(selected, disabled) {
 function friendRowHTML(u, value) {
   return `
     <li class="quiz-row">
-      <span class="avatar sm" style="background:${u.color}">${U.escapeHtml(U.initial(u.name))}</span>
+      ${A.avatarHTML(u, 'sm')}
       <span class="quiz-row-name">${u.id === currentUserId ? `${U.escapeHtml(u.name)} (ти)` : U.escapeHtml(u.name)}</span>
       ${value != null
         ? `<span class="quiz-row-score" style="background:${U.ratingColor(value)}">${value}</span>`
@@ -448,7 +449,7 @@ function leaderboardHTML(modeKey) {
           return `
             <div class="lb-row ${me ? 'me' : ''} ${i === 0 && r.s ? 'top' : ''}">
               <span class="lb-place">${i + 1}</span>
-              <span class="avatar sm" style="background:${r.u.color}">${U.escapeHtml(U.initial(r.u.name))}</span>
+              ${A.avatarHTML(r.u, 'sm')}
               <span class="lb-name">${U.escapeHtml(r.u.name)}${me ? ' (ти)' : ''}</span>
               <span class="lb-right">${val}</span>
             </div>`;
@@ -519,7 +520,7 @@ function renderGuessFriend() {
       <div class="quiz-film">${posterHTML(f2)}${filmHeadHTML(f2)}</div>
       ${q.freshCycle ? '<div class="quiz-cycle">Усі фільми вже були в грі — починаємо новий круг</div>' : ''}
       <div class="quiz-qrow">
-        <span class="avatar lg" style="background:${u2.color}">${U.escapeHtml(U.initial(u2.name))}</span>
+        ${A.avatarHTML(u2, 'lg')}
         <div class="quiz-qtext">Раунд ${match.round + 1} з ${ROUNDS_TOTAL}. Скільки поставив <b>${U.escapeHtml(u2.name)}</b>?</div>
       </div>
       <div class="quiz-scale rt" role="group" aria-label="Твоя здогадка від 1 до 10">${scaleHTML(null, false)}</div>
@@ -541,7 +542,7 @@ function renderGuessAverage() {
       <div class="quiz-film">${posterHTML(f2)}${filmHeadHTML(f2)}</div>
       ${q.freshCycle ? '<div class="quiz-cycle">Усі фільми вже були в грі — починаємо новий круг</div>' : ''}
       <div class="quiz-qrow">
-        <div class="quiz-avs">${raters.map(u => `<span class="avatar sm" style="background:${u.color}">${U.escapeHtml(U.initial(u.name))}</span>`).join('')}</div>
+        <div class="quiz-avs">${raters.map(u => A.avatarHTML(u, 'sm')).join('')}</div>
         <div class="quiz-qtext">Раунд ${match.round + 1} з ${ROUNDS_TOTAL}. Яка середня оцінка друзів?
           <div class="quiz-qsub">${raters.length} ${U.plural(raters.length, ['друг оцінив', 'друзі оцінили', 'друзів оцінили'])} цей фільм — здогадка від 1,0 до 10,0</div>
         </div>
