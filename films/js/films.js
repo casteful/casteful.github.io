@@ -3,14 +3,14 @@
 // модальне вікно фільму з оцінками 1–10
 // ============================================================
 
-import { USERS } from './config.js?v=5.0';
-import * as store from './store.js?v=5.0';
-import * as U from './utils.js?v=5.0';
-import * as A from './avatars.js?v=5.0';
-import { toast, openModal, confirmDialog, icons } from './ui.js?v=5.0';
-import { rateTrailHTML, paintTrail, popValue, openRatePop as openRatePopShared } from './rating-ui.js?v=5.0';
-import { openFormModal } from './film-form.js?v=5.0';
-import { notifyRatingSet, notifyRatingRemoved, notifyFilmDeleted } from './telegram.js?v=5.0';
+import { USERS } from './config.js?v=5.1';
+import * as store from './store.js?v=5.1';
+import * as U from './utils.js?v=5.1';
+import * as A from './avatars.js?v=5.1';
+import { toast, openModal, confirmDialog, icons } from './ui.js?v=5.1';
+import { rateTrailHTML, paintTrail, popValue, openRatePop as openRatePopShared } from './rating-ui.js?v=5.1';
+import { openFormModal } from './film-form.js?v=5.1';
+import { notifyRatingSet, notifyRatingRemoved, notifyFilmDeleted } from './telegram.js?v=5.1';
 
 let container = null;
 let gridEl = null;
@@ -437,7 +437,7 @@ function tableHTML(list) {
     return `
     <th class="u-col sortable ${active ? 'active' : ''}" scope="col" data-sort="friend" data-friend="${u.id}"
         aria-label="Сортувати за оцінками ${U.escapeHtml(u.name)}" title="Сортувати за оцінками ${U.escapeHtml(u.name)}">
-      <span class="u-head ${u.id === currentUserId ? 'mine' : ''}" style="background:${u.color}">${U.escapeHtml(U.initial(u.name))}</span>${arrow}
+      <span class="u-head ${u.id === currentUserId ? 'mine' : ''}" style="background:${u.color}">${A.inner(u)}</span>${arrow}
     </th>`;
   }).join('');
 

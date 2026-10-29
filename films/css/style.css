@@ -701,11 +701,13 @@ body.no-scroll { overflow: hidden; touch-action: none; }
   width: 26px;
   height: 26px;
   border-radius: 50%;
+  overflow: hidden;
   color: #fff;
   font-size: 11px;
   font-weight: 800;
   text-transform: uppercase;
 }
+.u-head img { width: 100%; height: 100%; object-fit: cover; }
 .u-head.mine { box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px color-mix(in srgb, var(--accent) 60%, transparent); }
 
 td.u-col.mine { cursor: pointer; }

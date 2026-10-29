@@ -5,14 +5,14 @@
 // класичну буквену аватарку з кольором профілю.
 //
 // Використання у будь-якому модулі:
-//   import * as A from './avatars.js?v=5.0';
+//   import * as A from './avatars.js?v=5.1';
 //   A.avatarHTML(u, 'sm')  -> <span class="avatar sm">…</span>
 // Підписка на зміни: A.onChange(cb) — щоб перемалювати свій UI,
 // коли хтось завантажив/прибрав фото.
 // ============================================================
 
-import * as store from './store.js?v=5.0';
-import { escapeHtml, initial } from './utils.js?v=5.0';
+import * as store from './store.js?v=5.1';
+import { escapeHtml, initial } from './utils.js?v=5.1';
 
 let cache = {};              // { userId: dataUrl } — живі дані з бази
 let started = false;
@@ -35,17 +35,21 @@ export function onChange(cb) {
   return () => listeners.delete(cb);
 }
 
+// Лише вміст аватарки: фото, якщо є, або ініціал. Зручно для
+// кастомних чипів (наприклад, .u-head у шапці таблиці).
+export function inner(u) {
+  if (!u) return '?';
+  const img = cache[u.id];
+  return img
+    ? `<img src="${escapeHtml(img)}" alt="" aria-hidden="true">`
+    : escapeHtml(initial(u.name || ''));
+}
+
 // Універсальний рядок аватарки: фото поверх кольору профілю, або
 // ініціали, якщо фото немає. cls — розмір ('', 'sm', 'lg', 'xl').
 export function avatarHTML(u, cls = '') {
   if (!u) return `<span class="avatar ${cls} ghost">?</span>`;
-  const img = cache[u.id];
-  const letter = escapeHtml(initial(u.name || ''));
-  return `<span class="avatar ${cls}" style="background:${u.color}" title="${escapeHtml(u.name || '')}">${
-    img
-      ? `<img src="${escapeHtml(img)}" alt="" aria-hidden="true">`
-      : letter
-  }</span>`;
+  return `<span class="avatar ${cls}" style="background:${u.color}" title="${escapeHtml(u.name || '')}">${inner(u)}</span>`;
 }
 
 // ---------- Завантаження: файл -> квадрат 144×144 JPEG ----------
