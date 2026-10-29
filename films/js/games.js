@@ -4,14 +4,14 @@
 // з оцінками 1–10. Дані — в окремому вузлі games/.
 // ============================================================
 
-import { USERS } from './config.js?v=4.1';
-import * as store from './store.js?v=4.1';
-import * as U from './utils.js?v=4.1';
-import * as A from './avatars.js?v=4.1';
-import { toast, openModal, confirmDialog, icons } from './ui.js?v=4.1';
-import { rateTrailHTML, paintTrail, popValue, openRatePop as openRatePopShared } from './rating-ui.js?v=4.1';
-import { openFormModal } from './game-form.js?v=4.1';
-import { notifyGameRatingSet, notifyGameRatingRemoved, notifyGameDeleted } from './telegram.js?v=4.1';
+import { USERS } from './config.js?v=5.0';
+import * as store from './store.js?v=5.0';
+import * as U from './utils.js?v=5.0';
+import * as A from './avatars.js?v=5.0';
+import { toast, openModal, confirmDialog, icons } from './ui.js?v=5.0';
+import { rateTrailHTML, paintTrail, popValue, openRatePop as openRatePopShared } from './rating-ui.js?v=5.0';
+import { openFormModal } from './game-form.js?v=5.0';
+import { notifyGameRatingSet, notifyGameRatingRemoved, notifyGameDeleted } from './telegram.js?v=5.0';
 
 let container = null;
 let gridEl = null;
@@ -21,6 +21,8 @@ let loadError = null;
 let query = '';
 let sort = localStorage.getItem('games_sort') || 'new';
 let view = localStorage.getItem('games_view') === 'table' ? 'table' : 'grid';
+let friendId = localStorage.getItem('games_sortfriend') || null; // сортування «За оцінкою друга»
+let friendDir = localStorage.getItem('games_sortdir') === 'asc' ? 'asc' : 'desc';
 let currentUserId = null;
 let detailState = null; // { overlay, box, gameId, close }
 
@@ -87,6 +89,7 @@ function buildSkeleton() {
         <option value="old">Спочатку старі</option>
         <option value="rating">За рейтингом</option>
         <option value="friends">За оцінкою друзів</option>
+        <option value="friend">За оцінкою друга</option>
         <option value="year">За роком</option>
         <option value="title">За назвою (А–Я)</option>
       </select>
@@ -96,6 +99,7 @@ function buildSkeleton() {
       </div>
       <button class="btn primary add-btn" id="addGameBtn">${icons.plus}<span>Додати гру</span></button>
     </div>
+    ${friendSortRowHTML()}
     <div id="gamesGrid" class="${view === 'table' ? 'table-wrap' : 'grid'}"></div>`;
 
   gridEl = container.querySelector('#gamesGrid');
@@ -105,12 +109,17 @@ function buildSkeleton() {
     sort = sortEl.value;
     localStorage.setItem('games_sort', sort);
     refreshGrid();
+    updateFriendSortRow();
   });
   container.querySelector('#gameSearch').addEventListener('input', U.debounce((e) => {
     query = e.target.value;
     refreshGrid();
   }, 200));
   container.querySelector('#addGameBtn').addEventListener('click', openAdd);
+
+  // Рядок вибору друга для сортування «За оцінкою друга»
+  wireFriendSortRow();
+  updateFriendSortRow();
 
   container.querySelectorAll('[data-view-btn]').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -127,10 +136,22 @@ function buildSkeleton() {
   gridEl.addEventListener('click', (e) => {
     const th = e.target.closest('th[data-sort]');
     if (th) {
+      // Клік на колонці друга — сортування за оцінкою цього друга;
+      // повторний клік по тій самій колонці перемикає напрямок
+      if (th.dataset.friend) {
+        if (sort === 'friend' && friendId === th.dataset.friend) {
+          friendDir = friendDir === 'asc' ? 'desc' : 'asc';
+          localStorage.setItem('games_sortdir', friendDir);
+        } else {
+          friendId = th.dataset.friend;
+          localStorage.setItem('games_sortfriend', friendId);
+        }
+      }
       sort = th.dataset.sort;
       localStorage.setItem('games_sort', sort);
       const sel = container.querySelector('#gameSort');
       if (sel) sel.value = sort;
+      updateFriendSortRow();
       refreshGrid();
       return;
     }
@@ -205,10 +226,81 @@ function filtered() {
     case 'old': return [...list].sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
     case 'rating': return [...list].sort((a, b) => withAvg(b) - withAvg(a));
     case 'friends': return [...list].sort((a, b) => withFriendAvg(b) - withFriendAvg(a));
+    case 'friend': {
+      // Оцінка КОНКРЕТНОГО друга (вгору/вниз), без оцінки — у кінець
+      const val = g => {
+        const v = (g.ratings || {})[friendId];
+        return typeof v === 'number' ? v : null;
+      };
+      const rated = list.filter(g => val(g) != null)
+        .sort((a, b) => friendDir === 'asc' ? val(a) - val(b) : val(b) - val(a));
+      return rated.concat(list.filter(g => val(g) == null));
+    }
     case 'year': return [...list].sort((a, b) => (b.year || 0) - (a.year || 0));
     case 'title': return [...list].sort((a, b) => String(a.titleUk || a.title || '').localeCompare(String(b.titleUk || b.title || ''), 'uk'));
     default: return [...list].sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
   }
+}
+
+// ---------- Рядок «За оцінкою друга» (ігри) ----------
+
+function friendSortRowHTML() {
+  if (!friendId) {
+    const other = USERS.find(u => u.id !== currentUserId) || USERS[0];
+    friendId = other ? other.id : null;
+  }
+  return `<div class="friend-sort-row" id="gameFriendSortRow" hidden>
+    <span class="fs-label">Оцінка друга:</span>
+    <div class="fs-chips">${USERS.map(u => `
+      <button type="button" class="fs-chip ${u.id === friendId ? 'active' : ''}" data-friend-chip="${u.id}" title="Сортувати за оцінками ${U.escapeHtml(u.name)}">
+        ${A.avatarHTML(u, 'sm')}<span>${U.escapeHtml(u.name)}</span>
+      </button>`).join('')}</div>
+    <button type="button" class="icon-btn fs-dir" id="gameFriendDirBtn" aria-label="Напрямок сортування" title="Спочатку вищі оцінки"></button>
+  </div>`;
+}
+
+function updateFriendSortRow() {
+  const row = container && container.querySelector('#gameFriendSortRow');
+  if (!row) return;
+  row.hidden = sort !== 'friend';
+  row.querySelectorAll('[data-friend-chip]').forEach(b =>
+    b.classList.toggle('active', b.dataset.friendChip === friendId));
+  const dirBtn = row.querySelector('#gameFriendDirBtn');
+  if (dirBtn) {
+    const desc = friendDir !== 'asc';
+    dirBtn.innerHTML = desc ? icons.arrowDown : icons.arrowUp;
+    dirBtn.title = desc ? 'Спочатку вищі оцінки' : 'Спочатку нижчі оцінки';
+  }
+}
+
+function wireFriendSortRow() {
+  const row = container && container.querySelector('#gameFriendSortRow');
+  if (!row) return;
+  row.addEventListener('click', (e) => {
+    const chip = e.target.closest('[data-friend-chip]');
+    if (chip) {
+      if (friendId === chip.dataset.friendChip && sort === 'friend') {
+        friendDir = friendDir === 'asc' ? 'desc' : 'asc';
+        localStorage.setItem('games_sortdir', friendDir);
+      } else {
+        friendId = chip.dataset.friendChip;
+        localStorage.setItem('games_sortfriend', friendId);
+      }
+      sort = 'friend';
+      localStorage.setItem('games_sort', sort);
+      const sel = container.querySelector('#gameSort');
+      if (sel) sel.value = sort;
+      updateFriendSortRow();
+      refreshGrid();
+      return;
+    }
+    if (e.target.closest('#gameFriendDirBtn')) {
+      friendDir = friendDir === 'asc' ? 'desc' : 'asc';
+      localStorage.setItem('games_sortdir', friendDir);
+      updateFriendSortRow();
+      refreshGrid();
+    }
+  });
 }
 
 // ---------- Сітка ----------
@@ -291,10 +383,16 @@ function tableHTML(list) {
   const thSort = (key, label, extra = '') =>
     `<th class="sortable ${sort === key ? 'active' : ''} ${extra}" data-sort="${key}" scope="col" title="Сортувати">${label}</th>`;
 
-  const userHeads = USERS.map(u => `
-    <th class="u-col" scope="col" aria-label="Оцінки ${U.escapeHtml(u.name)}">
-      <span class="u-head ${u.id === currentUserId ? 'mine' : ''}" style="background:${u.color}" title="${U.escapeHtml(u.name)}">${U.escapeHtml(U.initial(u.name))}</span>
-    </th>`).join('');
+  const userHeads = USERS.map(u => {
+    // Клік на колонці друга = сортування за його оцінками (повторний клік — напрямок)
+    const active = sort === 'friend' && friendId === u.id;
+    const arrow = active ? `<span class="th-arrow">${friendDir === 'asc' ? '▲' : '▼'}</span>` : '';
+    return `
+    <th class="u-col sortable ${active ? 'active' : ''}" scope="col" data-sort="friend" data-friend="${u.id}"
+        aria-label="Сортувати за оцінками ${U.escapeHtml(u.name)}" title="Сортувати за оцінками ${U.escapeHtml(u.name)}">
+      <span class="u-head ${u.id === currentUserId ? 'mine' : ''}" style="background:${u.color}">${U.escapeHtml(U.initial(u.name))}</span>${arrow}
+    </th>`;
+  }).join('');
 
   return `
   <table class="films-table">

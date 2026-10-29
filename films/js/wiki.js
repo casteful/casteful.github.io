@@ -22,11 +22,24 @@
 // є fetchPoster(): IMDb за tt-ID → Wikidata sitelinks → pageimages.
 // ============================================================
 
-import { OMDB_API_KEY } from './config.js?v=4.1';
+import { OMDB_API_KEY } from './config.js?v=5.0';
 
 const WD_API = 'https://www.wikidata.org/w/api.php';
 
 async function fetchJSON(url, timeoutMs = 8000, headers = {}) {
+  // Один автоматичний повтор: короткі збої мережі/тротлінгу WMF — не рідкість
+  // (особливо з мобільних мереж), і без ретраю користувач бачив порожні
+  // підказки замість результатів. Повтор не подовжує відчуття очікування:
+  // усе джерела працюють паралельно й малюються поступово (onPartial).
+  try {
+    return await fetchOnce(url, timeoutMs, headers);
+  } catch (e) {
+    await new Promise(r => setTimeout(r, 350));
+    return fetchOnce(url, timeoutMs, headers);
+  }
+}
+
+async function fetchOnce(url, timeoutMs, headers = {}) {
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), timeoutMs);
   try {
@@ -48,7 +61,7 @@ async function wikiSearch(lang, query, limit = 10) {
     // pilicense=any: без цього en.вікі НЕ віддає fair-use постери фільмів
     '&piprop=thumbnail&pithumbsize=400&pilicense=any';
 
-  const data = await fetchJSON(url, 6000);
+  const data = await fetchJSON(url, 8000);
   const pages = data && data.query ? Object.values(data.query.pages || {}) : [];
   // index = релевантність видачі
   return pages
@@ -65,7 +78,7 @@ async function wikiPrefix(lang, query, limit = 6) {
     '&prop=pageimages|pageprops|extracts&exintro=1&explaintext=1&exlimit=max' +
     '&piprop=thumbnail&pithumbsize=400&pilicense=any';
 
-  const data = await fetchJSON(url, 4000);
+  const data = await fetchJSON(url, 6500);
   const pages = data && data.query ? Object.values(data.query.pages || {}) : [];
   return pages
     .map(p => ({ ...p, _lang: lang }))
@@ -79,7 +92,7 @@ async function wdEntities(qids) {
   if (!qids.length) return {};
   const url = `${WD_API}?action=wbgetentities&format=json&origin=*` +
     `&props=claims%7Clabels%7Csitelinks&languages=uk%7Cen&ids=${encodeURIComponent(qids.join('|'))}`;
-  const data = await fetchJSON(url, 5000);
+  const data = await fetchJSON(url, 7000);
 
   const out = {};
   const entities = (data && data.entities) || {};
@@ -151,7 +164,7 @@ async function wdEntities(qids) {
 async function wdLabels(qids) {
   if (!qids.length) return {};
   const url = `${WD_API}?action=wbgetentities&format=json&origin=*&props=labels&languages=uk%7Cen&ids=${encodeURIComponent(qids.slice(0, 50).join('|'))}`;
-  const data = await fetchJSON(url, 5000);
+  const data = await fetchJSON(url, 7000);
 
   const out = {};
   const entities = (data && data.entities) || {};

@@ -5,15 +5,16 @@
 //  - збереження в Firebase
 // ============================================================
 
-import { USERS } from './config.js?v=4.1';
-import * as store from './store.js?v=4.1';
-import * as U from './utils.js?v=4.1';
-import { toast, openModal, confirmDialog, icons } from './ui.js?v=4.1';
-import { suggestFilms, typeLabel, imdbTemporarilyDown, imdbById } from './imdb.js?v=4.1';
-import { searchWikiFilms, fetchPoster, posterQuick, premiereInfo } from './wiki.js?v=4.1';
-import { translateToUk } from './translate.js?v=4.1';
-import { enrichFilm } from './enrich.js?v=4.1';
-import { notifyFilmAdded, notifyFilmDeleted } from './telegram.js?v=4.1';
+import { USERS } from './config.js?v=5.0';
+import * as store from './store.js?v=5.0';
+import * as U from './utils.js?v=5.0';
+import { toast, openModal, confirmDialog, icons } from './ui.js?v=5.0';
+import { suggestFilms, typeLabel, imdbTemporarilyDown, imdbById } from './imdb.js?v=5.0';
+import { searchWikiFilms, fetchPoster, posterQuick, premiereInfo } from './wiki.js?v=5.0';
+import { translateToUk } from './translate.js?v=5.0';
+import { enrichFilm } from './enrich.js?v=5.0';
+import { notifyFilmAdded, notifyFilmDeleted, notifyRatingSet, notifyRatingRemoved } from './telegram.js?v=5.0';
+import { rateTrailHTML, paintTrail, popValue } from './rating-ui.js?v=5.0';
 
 // ============================================================
 // Швидкий пошук для автозаповнення (спільний між відкриттями).
@@ -36,7 +37,7 @@ import { notifyFilmAdded, notifyFilmDeleted } from './telegram.js?v=4.1';
 //   6. Усе кешується: повторний запит тієї ж назви — миттєвий.
 // ============================================================
 
-const WIKI_DELAY_MS = 800;  // фори IMDb; потім вікі-пошук підключається завжди
+const WIKI_DELAY_MS = 150;  // невелика фори IMDb — вікі-пошук (найшвидше джерело) підключається майже одразу
 const SUG_CACHE_MAX = 60;
 const SUG_MAX = 20;          // максимум рядків у підказках (список гортається)
 const SUG_FALLBACK_MIN = 10; // знайдено менше — добираємо англійською транслітерацією
@@ -130,8 +131,10 @@ function searchFilmsFast(q, onPartial) {
     else if (status) onPartial([], status);
   };
 
-  // IMDb стартує одразу і малюється, щойно відповів (навіть якщо вікі ще шукає)
-  const imdbP = (imdbDown ? Promise.resolve([]) : suggestFilms(q).catch(() => []))
+  // IMDb стартує одразу і малюється, щойно відповів (навіть якщо вікі ще шукає).
+  // Рік із запиту прибираємо: suggestion API шукає краще за чисту назву,
+  // а збіг за роком і так піднімається в mergeLists (expectedYear).
+  const imdbP = (imdbDown ? Promise.resolve([]) : suggestFilms(qTitle).catch(() => []))
     .then(list => { imdbList = list || []; paint(); return imdbList; });
 
   // Вікіпедія: невелика затримка (щоб не спамити WMF на кожну літеру),
@@ -174,7 +177,15 @@ function cachedSearch(q, onPartial) {
   const key = q.trim().toLowerCase().replace(/\s+/g, ' ');
   let p = sugCache.get(key);
   if (!p) {
-    p = searchFilmsFast(q, onPartial);
+    p = searchFilmsFast(q, onPartial).then((res) => {
+      // ПОРОЖНІ результати НЕ кешуємо: перший запит міг впасти через
+      // короткий збій мережі/тротлінгу — і раніше порожня відповідь
+      // «залипала» до кінця сесії (повторне введення тієї ж назви
+      // миттєво показувало «нічого не знайдено»). Тепер повторна спроба
+      // реально перезапитує всі джерела.
+      if (!res || !res.length) sugCache.delete(key);
+      return res;
+    });
     sugCache.set(key, p);
     if (sugCache.size > SUG_CACHE_MAX) {
       sugCache.delete(sugCache.keys().next().value);
@@ -183,14 +194,23 @@ function cachedSearch(q, onPartial) {
   return p;
 }
 
-export function openFormModal({ film = null, currentUserId, allFilms = [] }) {
+export function openFormModal({ film = null, currentUserId, allFilms = [], kind: kindHint = 'film' }) {
   const isEdit = !!film;
   let picked = null; // обраний фільм з підказок IMDb
   // Прем'єра (повна дата «2007-09-24»), якщо вдалося дістати —
   // зберігається разом із фільмом і показується під полем «Рік»
   let pickedPremiere = (film && film.premiere) || null;
+  // Тип запису: 'film' | 'series' — серіали живуть в окремій вкладці
+  // і не впливають на кіногодини фільмів
+  let formKind = isEdit
+    ? (film.kind === 'series' ? 'series' : 'film')
+    : (kindHint === 'series' ? 'series' : 'film');
+  // Оцінка одразу під час додавання/редагування (null = ще не оцінено)
+  const initialRating = (isEdit && film && film.ratings && typeof film.ratings[currentUserId] === 'number')
+    ? film.ratings[currentUserId] : null;
+  let formRating = initialRating;
 
-  const { box, close, overlay } = openModal(formHTML(isEdit, film), {
+  const { box, close, overlay } = openModal(formHTML({ isEdit, film, kind: formKind, withRating: !!currentUserId, rating: initialRating }), {
     width: 640,
     label: isEdit ? 'Редагувати фільм' : 'Новий фільм'
   });
@@ -211,6 +231,55 @@ export function openFormModal({ film = null, currentUserId, allFilms = [] }) {
     set('fPoster', film.poster || '');
     if (film.poster) showPoster(box, film.poster);
     if (film.premiere) showPremiereHint();
+  }
+
+  // ---------- Тип: фільм / серіал ----------
+  const kindSeg = box.querySelector('#fKind');
+  const runtimeField = box.querySelector('#fRuntimeField');
+  function setKind(k) {
+    formKind = k === 'series' ? 'series' : 'film';
+    if (kindSeg) kindSeg.querySelectorAll('[data-kind]').forEach(b =>
+      b.classList.toggle('active', b.dataset.kind === formKind));
+    if (runtimeField) runtimeField.hidden = formKind === 'series';
+  }
+  if (kindSeg) {
+    kindSeg.addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-kind]');
+      if (btn) setKind(btn.dataset.kind);
+    });
+  }
+  setKind(formKind);
+
+  // ---------- Ваша оцінка одразу у формі ----------
+  const rateBox = box.querySelector('#fRatingBox');
+  if (rateBox) {
+    rateBox.addEventListener('mouseover', (e) => {
+      const seg = e.target.closest('.rt-seg');
+      if (seg) paintTrail(rateBox, +seg.dataset.score);
+    });
+    rateBox.addEventListener('mouseout', (e) => {
+      const seg = e.target.closest('.rt-seg');
+      if (!seg) return;
+      const to = e.relatedTarget;
+      if (to && rateBox.contains(to) && to.closest('.rt-seg')) return;
+      paintTrail(rateBox, formRating);
+    });
+    rateBox.addEventListener('click', (e) => {
+      const seg = e.target.closest('.rt-seg');
+      if (!seg) return;
+      const score = +seg.dataset.score;
+      formRating = (formRating === score) ? null : score; // повторний клік прибирає
+      paintTrail(rateBox, formRating);
+      if (formRating != null) popValue(rateBox);
+      const rm = box.querySelector('#fRatingRemove');
+      if (rm) rm.hidden = formRating == null;
+    });
+    const rmBtn = box.querySelector('#fRatingRemove');
+    if (rmBtn) rmBtn.addEventListener('click', () => {
+      formRating = null;
+      paintTrail(rateBox, null);
+      rmBtn.hidden = true;
+    });
   }
 
   // ---------- Автозаповнення (лише в режимі додавання) ----------
@@ -297,7 +366,16 @@ export function openFormModal({ film = null, currentUserId, allFilms = [] }) {
 
       if (gen !== searchGen) return; // застарілий результат — ігноруємо
       if (!items.length) {
-        sugList.innerHTML = note(icons.alert, 'Нічого не знайдено — шукали на IMDb, у Вікіпедії та за англійською транслітерацією назви. Спробуйте оригінальну англійську назву або заповніть поля вручну.');
+        sugList.innerHTML = note(icons.alert, 'Нічого не знайдено — шукали на IMDb, у Вікіпедії та за англійською транслітерацією назви. Можливо, це короткочасний збій мережі.') +
+          `<div class="s-retry"><button type="button" class="btn" id="sugRetry">${icons.refresh}<span>Спробувати ще раз</span></button></div>`;
+        const retry = sugList.querySelector('#sugRetry');
+        if (retry) retry.addEventListener('click', () => {
+          // даємо IMDb ще один шанс (прапор «тимчасово недоступний» знімаємо)
+          try { sessionStorage.removeItem('imdbDownUntil'); } catch (e) {}
+          sugCache.delete(q.trim().toLowerCase().replace(/\s+/g, ' '));
+          sugList.innerHTML = note(icons.search, 'Шукаю…');
+          searchInput.dispatchEvent(new Event('input'));
+        });
         return;
       }
       renderItems(items);
@@ -423,6 +501,10 @@ export function openFormModal({ film = null, currentUserId, allFilms = [] }) {
     if (s.genres && s.genres.length) set('fGenres', s.genres.join(', '));
     if (s.runtime) set('fRuntime', s.runtime);
     if (s.plot) set('fPlot', s.plot);
+
+    // Тип із підказки: серіал/мінісеріал одразу перемикає «Тип» —
+    // користувач може й повернути назад одним кліком
+    if (s.type === 'tvSeries' || s.type === 'tvMiniSeries') setKind('series');
 
     searchInput.value = `${U.stripDab(s.titleUk || s.title)}${s.year ? ` (${s.year})` : ''}`;
     hideSug();
@@ -614,6 +696,7 @@ export function openFormModal({ film = null, currentUserId, allFilms = [] }) {
     const data = {
       title: title || titleUk,
       titleUk: titleUk || null,
+      kind: formKind,
       year: U.intOrNull(val('fYear'), 1888, 2100),
       premiere: pickedPremiere || null,
       poster: val('fPoster').trim() || null,
@@ -624,7 +707,9 @@ export function openFormModal({ film = null, currentUserId, allFilms = [] }) {
       director: val('fDirector').trim() || null,
       cast: U.parseGenres(val('fCast')),
       genres: U.parseGenres(val('fGenres')),
-      runtime: U.intOrNull(val('fRuntime'), 1, 1200),
+      // у серіалів тривалість не зберігаємо (серії різні — «час перегляду»
+      // порахувати неможливо, а статистика фільмів не повинна страждати)
+      runtime: formKind === 'series' ? null : U.intOrNull(val('fRuntime'), 1, 1200),
       plot: val('fPlot').trim() || null
     };
 
@@ -649,11 +734,25 @@ export function openFormModal({ film = null, currentUserId, allFilms = [] }) {
     try {
       if (isEdit) {
         await store.updateFilm(film.id, data);
+        // Оцінка, поставлена прямо у формі: якщо вона змінилася — зберігаємо
+        // і надсилаємо Telegram-сповіщення (як зі звичайної шкали)
+        const oldR = typeof initialRating === 'number' ? initialRating : null;
+        if (currentUserId && formRating !== oldR) {
+          await store.setRating(film.id, currentUserId, formRating);
+          const updated = { ...film, ratings: { ...(film.ratings || {}), [currentUserId]: formRating } };
+          if (formRating == null) notifyRatingRemoved(currentUserId, updated);
+          else notifyRatingSet(currentUserId, updated, formRating, oldR);
+        }
         toast('Зміни збережено');
       } else {
-        const newId = await store.addFilm({ ...data, addedBy: currentUserId });
-        toast('Фільм додано');
-        notifyFilmAdded(currentUserId, { ...data, id: newId });
+        // Оцінка одразу в момент додавання: ratings заходить у сам запис,
+        // щоб друзі побачили фільм уже з оцінкою автора
+        const withRating = (formRating != null && currentUserId)
+          ? { ...data, ratings: { [currentUserId]: formRating } }
+          : data;
+        const newId = await store.addFilm({ ...withRating, addedBy: currentUserId });
+        toast(formRating != null ? `Фільм додано · Ваша оцінка: ${formRating}` : 'Фільм додано');
+        notifyFilmAdded(currentUserId, { ...withRating, id: newId });
       }
       close();
     } catch (err) {
@@ -682,7 +781,8 @@ function hidePoster(box) {
   img.removeAttribute('src');
 }
 
-function formHTML(isEdit, film) {
+function formHTML({ isEdit, film, kind = 'film', withRating = false, rating = null }) {
+  const isSeries = kind === 'series';
   return `
   <form id="filmForm" novalidate>
     <div class="modal-head">
@@ -706,6 +806,14 @@ function formHTML(isEdit, film) {
     </label>`}
 
     <div class="form-grid">
+      <div class="field span-2">
+        <span class="field-label">Тип</span>
+        <div class="seg" id="fKind" role="group" aria-label="Тип запису">
+          <button type="button" data-kind="film" class="${isSeries ? '' : 'active'}">Фільм</button>
+          <button type="button" data-kind="series" class="${isSeries ? 'active' : ''}">Серіал</button>
+        </div>
+        <span class="hint">Серіали живуть в окремій вкладці й не впливають на кіногодини фільмів. У серіалів тривалість не зберігається.</span>
+      </div>
       <label class="field">
         <span class="field-label">Назва (українською)</span>
         <input id="fTitleUk" type="text" placeholder="Напр.: Втеча з Шоушенка">
@@ -719,7 +827,7 @@ function formHTML(isEdit, film) {
         <input id="fYear" type="number" min="1888" max="2100" placeholder="1994">
         <span class="hint" id="premiereHint" hidden></span>
       </label>
-      <label class="field">
+      <label class="field" id="fRuntimeField" ${isSeries ? 'hidden' : ''}>
         <span class="field-label">Тривалість, хв</span>
         <input id="fRuntime" type="number" min="1" max="1200" placeholder="142">
       </label>
@@ -745,6 +853,14 @@ function formHTML(isEdit, film) {
       <span class="field-label">Опис</span>
       <textarea id="fPlot" rows="4" placeholder="Короткий опис або сюжет…"></textarea>
     </label>
+
+    ${withRating ? `
+    <div class="field form-rating" id="fRatingBox">
+      <span class="field-label">Ваша оцінка</span>
+      <div class="rt" role="group" aria-label="Ваша оцінка від 1 до 10">${rateTrailHTML(rating)}</div>
+      <button type="button" class="remove-rating" id="fRatingRemove" ${rating == null ? 'hidden' : ''}>Прибрати оцінку</button>
+      <span class="hint">Можна поставити одразу — друзі побачать оцінку, щойно фільм з'явиться у списку.</span>
+    </div>` : ''}
 
     <div class="poster-edit" id="posterEditBox">
       <div class="poster-preview"><img id="fPosterPreview" alt="Прев'ю постера">${icons.film}</div>

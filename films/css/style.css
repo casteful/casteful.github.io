@@ -2818,3 +2818,134 @@ td.u-col.mine:hover { background: color-mix(in srgb, var(--accent) 9%, var(--sur
   }
   .slow-hint.show { transform: translate(0, 0); }
 }
+
+/* ============================================================
+   v5: сортування «За оцінкою друга» + тип фільм/серіал + оцінка у формі
+   ============================================================ */
+
+/* Рядок вибору друга + напрямку (під панеллю пошуку/сортування) */
+.friend-sort-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin: 0 0 14px;
+  padding: 10px 12px;
+  background: var(--accent-soft);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+}
+.friend-sort-row[hidden] { display: none; }
+.fs-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.fs-chips {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.fs-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 4px 10px 4px 4px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color .15s ease, background .15s ease, transform .12s ease;
+}
+.fs-chip:hover { border-color: var(--border-strong); transform: translateY(-1px); }
+.fs-chip.active {
+  background: var(--grad);
+  color: var(--accent-ink);
+  border-color: transparent;
+  box-shadow: 0 2px 10px color-mix(in srgb, var(--accent) 40%, transparent);
+}
+.fs-chip .avatar { width: 24px; height: 24px; font-size: 11px; }
+.fs-dir {
+  flex: 0 0 auto;
+  width: 34px;
+  height: 34px;
+}
+
+/* Стрілка напрямку в заголовку таблиці */
+.th-arrow {
+  display: inline-block;
+  margin-left: 3px;
+  font-size: 9px;
+  color: var(--accent);
+  vertical-align: middle;
+}
+.t-kind {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent-2);
+  font-size: 10.5px;
+  font-weight: 700;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+.kind-badge {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent-2);
+  font-size: 12px;
+  font-weight: 700;
+  vertical-align: middle;
+}
+
+/* Сегментований перемикач «Фільм / Серіал» у формі */
+.seg {
+  display: inline-flex;
+  gap: 3px;
+  padding: 3px;
+  background: var(--surface-2);
+  border-radius: 12px;
+}
+.seg button {
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 13.5px;
+  font-weight: 600;
+  padding: 7px 16px;
+  border-radius: 9px;
+  cursor: pointer;
+  transition: background .15s ease, color .15s ease;
+}
+.seg button.active {
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: 0 1px 4px rgba(20, 15, 5, 0.12);
+}
+
+/* Оцінка прямо у формі додавання/редагування */
+.form-rating { display: flex; flex-direction: column; gap: 6px; margin: 4px 0 14px; }
+.form-rating .rt { justify-content: flex-start; }
+.form-rating .remove-rating { align-self: flex-start; }
+.s-retry { display: flex; justify-content: center; padding: 6px 0 2px; }
+
+/* 5 вкладок: трохи менші на вузьких екранах */
+@media (max-width: 640px) {
+  .tab { font-size: 12.5px; padding: 8px 6px; }
+}
+@media (max-width: 380px) {
+  .tab { font-size: 11.5px; padding: 8px 4px; letter-spacing: -0.01em; }
+}

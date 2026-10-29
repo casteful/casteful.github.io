@@ -3,17 +3,17 @@
 // Firebase та зв'язування вкладок
 // ============================================================
 
-import { USERS } from './config.js?v=4.1';
-import * as store from './store.js?v=4.1';
-import * as filmsView from './films.js?v=4.1';
-import * as gamesView from './games.js?v=4.1';
-import * as statsView from './stats.js?v=4.1';
-import * as quizView from './quiz.js?v=4.1';
-import * as avatars from './avatars.js?v=4.1';
-import { icons, toast } from './ui.js?v=4.1';
-import { escapeHtml } from './utils.js?v=4.1';
-import { fetchPoster } from './wiki.js?v=4.1';
-import * as settings from './settings.js?v=4.1';
+import { USERS } from './config.js?v=5.0';
+import * as store from './store.js?v=5.0';
+import * as filmsView from './films.js?v=5.0';
+import * as gamesView from './games.js?v=5.0';
+import * as statsView from './stats.js?v=5.0';
+import * as quizView from './quiz.js?v=5.0';
+import * as avatars from './avatars.js?v=5.0';
+import { icons, toast } from './ui.js?v=5.0';
+import { escapeHtml } from './utils.js?v=5.0';
+import { fetchPoster } from './wiki.js?v=5.0';
+import * as settings from './settings.js?v=5.0';
 
 const view = document.getElementById('view');
 const userOverlay = document.getElementById('userOverlay');
@@ -50,11 +50,14 @@ initFab();
 initUser();
 initTabs();
 
-// Клік на людину/жанр у модалці фільму або статистиці:
-// переключає вкладку «Фільми» (якщо потрібно) і фільтрує список
+// Клік на людину/жанр у модалці фільму чи статистиці: переключає потрібну
+// вкладку (Фільми або Серіали) і фільтрує список
 document.addEventListener('films:filter', (e) => {
-  if (activeTab !== 'films') switchTab('films');
-  filmsView.setFilter(e.detail);
+  const d = e.detail || {};
+  const q = typeof d === 'string' ? d : (d.q || '');
+  const target = (typeof d === 'object' && d.mode === 'series') ? 'series' : 'films';
+  if (activeTab !== target) switchTab(target);
+  filmsView.setFilter(q);
 });
 
 store.onFilms((list, err) => {
@@ -73,6 +76,7 @@ store.onFilms((list, err) => {
   removeSlowLoadHint(); // список прийшов — прибрати підказку про зависле завантаження
   renderTab();
   healMissingPosters(list); // тихо підтягуємо постери для фільмів без них
+  migrateKinds(list);       // розкладаємо старі записи на фільми/серіали
   handleDeepLink(list);
 });
 
@@ -144,7 +148,10 @@ function handleDeepLink(list) {
   deepLinkFilmId = null;
   try { history.replaceState(null, '', location.pathname); } catch (e) {}
   if (Array.isArray(list) && list.some(f => f.id === id)) {
-    if (activeTab !== 'films') switchTab('films');
+    // серіал за посиланням — відкриваємо у вкладці «Серіали», фільм — у «Фільмах»
+    const item = list.find(f => f.id === id);
+    const target = (item && item.kind === 'series') ? 'series' : 'films';
+    if (activeTab !== target) switchTab(target);
     filmsView.openFilmById(id);
   } else {
     toast('Фільм за посиланням не знайдено — можливо, його вже видалили', 'err');
@@ -201,6 +208,46 @@ async function healPoster(film) {
     /* тихо: постер — не критично */
   } finally {
     healingNow.delete(film.id);
+  }
+}
+
+// ---------- Автоматична класифікація: фільм чи серіал ----------
+// Старі записи не мають поля kind. TVMaze (безкоштовне API з відкритим CORS)
+// за IMDb-ID віддає серіал (200) або 404 (фільм). Записуємо в базу ЛИШЕ
+// серіали (відсутність kind = фільм), тож обсяг записів мінімальний.
+// Кулдаун у localStorage — щоб не турбувати API дарма після невдачі.
+
+const kindHealing = new Set();
+
+function migrateKinds(list) {
+  const need = list.filter(f => !f.kind && f.imdbId);
+  need.forEach((f, i) => setTimeout(() => migrateKind(f), Math.min(i, 4) * 900));
+}
+
+async function migrateKind(film) {
+  if (kindHealing.has(film.id)) return;
+  try {
+    const done = localStorage.getItem('kindMig_' + film.id);
+    if (done) return; // '1' — вже класифіковано (фільм — без запису в базу)
+  } catch (e) { /* без localStorage — працюємо без кулдауну */ }
+  kindHealing.add(film.id);
+  try {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), 6000);
+    let isSeries = false;
+    try {
+      const res = await fetch('https://api.tvmaze.com/lookup/shows?imdb=' + encodeURIComponent(film.imdbId), { signal: ctrl.signal });
+      isSeries = res.ok; // 200 = серіал, 404 = фільм
+    } finally { clearTimeout(t); }
+    if (isSeries && filmsArr && Array.isArray(filmsArr)) {
+      const cur = filmsArr.find(f => f.id === film.id);
+      if (cur && !cur.kind) await store.updateFilm(film.id, { kind: 'series' });
+    }
+    try { localStorage.setItem('kindMig_' + film.id, '1'); } catch (e) {}
+  } catch (e) {
+    // мережа впала — спробуємо наступного разу (без прапорця)
+  } finally {
+    kindHealing.delete(film.id);
   }
 }
 
@@ -326,12 +373,13 @@ function renderTab() {
     b.setAttribute('aria-selected', on ? 'true' : 'false');
   });
 
-  if (activeTab === 'films') {
+  if (activeTab === 'films' || activeTab === 'series') {
     // Каркас монтуємо лише при переключенні вкладки — оновлення даних
-    // із бази просто перемальовують сітку, не смикаючи інтерфейс
-    if (mountedTab !== 'films') {
-      filmsView.mount(view);
-      mountedTab = 'films';
+    // із бази просто перемальовують сітку, не смикаючи інтерфейс.
+    // «Серіали» — та сама view-модуль в іншому режимі (свій пошук/сортування)
+    if (mountedTab !== activeTab) {
+      filmsView.mount(view, activeTab);
+      mountedTab = activeTab;
     }
     if (currentUser) filmsView.setUser(currentUser.id);
     filmsView.setFilms(filmsArr);

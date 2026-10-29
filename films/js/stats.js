@@ -8,10 +8,10 @@
 //   onOpenFilm(id)  -> відкрити вікно фільму (панель «Рекорди»)
 // ============================================================
 
-import { USERS } from './config.js?v=4.1';
-import * as A from './avatars.js?v=4.1';
-import * as U from './utils.js?v=4.1';
-import { icons } from './ui.js?v=4.1';
+import { USERS } from './config.js?v=5.0';
+import * as A from './avatars.js?v=5.0';
+import * as U from './utils.js?v=5.0';
+import { icons } from './ui.js?v=5.0';
 
 export function mount(container, filmsArr, handlers = {}) {
   if (filmsArr === null) {
@@ -32,7 +32,14 @@ export function mount(container, filmsArr, handlers = {}) {
   wire(container, handlers);
 }
 
-function compute(films) {
+function compute(filmsAll) {
+  // СЕРІАЛИ ЖИВУТЬ ОКРЕМО: не впливають на статистику фільмів — ні на
+  // кіногодини, ні на рекорди, ні на топ-10, ні на жанри/країни/роки
+  // (тривалість серіалу порахувати неможливо). Зведення серіалів — в
+  // окремій панелі «Серіали».
+  const films = filmsAll.filter(f => f.kind !== 'series');
+  const series = filmsAll.filter(f => f.kind === 'series');
+
   const ratingEntries = [];
   films.forEach(f => {
     Object.entries(f.ratings || {}).forEach(([u, v]) => {
@@ -211,18 +218,31 @@ function compute(films) {
   }).sort((a, b) => (b.avg != null) - (a.avg != null) || b.avg - a.avg || b.n - a.n);
 
   return {
-    films, totalRatings, overallAvg, topFilms, ratedCount: ratedFilms.length,
+    films, series, totalRatings, overallAvg, topFilms, ratedCount: ratedFilms.length,
     dist, decadeRows, topDirectors, topGenres, topCast,
     countryRows, countryAvgRows, dirAvgRows, genreAvgRows,
     decadeAvgRows, yearRows, seasonRows, activityRows, compareRows,
     totalMin, avgRt, longest,
     best, worst, mostRated, controversy, oldest, newest,
-    userStats, activeUser, strict, generous
+    userStats, activeUser, strict, generous,
+    seriesRows: series.length,
+    seriesRatings: series.reduce((s2, f) => s2 + Object.keys(f.ratings || {}).length, 0),
+    seriesAvg: (() => {
+      let sum = 0, cnt = 0;
+      series.forEach(f => { const a = U.avg(f.ratings); if (a != null) { sum += a; cnt++; } });
+      return cnt ? sum / cnt : null;
+    })(),
+    topSeries: series.length ? (() => {
+      const rows = series.map(f => ({ f, a: U.avg(f.ratings), n: Object.keys(f.ratings || {}).length }))
+        .filter(r => r.a != null)
+        .sort((x, y) => y.a - x.a || y.n - x.n);
+      return rows[0] || null;
+    })() : null
   };
 }
 
 function template(s, handlers) {
-  if (!s.films.length && !s.totalRatings) {
+  if (!s.films.length && !s.series.length && !s.totalRatings) {
     return `
       <div class="state-box">
         <span class="state-icon">${icons.chart}</span>
@@ -247,6 +267,7 @@ function template(s, handlers) {
   const tiles = `
     <div class="tiles">
       ${tile(icons.clapper, s.films.length, U.pluralFilms(s.films.length))}
+      ${s.series.length ? tile(icons.film, s.series.length, U.plural(s.series.length, ['серіал', 'серіали', 'серіалів'])) : ''}
       ${tile(icons.star, s.totalRatings, `${s.totalRatings} ${U.pluralRatingsGen(s.totalRatings)} поставлено`)}
       ${tile(icons.chart, U.fmtAvg(s.overallAvg), 'середня оцінка')}
       ${tile(icons.clock, `${s.totalMin ? Math.round(s.totalMin / 60) : '—'}<small class="tile-unit">год</small>`, 'спільного кіночасу')}
@@ -469,6 +490,18 @@ function template(s, handlers) {
       </div>
     </section>`;
 
+  // Серіали — окрема панель: вони не впливають на фільмову статистику
+  const seriesPanel = !s.series.length ? '' : `
+    <section class="panel">
+      <h3 class="panel-title">Серіали <span class="panel-hint">— окрема вкладка, на статистику фільмів не впливають</span></h3>
+      <div class="mini-tiles">
+        <div class="mini-tile"><span class="mt-value">${s.series.length}</span><span class="mt-label">${U.plural(s.series.length, ['серіал', 'серіали', 'серіалів'])}</span></div>
+        <div class="mini-tile"><span class="mt-value">${s.seriesRatings}</span><span class="mt-label">${U.pluralRatingsGen(s.seriesRatings)} серіалів</span></div>
+        <div class="mini-tile"><span class="mt-value">${s.seriesAvg != null ? U.fmtAvg(s.seriesAvg) : '—'}</span><span class="mt-label">середня оцінка серіалів</span></div>
+      </div>
+      ${s.topSeries ? `<p class="duo-note">Найкращий серіал: «${U.escapeHtml(U.trunc(s.topSeries.f.titleUk || s.topSeries.f.title || '', 40))}» — ${U.fmtAvg(s.topSeries.a)}</p>` : ''}
+    </section>`;
+
   const rec = (label, row, extra = '') => row
     ? `<button type="button" class="rec-row clickable" data-open-film="${row.f.id}">
          <span class="rec-icon">${extra}</span>
@@ -522,7 +555,7 @@ function template(s, handlers) {
         </p>` : ''}
     </section>`;
 
-  return `${tiles}${records}${topFilms}${genresPanel}${genreAvgPanel}${countriesPanel}${countryAvgPanel}${directorsPanel}${dirAvgPanel}${castPanel}${distPanel}${decadesPanel}${decadeAvgPanel}${yearPanel}${seasonsPanel}${activityPanel}${runtimePanel}${viewers}${comparePanel}`;
+  return `${tiles}${records}${topFilms}${genresPanel}${genreAvgPanel}${countriesPanel}${countryAvgPanel}${directorsPanel}${dirAvgPanel}${castPanel}${distPanel}${decadesPanel}${decadeAvgPanel}${yearPanel}${seasonsPanel}${activityPanel}${runtimePanel}${seriesPanel}${viewers}${comparePanel}`;
 }
 
 // Клікабельні рядки: фільтр за людиною/жанром або відкриття фільму.

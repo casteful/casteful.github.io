@@ -3,29 +3,56 @@
 // модальне вікно фільму з оцінками 1–10
 // ============================================================
 
-import { USERS } from './config.js?v=4.1';
-import * as store from './store.js?v=4.1';
-import * as U from './utils.js?v=4.1';
-import * as A from './avatars.js?v=4.1';
-import { toast, openModal, confirmDialog, icons } from './ui.js?v=4.1';
-import { rateTrailHTML, paintTrail, popValue, openRatePop as openRatePopShared } from './rating-ui.js?v=4.1';
-import { openFormModal } from './film-form.js?v=4.1';
-import { notifyRatingSet, notifyRatingRemoved, notifyFilmDeleted } from './telegram.js?v=4.1';
+import { USERS } from './config.js?v=5.0';
+import * as store from './store.js?v=5.0';
+import * as U from './utils.js?v=5.0';
+import * as A from './avatars.js?v=5.0';
+import { toast, openModal, confirmDialog, icons } from './ui.js?v=5.0';
+import { rateTrailHTML, paintTrail, popValue, openRatePop as openRatePopShared } from './rating-ui.js?v=5.0';
+import { openFormModal } from './film-form.js?v=5.0';
+import { notifyRatingSet, notifyRatingRemoved, notifyFilmDeleted } from './telegram.js?v=5.0';
 
 let container = null;
 let gridEl = null;
-let filmsList = [];
+let filmsList = [];       // УСІ записи з бази (фільми + серіали)
 let isLoading = true;
 let loadError = null;
+// Активний режим вкладки: 'films' — лише фільми, 'series' — лише серіали.
+// Пошук/сортування/вигляд у кожного режиму СВОЇ (окремі ключі localStorage).
+let mode = 'films';
 let query = '';
 let sort = localStorage.getItem('films_sort') || 'new';
 let view = localStorage.getItem('films_view') === 'table' ? 'table' : 'grid'; // сітка або таблиця
+let friendId = localStorage.getItem('films_sortfriend') || null; // сортування «За оцінкою друга»
+let friendDir = localStorage.getItem('films_sortdir') === 'asc' ? 'asc' : 'desc';
 let currentUserId = null;
 let detailState = null; // { overlay, box, filmId, close }
 
+// Ключі localStorage з урахуванням режиму: у «Серіалів» свій пошук,
+// сортування і вигляд — незалежно від вкладки «Фільми»
+function lsKey(base) { return mode === 'series' ? base + '_series' : base; }
+
+function loadModeState() {
+  query = '';
+  sort = localStorage.getItem(lsKey('films_sort')) || 'new';
+  view = localStorage.getItem(lsKey('films_view')) === 'table' ? 'table' : 'grid';
+  friendId = localStorage.getItem(lsKey('films_sortfriend')) || null;
+  friendDir = localStorage.getItem(lsKey('films_sortdir')) === 'asc' ? 'asc' : 'desc';
+  friendId = friendId || (USERS.find(u => u.id !== currentUserId) || USERS[0] || {}).id || null;
+}
+
+function isSeriesItem(f) { return f && f.kind === 'series'; }
+
 // ---------- Публічний інтерфейс ----------
 
-export function mount(el) {
+export function mount(el, m = 'films') {
+  const modeChanged = m !== mode;
+  mode = m === 'series' ? 'series' : 'films';
+  if (modeChanged) loadModeState();
+  if (!friendId) {
+    const other = USERS.find(u => u.id !== currentUserId) || USERS[0];
+    friendId = other ? other.id : null;
+  }
   container = el;
   buildSkeleton();
   refreshGrid();
@@ -51,7 +78,7 @@ export function setUser(userId) {
 }
 
 export function openAdd() {
-  openFormModal({ film: null, currentUserId, allFilms: filmsList });
+  openFormModal({ film: null, currentUserId, allFilms: filmsList, kind: mode });
 }
 
 // Зовнішній фільтр (клік на режисера/актора/жанр у статистиці чи картці).
@@ -59,7 +86,9 @@ export function openAdd() {
 export function setFilter(q) {
   query = String(q || '');
   if (!document.getElementById('filmSearch') || !container.contains(document.getElementById('filmSearch'))) {
-    document.dispatchEvent(new CustomEvent('films:filter', { detail: String(q || '') }));
+    // Вкладку ще не змонтовано — просимо app.js переключити її в ПОТОЧНОМУ
+    // режимі (фільми/серіали), а потім застосувати фільтр
+    document.dispatchEvent(new CustomEvent('films:filter', { detail: { q: String(q || ''), mode } }));
     return;
   }
   const inp = document.getElementById('filmSearch');
@@ -81,19 +110,23 @@ export function openFilmById(filmId) {
 function buildSkeleton() {
   const wasSearchFocused = document.activeElement && document.activeElement.id === 'filmSearch' && container.contains(document.activeElement);
   const caret = wasSearchFocused ? document.activeElement.selectionStart : 0;
+  const isSeries = mode === 'series';
+  const noun = isSeries ? 'серіал' : 'фільм';
+  const nounAcc = isSeries ? 'серіал' : 'фільм'; // родовий/знахідний для кнопок
 
   container.innerHTML = `
     <div class="view-head">
       <div class="search-wrap">
         ${icons.search}
-        <input id="filmSearch" type="search" placeholder="Пошук за назвою або режисером…"
-               value="${U.escapeHtml(query)}" aria-label="Пошук фільмів">
+        <input id="filmSearch" type="search" placeholder="${isSeries ? 'Пошук серіалів' : 'Пошук фільмів'} за назвою, режисером або актором…"
+               value="${U.escapeHtml(query)}" aria-label="${isSeries ? 'Пошук серіалів' : 'Пошук фільмів'}">
       </div>
       <select id="filmSort" class="sort-select" aria-label="Сортування">
         <option value="new">Спочатку нові</option>
         <option value="old">Спочатку старі</option>
         <option value="rating">За рейтингом</option>
         <option value="friends">За оцінкою друзів</option>
+        <option value="friend">За оцінкою друга</option>
         <option value="year">За роком</option>
         <option value="title">За назвою (А–Я)</option>
       </select>
@@ -101,8 +134,9 @@ function buildSkeleton() {
         <button type="button" data-view-btn="grid" class="${view === 'grid' ? 'active' : ''}" title="Сітка" aria-label="Вигляд: сітка">${icons.grid}</button>
         <button type="button" data-view-btn="table" class="${view === 'table' ? 'active' : ''}" title="Таблиця" aria-label="Вигляд: таблиця">${icons.table}</button>
       </div>
-      <button class="btn primary add-btn" id="addBtn">${icons.plus}<span>Додати фільм</span></button>
+      <button class="btn primary add-btn" id="addBtn">${icons.plus}<span>Додати ${nounAcc}</span></button>
     </div>
+    ${friendSortRowHTML()}
     <div id="filmsGrid" class="${view === 'table' ? 'table-wrap' : 'grid'}"></div>`;
 
   gridEl = container.querySelector('#filmsGrid');
@@ -110,8 +144,9 @@ function buildSkeleton() {
   sortEl.value = sort;
   sortEl.addEventListener('change', () => {
     sort = sortEl.value;
-    localStorage.setItem('films_sort', sort);
+    localStorage.setItem(lsKey('films_sort'), sort);
     refreshGrid();
+    updateFriendSortRow();
   });
   container.querySelector('#filmSearch').addEventListener('input', U.debounce((e) => {
     query = e.target.value;
@@ -119,13 +154,17 @@ function buildSkeleton() {
   }, 200));
   container.querySelector('#addBtn').addEventListener('click', openAdd);
 
+  // Рядок вибору друга + напрямку для сортування «За оцінкою друга»
+  wireFriendSortRow();
+  updateFriendSortRow();
+
   // Перемикання сітка ⇄ таблиця (запам'ятовується між сесіями)
   container.querySelectorAll('[data-view-btn]').forEach(btn => {
     btn.addEventListener('click', () => {
       const v = btn.dataset.viewBtn;
       if (v === view) return;
       view = v;
-      try { localStorage.setItem('films_view', view); } catch (e) {}
+      try { localStorage.setItem(lsKey('films_view'), view); } catch (e) {}
       buildSkeleton(); // перебудовує каркас (зберігає фокус пошуку)
       refreshGrid();
     });
@@ -137,10 +176,22 @@ function buildSkeleton() {
   gridEl.addEventListener('click', (e) => {
     const th = e.target.closest('th[data-sort]');
     if (th) {
+      // Клік на колонці друга — сортування за оцінкою цього друга;
+      // повторний клік по тій самій колонці перемикає напрямок
+      if (th.dataset.friend) {
+        if (sort === 'friend' && friendId === th.dataset.friend) {
+          friendDir = friendDir === 'asc' ? 'desc' : 'asc';
+          localStorage.setItem(lsKey('films_sortdir'), friendDir);
+        } else {
+          friendId = th.dataset.friend;
+          localStorage.setItem(lsKey('films_sortfriend'), friendId);
+        }
+      }
       sort = th.dataset.sort;
-      localStorage.setItem('films_sort', sort);
+      localStorage.setItem(lsKey('films_sort'), sort);
       const sel = container.querySelector('#filmSort');
       if (sel) sel.value = sort;
+      updateFriendSortRow();
       refreshGrid();
       return;
     }
@@ -185,11 +236,71 @@ function buildSkeleton() {
   }
 }
 
+// ---------- Рядок «За оцінкою друга»: вибір друга + напрямок ----------
+
+function friendSortRowHTML() {
+  return `<div class="friend-sort-row" id="friendSortRow" hidden>
+    <span class="fs-label">Оцінка друга:</span>
+    <div class="fs-chips">${USERS.map(u => `
+      <button type="button" class="fs-chip ${u.id === friendId ? 'active' : ''}" data-friend-chip="${u.id}" title="Сортувати за оцінками ${U.escapeHtml(u.name)}">
+        ${A.avatarHTML(u, 'sm')}<span>${U.escapeHtml(u.name)}</span>
+      </button>`).join('')}</div>
+    <button type="button" class="icon-btn fs-dir" id="friendDirBtn" aria-label="Напрямок сортування" title="Спочатку вищі оцінки"></button>
+  </div>`;
+}
+
+function updateFriendSortRow() {
+  const row = container && container.querySelector('#friendSortRow');
+  if (!row) return;
+  row.hidden = sort !== 'friend';
+  row.querySelectorAll('[data-friend-chip]').forEach(b =>
+    b.classList.toggle('active', b.dataset.friendChip === friendId));
+  const dirBtn = row.querySelector('#friendDirBtn');
+  if (dirBtn) {
+    const desc = friendDir !== 'asc';
+    dirBtn.innerHTML = desc ? icons.arrowDown : icons.arrowUp;
+    dirBtn.title = desc ? 'Спочатку вищі оцінки' : 'Спочатку нижчі оцінки';
+  }
+}
+
+function wireFriendSortRow() {
+  const row = container && container.querySelector('#friendSortRow');
+  if (!row) return;
+  row.addEventListener('click', (e) => {
+    const chip = e.target.closest('[data-friend-chip]');
+    if (chip) {
+      if (friendId === chip.dataset.friendChip && sort === 'friend') {
+        // клік по активному другу — міняємо напрямок
+        friendDir = friendDir === 'asc' ? 'desc' : 'asc';
+        localStorage.setItem(lsKey('films_sortdir'), friendDir);
+      } else {
+        friendId = chip.dataset.friendChip;
+        localStorage.setItem(lsKey('films_sortfriend'), friendId);
+      }
+      sort = 'friend';
+      localStorage.setItem(lsKey('films_sort'), sort);
+      const sel = container.querySelector('#filmSort');
+      if (sel) sel.value = sort;
+      updateFriendSortRow();
+      refreshGrid();
+      return;
+    }
+    if (e.target.closest('#friendDirBtn')) {
+      friendDir = friendDir === 'asc' ? 'desc' : 'asc';
+      localStorage.setItem(lsKey('films_sortdir'), friendDir);
+      updateFriendSortRow();
+      refreshGrid();
+    }
+  });
+}
+
 // ---------- Фільтрація і сортування ----------
 
 function filtered() {
   const q = query.trim().toLowerCase();
-  let list = filmsList;
+  // Розділення бібліотеки: вкладка «Фільми» — усе, крім серіалів;
+  // вкладка «Серіали» — тільки kind === 'series'
+  let list = filmsList.filter(f => mode === 'series' ? isSeriesItem(f) : !isSeriesItem(f));
   if (q) {
     // Жанри в базі двомовні (старі записи укр., нові англ.) — «драма»
     // має знаходити і фільми з жанром "drama", і навпаки
@@ -218,6 +329,16 @@ function filtered() {
     case 'old': return [...list].sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
     case 'rating': return [...list].sort((a, b) => withAvg(b) - withAvg(a));
     case 'friends': return [...list].sort((a, b) => withFriendAvg(b) - withFriendAvg(a));
+    case 'friend': {
+      // Оцінка КОНКРЕТНОГО друга (вгору/вниз), без оцінки — у кінець
+      const val = f => {
+        const v = (f.ratings || {})[friendId];
+        return typeof v === 'number' ? v : null;
+      };
+      const rated = list.filter(f => val(f) != null)
+        .sort((a, b) => friendDir === 'asc' ? val(a) - val(b) : val(b) - val(a));
+      return rated.concat(list.filter(f => val(f) == null));
+    }
     case 'year': return [...list].sort((a, b) => (b.year || 0) - (a.year || 0));
     case 'title': return [...list].sort((a, b) => String(a.titleUk || a.title || '').localeCompare(String(b.titleUk || b.title || ''), 'uk'));
     default: return [...list].sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
@@ -245,13 +366,15 @@ function refreshGrid() {
     return;
   }
 
-  if (!filmsList.length && !query.trim()) {
+  if (!filmsList.filter(f => mode === 'series' ? isSeriesItem(f) : !isSeriesItem(f)).length && !query.trim()) {
     gridEl.innerHTML = `
       <div class="state-box">
-        <span class="state-icon">${icons.clapper}</span>
-        <h3>Поки що немає жодного фільму</h3>
-        <p>Додайте перший фільм — почніть вводити назву, і ми підтягнемо постер та деталі з IMDb.</p>
-        <button class="btn primary" id="emptyAdd">${icons.plus}<span>Додати фільм</span></button>
+        <span class="state-icon">${mode === 'series' ? icons.film : icons.clapper}</span>
+        <h3>${mode === 'series' ? 'Поки що немає жодного серіалу' : 'Поки що немає жодного фільму'}</h3>
+        <p>${mode === 'series'
+          ? 'Додайте перший серіал — почніть вводити назву, і ми підтягнемо постер та деталі. Серіали не впливають на статистику фільмів.'
+          : 'Додайте перший фільм — почніть вводити назву, і ми підтягнемо постер та деталі з IMDb.'}</p>
+        <button class="btn primary" id="emptyAdd">${icons.plus}<span>${mode === 'series' ? 'Додати серіал' : 'Додати фільм'}</span></button>
       </div>`;
     gridEl.querySelector('#emptyAdd').addEventListener('click', openAdd);
     return;
@@ -303,22 +426,29 @@ function renderSkeleton() {
 // ---------- Табличний вигляд ----------
 
 function tableHTML(list) {
+  const isSeries = mode === 'series';
   const thSort = (key, label, extra = '') =>
     `<th class="sortable ${sort === key ? 'active' : ''} ${extra}" data-sort="${key}" scope="col" title="Сортувати">${label}</th>`;
 
-  const userHeads = USERS.map(u => `
-    <th class="u-col" scope="col" aria-label="Оцінки ${U.escapeHtml(u.name)}">
-      <span class="u-head ${u.id === currentUserId ? 'mine' : ''}" style="background:${u.color}" title="${U.escapeHtml(u.name)}">${U.escapeHtml(U.initial(u.name))}</span>
-    </th>`).join('');
+  const userHeads = USERS.map(u => {
+    // Клік на колонці друга = сортування за його оцінками (повторний клік — напрямок)
+    const active = sort === 'friend' && friendId === u.id;
+    const arrow = active ? `<span class="th-arrow">${friendDir === 'asc' ? '▲' : '▼'}</span>` : '';
+    return `
+    <th class="u-col sortable ${active ? 'active' : ''}" scope="col" data-sort="friend" data-friend="${u.id}"
+        aria-label="Сортувати за оцінками ${U.escapeHtml(u.name)}" title="Сортувати за оцінками ${U.escapeHtml(u.name)}">
+      <span class="u-head ${u.id === currentUserId ? 'mine' : ''}" style="background:${u.color}">${U.escapeHtml(U.initial(u.name))}</span>${arrow}
+    </th>`;
+  }).join('');
 
   return `
   <table class="films-table">
     <thead><tr>
-      ${thSort('title', 'Фільм')}
+      ${thSort('title', isSeries ? 'Серіал' : 'Фільм')}
       ${thSort('year', 'Рік')}
-      <th scope="col">Режисер</th>
+      ${isSeries ? '' : '<th scope="col">Режисер</th>'}
       <th scope="col">Жанри</th>
-      <th scope="col" class="t-num">Хв</th>
+      ${isSeries ? '' : '<th scope="col" class="t-num">Хв</th>'}
       ${thSort('rating', 'Сер.')}
       ${userHeads}
       <th scope="col" aria-hidden="true"></th>
@@ -329,6 +459,7 @@ function tableHTML(list) {
 
 function rowHTML(f) {
   const a = U.avg(f.ratings);
+  const isSeries = isSeriesItem(f);
   const mainTitle = f.titleUk || f.title || 'Без назви';
   const orig = (f.titleUk && f.title && f.titleUk !== f.title) ? f.title : '';
 
@@ -348,21 +479,21 @@ function rowHTML(f) {
           ? `<img src="${U.escapeHtml(U.posterUrl(f.poster, 80))}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">`
           : icons.film}</span>
         <span class="t-titles">
-          <span class="t-name">${U.escapeHtml(mainTitle)}</span>
+          <span class="t-name">${U.escapeHtml(mainTitle)}${isSeries ? ' <span class="t-kind">серіал</span>' : ''}</span>
           ${orig ? `<span class="t-orig">${U.escapeHtml(orig)}</span>` : ''}
         </span>
       </div>
     </td>
     <td class="t-num t-muted">${f.year || '—'}</td>
-    <td class="t-muted" title="${U.escapeHtml(f.director || '')}">${f.director ? U.escapeHtml(U.trunc(f.director, 28)) : '—'}</td>
+    ${isSeries ? '' : `<td class="t-muted" title="${U.escapeHtml(f.director || '')}">${f.director ? U.escapeHtml(U.trunc(f.director, 28)) : '—'}</td>`}
     <td class="t-muted t-genres" title="${U.escapeHtml((f.genres || []).join(', '))}">${f.genres && f.genres.length ? U.escapeHtml(U.trunc(f.genres.join(', '), 32)) : '—'}</td>
-    <td class="t-num t-muted">${f.runtime || '—'}</td>
+    ${isSeries ? '' : `<td class="t-num t-muted">${f.runtime || '—'}</td>`}
     <td>${a != null
       ? `<span class="avg-badge sm" style="background:${U.ratingColor(a)}" title="Середня оцінка">${U.fmtAvg(a)}</span>`
       : `<span class="t-muted">—</span>`}</td>
     ${userCells}
     <td>
-      <button class="icon-btn t-edit" data-edit aria-label="Редагувати фільм" title="Редагувати">${icons.edit}</button>
+      <button class="icon-btn t-edit" data-edit aria-label="Редагувати" title="Редагувати">${icons.edit}</button>
     </td>
   </tr>`;
 }
@@ -370,12 +501,14 @@ function rowHTML(f) {
 function cardHTML(f) {
   const a = U.avg(f.ratings);
   const my = (f.ratings || {})[currentUserId];
+  const isSeries = isSeriesItem(f);
   const mainTitle = f.titleUk || f.title || 'Без назви';
   const orig = (f.titleUk && f.title && f.titleUk !== f.title) ? f.title : '';
   const ratedCount = Object.keys(f.ratings || {}).length;
+  // У серіалів замість тривалості — позначка типу (час перегляду рахувати неможливо)
   const metaBits = [
     f.year,
-    f.runtime ? `${f.runtime} хв` : '',
+    isSeries ? 'серіал' : (f.runtime ? `${f.runtime} хв` : ''),
     ratedCount ? `${ratedCount} ${U.pluralRatings(ratedCount)}` : 'без оцінок'
   ].filter(Boolean).join(' · ');
 
@@ -472,6 +605,7 @@ function fTitle(f) { return f.titleUk || f.title || 'Без назви'; }
 function detailHTML(f) {
   const a = U.avg(f.ratings);
   const my = (f.ratings || {})[currentUserId];
+  const isSeries = isSeriesItem(f);
   const orig = (f.titleUk && f.title && f.titleUk !== f.title) ? f.title : '';
   // Якщо відома повна дата прем'єри («24 вересня 2007») — показуємо її
   // замість голого року; інакше — рік, як раніше
@@ -480,7 +614,7 @@ function detailHTML(f) {
     // країна — клікабельна (фільтрує список), тому поза metaBits
     f.country ? `<button type="button" class="person-link" data-person="${U.escapeHtml(f.country)}" title="Фільми цієї країни">${U.escapeHtml(f.country)}</button>` : '',
     prem ? `прем'єра ${prem}` : f.year,
-    f.runtime ? `${f.runtime} хв` : ''
+    isSeries ? 'серіал' : (f.runtime ? `${f.runtime} хв` : '')
   ].filter(Boolean).join(' · ');
   const genres = (f.genres || []).map(g =>
     `<button type="button" class="genre-chip clickable" data-person="${U.escapeHtml(g)}" title="Фільми цього жанру">${U.escapeHtml(g)}</button>`
@@ -518,7 +652,7 @@ function detailHTML(f) {
         ? `<img class="hero-poster" src="${U.escapeHtml(U.posterUrl(f.poster, 300))}" alt="Постер: ${U.escapeHtml(fTitle(f))}" referrerpolicy="no-referrer" onerror="this.classList.add('broken'); this.removeAttribute('src')">`
         : `<span class="hero-poster placeholder">${icons.film}</span>`}
       <div class="hero-text">
-        <h2 class="detail-heading">${U.escapeHtml(fTitle(f))}</h2>
+        <h2 class="detail-heading">${U.escapeHtml(fTitle(f))}${isSeries ? ' <span class="kind-badge">серіал</span>' : ''}</h2>
         ${orig ? `<div class="detail-orig">${U.escapeHtml(orig)}</div>` : ''}
         <div class="detail-meta">${[f.director ? `реж. ${directorBtn}` : '', metaBits].filter(Boolean).join(' · ')}</div>
         ${a != null ? `<span class="avg-big" style="background:${U.ratingColor(a)}" title="Середня оцінка">${U.fmtAvg(a)}</span>` : ''}
@@ -575,12 +709,18 @@ function wireDetail(box) {
     const film = filmsList.find(f => f.id === detailState.filmId);
     if (!film) return;
 
-    // Клік на режисера / актора / жанр — фільтруємо список фільмів
+    // Клік на режисера / актора / жанр — фільтруємо список. Якщо це серіал —
+    // фільтруємо вкладку «Серіали», інакше друзі бачили б «нічого не знайдено»
     const person = e.target.closest('[data-person]');
     if (person) {
       const q = person.dataset.person;
+      const m = isSeriesItem(film) ? 'series' : 'films';
       detailState.close();
-      setFilter(q);
+      if (mode !== m) {
+        document.dispatchEvent(new CustomEvent('films:filter', { detail: { q, mode: m } }));
+      } else {
+        setFilter(q);
+      }
       return;
     }
 
