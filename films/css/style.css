@@ -2950,9 +2950,16 @@ td.t-num .t-kind { margin-left: 6px; }
   box-shadow: 0 1px 4px rgba(20, 15, 5, 0.12);
 }
 
-/* Оцінка прямо у формі додавання/редагування */
+/* Оцінка прямо у формі додавання/редагування.
+   Шкала загорнута в ту самію «пігулку» var(--surface-2), що й
+   перемикач «Фільм/Серіал» (.seg) — єдиний колір поля. */
 .form-rating { display: flex; flex-direction: column; gap: 6px; margin: 4px 0 14px; }
-.form-rating .rt { justify-content: flex-start; }
+.form-rating .rt {
+  justify-content: flex-start;
+  background: var(--surface-2);
+  border-radius: 12px;
+  padding: 10px 12px 8px;
+}
 .form-rating .remove-rating { align-self: flex-start; }
 .s-retry { display: flex; justify-content: center; padding: 6px 0 2px; }
 

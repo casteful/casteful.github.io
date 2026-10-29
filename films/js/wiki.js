@@ -22,7 +22,7 @@
 // є fetchPoster(): IMDb за tt-ID → Wikidata sitelinks → pageimages.
 // ============================================================
 
-import { OMDB_API_KEY } from './config.js?v=5.4';
+import { OMDB_API_KEY } from './config.js?v=5.5';
 
 const WD_API = 'https://www.wikidata.org/w/api.php';
 

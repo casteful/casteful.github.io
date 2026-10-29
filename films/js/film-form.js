@@ -5,16 +5,16 @@
 //  - збереження в Firebase
 // ============================================================
 
-import { USERS } from './config.js?v=5.4';
-import * as store from './store.js?v=5.4';
-import * as U from './utils.js?v=5.4';
-import { toast, openModal, confirmDialog, icons } from './ui.js?v=5.4';
-import { suggestFilms, typeLabel, imdbTemporarilyDown, imdbById } from './imdb.js?v=5.4';
-import { searchWikiFilms, fetchPoster, posterQuick, premiereInfo } from './wiki.js?v=5.4';
-import { translateToUk } from './translate.js?v=5.4';
-import { enrichFilm } from './enrich.js?v=5.4';
-import { notifyFilmAdded, notifyFilmDeleted, notifyRatingSet, notifyRatingRemoved } from './telegram.js?v=5.4';
-import { rateTrailHTML, paintTrail, popValue } from './rating-ui.js?v=5.4';
+import { USERS } from './config.js?v=5.5';
+import * as store from './store.js?v=5.5';
+import * as U from './utils.js?v=5.5';
+import { toast, openModal, confirmDialog, icons } from './ui.js?v=5.5';
+import { suggestFilms, typeLabel, imdbTemporarilyDown, imdbById } from './imdb.js?v=5.5';
+import { searchWikiFilms, fetchPoster, posterQuick, premiereInfo } from './wiki.js?v=5.5';
+import { translateToUk } from './translate.js?v=5.5';
+import { enrichFilm } from './enrich.js?v=5.5';
+import { notifyFilmAdded, notifyFilmDeleted, notifyRatingSet, notifyRatingRemoved } from './telegram.js?v=5.5';
+import { rateTrailHTML, paintTrail, popValue } from './rating-ui.js?v=5.5';
 
 // ============================================================
 // Швидкий пошук для автозаповнення (спільний між відкриттями).
@@ -236,11 +236,15 @@ export function openFormModal({ film = null, currentUserId, allFilms = [], kind:
   // ---------- Тип: фільм / серіал ----------
   const kindSeg = box.querySelector('#fKind');
   const runtimeField = box.querySelector('#fRuntimeField');
+  // У серіалів тривалості немає -> «Країна» розтягується на два стовпці,
+  // щоб у сітці не лишалася діра поруч.
+  const countryField = box.querySelector('#fCountryField');
   function setKind(k) {
     formKind = k === 'series' ? 'series' : 'film';
     if (kindSeg) kindSeg.querySelectorAll('[data-kind]').forEach(b =>
       b.classList.toggle('active', b.dataset.kind === formKind));
     if (runtimeField) runtimeField.hidden = formKind === 'series';
+    if (countryField) countryField.classList.toggle('span-2', formKind === 'series');
   }
   if (kindSeg) {
     kindSeg.addEventListener('click', (e) => {
@@ -806,14 +810,6 @@ function formHTML({ isEdit, film, kind = 'film', withRating = false, rating = nu
     </label>`}
 
     <div class="form-grid">
-      <div class="field span-2">
-        <span class="field-label">Тип</span>
-        <div class="seg" id="fKind" role="group" aria-label="Тип запису">
-          <button type="button" data-kind="film" class="${isSeries ? '' : 'active'}">Фільм</button>
-          <button type="button" data-kind="series" class="${isSeries ? 'active' : ''}">Серіал</button>
-        </div>
-        <span class="hint">Серіали живуть в окремій вкладці й не впливають на кіногодини фільмів. У серіалів тривалість не зберігається.</span>
-      </div>
       <label class="field">
         <span class="field-label">Назва (українською)</span>
         <input id="fTitleUk" type="text" placeholder="Напр.: Втеча з Шоушенка">
@@ -827,11 +823,19 @@ function formHTML({ isEdit, film, kind = 'film', withRating = false, rating = nu
         <input id="fYear" type="number" min="1888" max="2100" placeholder="1994">
         <span class="hint" id="premiereHint" hidden></span>
       </label>
+      <div class="field">
+        <span class="field-label">Тип</span>
+        <div class="seg" id="fKind" role="group" aria-label="Тип запису">
+          <button type="button" data-kind="film" class="${isSeries ? '' : 'active'}">Фільм</button>
+          <button type="button" data-kind="series" class="${isSeries ? 'active' : ''}">Серіал</button>
+        </div>
+        <span class="hint">Серіали живуть в окремій вкладці; тривалість не зберігається.</span>
+      </div>
       <label class="field" id="fRuntimeField" ${isSeries ? 'hidden' : ''}>
         <span class="field-label">Тривалість, хв</span>
         <input id="fRuntime" type="number" min="1" max="1200" placeholder="142">
       </label>
-      <label class="field">
+      <label class="field${isSeries ? ' span-2' : ''}" id="fCountryField">
         <span class="field-label">Країна</span>
         <input id="fCountry" type="text" placeholder="США" autocomplete="off">
       </label>
