@@ -201,6 +201,7 @@ export function trunc(s, n) {
 }
 
 export function pluralFilms(n) { return plural(n, ['фільм', 'фільми', 'фільмів']); }
+export function pluralSeries(n) { return plural(n, ['серіал', 'серіали', 'серіалів']); }
 export function pluralRatings(n) { return plural(n, ['оцінка', 'оцінки', 'оцінок']); }
 export function pluralRatingsGen(n) { return plural(n, ['оцінки', 'оцінок', 'оцінок']); }
 

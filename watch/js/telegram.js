@@ -71,7 +71,8 @@ async function send(text) {
 // ---------- Готові повідомлення (українською, коротко) ----------
 
 export function notifyFilmAdded(userId, film) {
-  return send(`${userName(userId)} додав фільм «${filmTitle(film)}»${film && film.year ? ` (${film.year})` : ''}`);
+  const kind = film && film.type === 'series' ? 'серіал' : 'фільм';
+  return send(`${userName(userId)} додав ${kind} «${filmTitle(film)}»${film && film.year ? ` (${film.year})` : ''}`);
 }
 
 export function notifyFilmDeleted(userId, title) {

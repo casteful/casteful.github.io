@@ -34,11 +34,15 @@ initUser();
 initTabs();
 
 // Клік на людину/жанр у модалці фільму або статистиці:
-// переключає вкладку «Фільми» (якщо потрібно) і фільтрує список
-document.addEventListener('films:filter', (e) => {
-  if (activeTab !== 'films') switchTab('films');
-  filmsView.setFilter(e.detail);
-});
+// переключає потрібну вкладку («Фільми» або «Серіали» — залежно від того,
+// де є збіги) і фільтрує список
+function applyFilter(q) {
+  const targetTab = filmsView.resolveModeForQuery(q) === 'series' ? 'series' : 'films';
+  if (activeTab !== targetTab) switchTab(targetTab);
+  filmsView.setFilter(q);
+}
+
+document.addEventListener('films:filter', (e) => applyFilter(e.detail));
 
 store.onFilms((list, err) => {
   if (err) {
@@ -113,7 +117,9 @@ function initBrand() {
 function initFab() {
   fab.innerHTML = icons.plus;
   fab.addEventListener('click', () => {
-    if (activeTab !== 'films') switchTab('films');
+    // «Статистика» → ведемо на «Фільми»; між «Фільми»/«Серіали» не стрибаємо:
+    // форма відкриється з відповідним типом за активною вкладкою
+    if (activeTab !== 'films' && activeTab !== 'series') switchTab('films');
     filmsView.openAdd();
   });
 }
@@ -214,12 +220,13 @@ function renderTab() {
     b.setAttribute('aria-selected', on ? 'true' : 'false');
   });
 
-  if (activeTab === 'films') {
+  if (activeTab === 'films' || activeTab === 'series') {
     // Каркас монтуємо лише при переключенні вкладки — оновлення даних
     // із бази просто перемальовують сітку, не смикаючи інтерфейс
-    if (mountedTab !== 'films') {
+    filmsView.setMode(activeTab === 'series' ? 'series' : 'movies');
+    if (mountedTab !== activeTab) {
       filmsView.mount(view);
-      mountedTab = 'films';
+      mountedTab = activeTab;
     }
     if (currentUser) filmsView.setUser(currentUser.id);
     filmsView.setFilms(filmsArr);
@@ -228,7 +235,7 @@ function renderTab() {
     // щоб «Рекорди» у статистиці могли відкрити вікно фільму
     filmsView.setFilms(filmsArr);
     statsView.mount(view, filmsArr, {
-      onFilter: (q) => { switchTab('films'); filmsView.setFilter(q); },
+      onFilter: (q) => applyFilter(q),
       onOpenFilm: (id) => filmsView.openFilmById(id)
     });
     mountedTab = 'stats';

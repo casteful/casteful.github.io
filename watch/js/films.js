@@ -9,6 +9,7 @@ import * as U from './utils.js';
 import { toast, openModal, confirmDialog, icons, lockScroll, unlockScroll } from './ui.js';
 import { openFormModal } from './film-form.js';
 import { notifyRatingSet, notifyRatingRemoved, notifyFilmDeleted } from './telegram.js';
+import { rateTrailHTML, paintTrail, popValue, wireTrail } from './rating-scale.js';
 
 let container = null;
 let gridEl = null;
@@ -20,6 +21,17 @@ let sort = localStorage.getItem('films_sort') || 'new';
 let view = localStorage.getItem('films_view') === 'table' ? 'table' : 'grid'; // сітка або таблиця
 let currentUserId = null;
 let detailState = null; // { overlay, box, filmId, close }
+
+// Режим списку: 'movies' (вкладка «Фільми») або 'series' (вкладка «Серіали»).
+// Один і той самий каркас/сітка/таблиця — різні дані та підписи.
+let mode = 'movies';
+
+const isSeriesItem = f => f && f.type === 'series';
+
+// Заголовок вкладки/порожніх станів залежно від режиму
+const L = () => mode === 'series'
+  ? { one: 'серіал', add: 'Додати серіал', emptyH: 'Поки що немає жодного серіалу', emptyP: 'Додайте перший серіал — почніть вводити назву, і ми підтягнемо постер та деталі.' }
+  : { one: 'фільм', add: 'Додати фільм', emptyH: 'Поки що немає жодного фільму', emptyP: 'Додайте перший фільм — почніть вводити назву, і ми підтягнемо постер та деталі з IMDb.' };
 
 // ---------- Публічний інтерфейс ----------
 
@@ -49,7 +61,43 @@ export function setUser(userId) {
 }
 
 export function openAdd() {
-  openFormModal({ film: null, currentUserId, allFilms: filmsList });
+  openFormModal({ film: null, currentUserId, allFilms: filmsList, defaultType: mode === 'series' ? 'series' : 'movie' });
+}
+
+// Режим списку («Фільми» показують усе, крім серіалів; «Серіали» — лише серіали).
+// Викликається з app.js при переключенні вкладок. Зміна режиму перебудовує
+// каркас (підписи, колонки) і скидає пошуковий запит.
+export function setMode(m) {
+  const next = m === 'series' ? 'series' : 'movies';
+  if (mode === next) return;
+  mode = next;
+  query = '';
+  if (container) {
+    buildSkeleton();
+    refreshGrid();
+  }
+}
+
+// Куди веде пошуковий запит зі статистики: якщо збіги лише серед серіалів —
+// фільтруємо вкладку «Серіали», інакше — «Фільми».
+export function resolveModeForQuery(q) {
+  const s = String(q || '').trim().toLowerCase();
+  if (!s) return 'movies';
+  const qEn = U.genreEn(s);
+  const hit = f => {
+    const hay = [f.title, f.titleUk, f.director, f.country,
+      ...(f.genres || []), ...(f.cast || [])]
+      .map(x => String(x || '').toLowerCase());
+    if (hay.some(x => x.includes(s))) return true;
+    if (qEn && qEn !== s) {
+      const gEn = (f.genres || []).map(g => String(U.genreEn(g) || '').toLowerCase());
+      if (gEn.some(x => x.includes(qEn))) return true;
+    }
+    return false;
+  };
+  if (filmsList.some(f => !isSeriesItem(f) && hit(f))) return 'movies';
+  if (filmsList.some(f => isSeriesItem(f) && hit(f))) return 'series';
+  return 'movies';
 }
 
 // Зовнішній фільтр (клік на режисера/актора/жанр у статистиці чи картці).
@@ -94,12 +142,17 @@ function buildSkeleton() {
         <option value="friends">За оцінками друзів</option>
         <option value="year">За роком</option>
         <option value="title">За назвою (А–Я)</option>
+        <optgroup label="Оцінка кожного друга">
+          ${USERS.map(u => `
+            <option value="user:${u.id}">${U.escapeHtml(u.name)}: спочатку високі ↓</option>
+            <option value="user:${u.id}-asc">${U.escapeHtml(u.name)}: спочатку низькі ↑</option>`).join('')}
+        </optgroup>
       </select>
       <div class="view-toggle" role="group" aria-label="Вигляд списку">
         <button type="button" data-view-btn="grid" class="${view === 'grid' ? 'active' : ''}" title="Сітка" aria-label="Вигляд: сітка">${icons.grid}</button>
         <button type="button" data-view-btn="table" class="${view === 'table' ? 'active' : ''}" title="Таблиця" aria-label="Вигляд: таблиця">${icons.table}</button>
       </div>
-      <button class="btn primary add-btn" id="addBtn">${icons.plus}<span>Додати фільм</span></button>
+      <button class="btn primary add-btn" id="addBtn">${icons.plus}<span>${L().add}</span></button>
     </div>
     <div id="filmsGrid" class="${view === 'table' ? 'table-wrap' : 'grid'}"></div>`;
 
@@ -135,11 +188,17 @@ function buildSkeleton() {
   gridEl.addEventListener('click', (e) => {
     const th = e.target.closest('th[data-sort]');
     if (th) {
-      sort = th.dataset.sort;
-      localStorage.setItem('films_sort', sort);
+      const key = th.dataset.sort;
+      // Колонка друга: перший клік — від високої до низької, повторний —
+      // навпаки (цикл desc ⇄ asc). Інші колонки просто активуються.
+      if (key.startsWith('user:')) {
+        const base = key.endsWith('-asc') ? key.slice(0, -4) : key;
+        sort = (sort === key || sort === base) ? `${base}-asc` : base;
+      } else {
+        sort = key;
+      }
+      try { localStorage.setItem('films_sort', sort); } catch (e2) {}
       const sel = container.querySelector('#filmSort');
-      // сортування за конкретним другом ('user:dima') немає власного
-      // пункту в списку — вибір показує найближчий «За оцінками друзів»
       if (sel) sel.value = [...sel.options].some(o => o.value === sort) ? sort : 'friends';
       refreshGrid();
       return;
@@ -189,7 +248,9 @@ function buildSkeleton() {
 
 function filtered() {
   const q = query.trim().toLowerCase();
-  let list = filmsList;
+  // Спочатку відсіюємо за режимом вкладки: «Фільми» — усе, крім серіалів,
+  // «Серіали» — лише серіали (записи без type вважаємо фільмами)
+  let list = filmsList.filter(f => mode === 'series' ? isSeriesItem(f) : !isSeriesItem(f));
   if (q) {
     // Жанри в базі двомовні (старі записи укр., нові англ.) — «драма»
     // має знаходити і фільми з жанром "drama", і навпаки
@@ -220,10 +281,21 @@ function filtered() {
       .map(([, v]) => v);
     return vals.length ? vals.reduce((s, v) => s + v, 0) / vals.length : -1;
   };
-  // Сортування за колонкою конкретного друга в таблиці ('user:dima')
+  // Сортування за колонкою конкретного друга в таблиці та пунктами меню
+  // ('user:dima' — від високої, 'user:dima-asc' — від низької).
+  // Фільми без оцінки цього друга завжди в кінці, в обох напрямках.
   if (sort.startsWith('user:')) {
-    const uid = sort.slice(5);
-    return [...list].sort((a, b) => valOf(b, uid) - valOf(a, uid));
+    const rest = sort.slice(5);
+    const asc = rest.endsWith('-asc');
+    const uid = asc ? rest.slice(0, -4) : rest;
+    return [...list].sort((a, b) => {
+      const va = valOf(a, uid), vb = valOf(b, uid);
+      const aMiss = va < 0, bMiss = vb < 0;
+      if (aMiss && bMiss) return 0;
+      if (aMiss) return 1;
+      if (bMiss) return -1;
+      return asc ? va - vb : vb - va;
+    });
   }
   switch (sort) {
     case 'old': return [...list].sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
@@ -259,10 +331,10 @@ function refreshGrid() {
   if (!filmsList.length && !query.trim()) {
     gridEl.innerHTML = `
       <div class="state-box">
-        <span class="state-icon">${icons.clapper}</span>
-        <h3>Поки що немає жодного фільму</h3>
-        <p>Додайте перший фільм — почніть вводити назву, і ми підтягнемо постер та деталі з IMDb.</p>
-        <button class="btn primary" id="emptyAdd">${icons.plus}<span>Додати фільм</span></button>
+        <span class="state-icon">${mode === 'series' ? icons.tv : icons.clapper}</span>
+        <h3>${L().emptyH}</h3>
+        <p>${L().emptyP}</p>
+        <button class="btn primary" id="emptyAdd">${icons.plus}<span>${L().add}</span></button>
       </div>`;
     gridEl.querySelector('#emptyAdd').addEventListener('click', openAdd);
     return;
@@ -318,11 +390,16 @@ function tableHTML(list) {
     `<th class="sortable ${sort === key ? 'active' : ''} ${extra}" data-sort="${key}" scope="col" title="Сортувати">${label}</th>`;
 
   // Колонки друзів — клікабельні: сортують список за оцінками цього друга
-  const userHeads = USERS.map(u => `
-    <th class="u-col sortable ${sort === `user:${u.id}` ? 'active' : ''}" data-sort="user:${u.id}" scope="col"
-        title="Сортувати за оцінками: ${U.escapeHtml(u.name)}" aria-label="Сортувати за оцінками ${U.escapeHtml(u.name)}">
-      ${U.avatarHTML(u, u.id === currentUserId ? 'mine' : '', 'u-head')}
-    </th>`).join('');
+  // (перший клік — від високої, повторний — від низької, цикл desc ⇄ asc)
+  const userHeads = USERS.map(u => {
+    const base = `user:${u.id}`;
+    const on = sort === base || sort === `${base}-asc`;
+    return `
+    <th class="u-col sortable ${on ? 'active' : ''}" data-sort="${base}" scope="col"
+        title="Сортувати за оцінками: ${U.escapeHtml(u.name)} (клік — високі/низькі)" aria-label="Сортувати за оцінками ${U.escapeHtml(u.name)}">
+      ${U.avatarHTML(u, u.id === currentUserId ? 'mine' : '', 'u-head')}${on ? `<i class="sort-dir">${sort.endsWith('-asc') ? '↑' : '↓'}</i>` : ''}
+    </th>`;
+  }).join('');
 
   return `
   <table class="films-table">
@@ -331,7 +408,7 @@ function tableHTML(list) {
       ${thSort('year', 'Рік')}
       <th scope="col">Режисер</th>
       <th scope="col">Жанри</th>
-      <th scope="col" class="t-num">Хв</th>
+      ${mode === 'series' ? '' : '<th scope="col" class="t-num">Хв</th>'}
       ${thSort('rating', 'Сер.')}
       ${userHeads}
       <th scope="col" aria-hidden="true"></th>
@@ -369,7 +446,7 @@ function rowHTML(f) {
     <td class="t-num t-muted">${f.year || '—'}</td>
     <td class="t-muted" title="${U.escapeHtml(f.director || '')}">${f.director ? U.escapeHtml(U.trunc(f.director, 28)) : '—'}</td>
     <td class="t-muted t-genres" title="${U.escapeHtml((f.genres || []).join(', '))}">${f.genres && f.genres.length ? U.escapeHtml(U.trunc(f.genres.join(', '), 32)) : '—'}</td>
-    <td class="t-num t-muted">${f.runtime || '—'}</td>
+    ${mode === 'series' ? '' : `<td class="t-num t-muted">${f.runtime || '—'}</td>`}
     <td>${a != null
       ? `<span class="avg-badge sm" style="background:${U.ratingColor(a)}" title="Середня оцінка">${U.fmtAvg(a)}</span>`
       : `<span class="t-muted">—</span>`}</td>
@@ -429,14 +506,6 @@ function cardHTML(f) {
 
 let ratePop = null; // { el, backdrop, sheet }
 
-const RATE_LABELS = {
-  1: 'Жах', 2: 'Дуже погано', 3: 'Погано', 4: 'Слабко', 5: 'Так собі',
-  6: 'Нормально', 7: 'Добре', 8: 'Дуже добре', 9: 'Чудово', 10: 'Шедевр'
-};
-
-// Зірочка для шкали оцінки (розмір/колір керується CSS)
-const STAR_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.9l2.8 5.8 6.4.9-4.6 4.5 1.1 6.3L12 17.4l-5.7 3 1.1-6.3-4.6-4.5 6.4-.9z"/></svg>';
-
 function closeRatePop() {
   if (!ratePop) return;
   const { el, backdrop, sheet } = ratePop;
@@ -487,77 +556,9 @@ function buildRatePop(film) {
   return pop;
 }
 
-// ---------- Компонент «шкала оцінки» (зорі) ----------
-// Єдина шкала 1–10 для спливашок, шітів і модалки: 10 зірочок,
-// заливаються кольором до обраного значення (від червоного до
-// зеленого), над шкалою — велике число і слово-підпис.
-// Наведення показує прев'ю, клік зберігає миттєво.
-
-function rateTrailHTML(selected) {
-  const stars = Array.from({ length: 10 }, (_, i) => {
-    const s = i + 1;
-    const on = selected != null && s <= selected;
-    return `<button type="button" class="rt-seg ${on ? 'on' : ''}" data-score="${s}" style="--c:${U.ratingColor(s)}" aria-label="${s} — ${RATE_LABELS[s]}">${STAR_SVG}</button>`;
-  }).join('');
-  return `
-    <div class="rt-display">
-      <span class="rt-value"${selected != null ? ` style="color:${U.ratingColor(selected)}"` : ''}>${selected != null ? selected : '—'}</span>
-      <span class="rt-word">${selected != null ? RATE_LABELS[selected] : 'Оберіть оцінку'}</span>
-    </div>
-    <div class="rt-track">${stars}</div>`;
-}
-
-// Перемалювати шкалу в контейнері root на значення s (null — «порожньо»)
-function paintTrail(root, s) {
-  const track = root.querySelector('.rt-track');
-  if (track) {
-    track.querySelectorAll('.rt-seg').forEach(c =>
-      c.classList.toggle('on', s != null && +c.dataset.score <= s));
-  }
-  const v = root.querySelector('.rt-value');
-  const w = root.querySelector('.rt-word');
-  if (!v || !w) return;
-  if (s != null) {
-    v.textContent = s;
-    v.style.color = U.ratingColor(s);
-    w.textContent = RATE_LABELS[s];
-  } else {
-    v.textContent = '—';
-    v.style.color = '';
-    w.textContent = 'Оберіть оцінку';
-  }
-}
-
-// Пружний «піп» великого числа при виборі оцінки
-function popValue(root) {
-  const v = root.querySelector('.rt-value');
-  if (v && v.animate) {
-    v.animate(
-      [{ transform: 'scale(1)' }, { transform: 'scale(1.22)' }, { transform: 'scale(1)' }],
-      { duration: 280, easing: 'cubic-bezier(.34,1.56,.64,1)' }
-    );
-  }
-}
-
-// Наведення/клік для шкали у спливашці (модалка делегує події на box,
-// бо refreshDetail() перестикує її вміст на кожному снапшоті)
-function wireTrail(root, { selected, onPick }) {
-  const track = root.querySelector('.rt-track');
-  if (!track) return;
-  track.addEventListener('mouseover', (e) => {
-    const seg = e.target.closest('.rt-seg');
-    if (seg) paintTrail(root, +seg.dataset.score);
-  });
-  track.addEventListener('mouseleave', () => paintTrail(root, selected));
-  track.addEventListener('click', (e) => {
-    const seg = e.target.closest('.rt-seg');
-    if (!seg) return;
-    const s = +seg.dataset.score;
-    paintTrail(root, s);
-    popValue(root);
-    onPick(s);
-  });
-}
+// Шкала оцінки (rateTrailHTML/paintTrail/popValue/wireTrail) — у
+// спільному модулі js/rating-scale.js: використовується ще у формі
+// додавання фільму та модалці фільму.
 
 function openRatePop(anchor, film) {
   if (!currentUserId) { toast('Спочатку оберіть профіль', 'err'); return; }

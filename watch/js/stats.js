@@ -32,6 +32,12 @@ export function mount(container, filmsArr, handlers = {}) {
 }
 
 function compute(films) {
+  // Фільми та серіали рахуємо окремо: серіали не мають тривалості
+  // (її неможливо порахувати), тож не впливають на кіночас.
+  // Оцінки, топи, рекорди та жанри — спільні для обох типів.
+  const movies = films.filter(f => f.type !== 'series');
+  const series = films.filter(f => f.type === 'series');
+
   const ratingEntries = [];
   films.forEach(f => {
     Object.entries(f.ratings || {}).forEach(([u, v]) => {
@@ -154,8 +160,9 @@ function compute(films) {
     .map(([y, c]) => ({ y: +y, c }))
     .sort((a, b) => a.y - b.y);
 
-  // --- Хронометраж ---
-  const withRt = films.filter(f => f.runtime > 0 && f.runtime <= 1200);
+  // --- Хронометраж: ЛИШЕ фільми. У серіалів тривалості немає (і не має бути) —
+  // сума серій залежить від сезону, тож «хвилини» серіалу вводили б в оману.
+  const withRt = movies.filter(f => f.runtime > 0 && f.runtime <= 1200);
   const totalMin = withRt.reduce((s, f) => s + f.runtime, 0);
   const avgRt = withRt.length ? totalMin / withRt.length : null;
   const longest = withRt.length ? withRt.reduce((m, f) => f.runtime > m.runtime ? f : m) : null;
@@ -210,7 +217,7 @@ function compute(films) {
   }).sort((a, b) => (b.avg != null) - (a.avg != null) || b.avg - a.avg || b.n - a.n);
 
   return {
-    films, totalRatings, overallAvg, topFilms, ratedCount: ratedFilms.length,
+    films, movies, series, totalRatings, overallAvg, topFilms, ratedCount: ratedFilms.length,
     dist, decadeRows, topDirectors, topGenres, topCast,
     countryRows, countryAvgRows, dirAvgRows, genreAvgRows,
     decadeAvgRows, yearRows, seasonRows, activityRows, compareRows,
@@ -245,10 +252,11 @@ function template(s, handlers) {
 
   const tiles = `
     <div class="tiles">
-      ${tile(icons.clapper, s.films.length, U.pluralFilms(s.films.length))}
+      ${tile(icons.clapper, s.movies.length, U.pluralFilms(s.movies.length))}
+      ${tile(icons.tv, s.series.length, U.pluralSeries(s.series.length))}
       ${tile(icons.star, s.totalRatings, `${s.totalRatings} ${U.pluralRatingsGen(s.totalRatings)} поставлено`)}
       ${tile(icons.chart, U.fmtAvg(s.overallAvg), 'середня оцінка')}
-      ${tile(icons.clock, `${s.totalMin ? Math.round(s.totalMin / 60) : '—'}<small class="tile-unit">год</small>`, 'спільного кіночасу')}
+      ${tile(icons.clock, `${s.totalMin ? Math.round(s.totalMin / 60) : '—'}<small class="tile-unit">год</small>`, 'спільного кіночасу (фільми)')}
       ${tile(icons.users, s.activeUser ? `<i class="ava-dot" style="background:${s.activeUser.color}"></i>${U.escapeHtml(s.activeUser.name)}` : '—', 'найактивніший глядач', 'tile-user')}
     </div>`;
 
@@ -262,7 +270,7 @@ function template(s, handlers) {
 
   const topFilms = s.ratedCount === 0 ? '' : `
     <section class="panel">
-      <h3 class="panel-title">Топ-${Math.min(10, s.ratedCount)} фільмів</h3>
+      <h3 class="panel-title">Топ-${Math.min(10, s.ratedCount)}</h3>
       <div class="bars">
         ${s.topFilms.map((r, i) => `
           <button type="button" class="brow clickable" data-open-film="${r.f.id}" title="${U.escapeHtml(r.f.titleUk || r.f.title || '')}">
@@ -288,7 +296,7 @@ function template(s, handlers) {
 
   const decadesPanel = s.decadeRows.length === 0 ? '' : `
     <section class="panel">
-      <h3 class="panel-title">Фільми за десятиліттями</h3>
+      <h3 class="panel-title">За десятиліттями</h3>
       <div class="bars">
         ${s.decadeRows.map(r => `
           <div class="brow">
@@ -407,7 +415,7 @@ function template(s, handlers) {
 
   const yearPanel = s.yearRows.length === 0 ? '' : `
     <section class="panel">
-      <h3 class="panel-title">Фільми за роком випуску</h3>
+      <h3 class="panel-title">За роком виходу</h3>
       <div class="bars scrollable">
         ${s.yearRows.map(r => `
           <div class="brow">
@@ -420,7 +428,7 @@ function template(s, handlers) {
 
   const seasonsPanel = s.seasonRows.length === 0 ? '' : `
     <section class="panel">
-      <h3 class="panel-title">Фільми за сезонами <span class="panel-hint">— коли ми їх дивилися</span></h3>
+      <h3 class="panel-title">За сезонами <span class="panel-hint">— коли ми їх дивилися</span></h3>
       <div class="bars">
         ${s.seasonRows.map(r => `
           <div class="brow">
@@ -460,7 +468,7 @@ function template(s, handlers) {
 
   const runtimePanel = `
     <section class="panel">
-      <h3 class="panel-title">Хронометраж</h3>
+      <h3 class="panel-title">Хронометраж <span class="panel-hint">— лише фільми</span></h3>
       <div class="mini-tiles">
         <div class="mini-tile"><span class="mt-value">${s.avgRt ? Math.round(s.avgRt) : '—'}<small> хв</small></span><span class="mt-label">середня тривалість</span></div>
         <div class="mini-tile"><span class="mt-value">${s.longest ? s.longest.runtime : '—'}<small> хв</small></span><span class="mt-label">найдовший${s.longest ? ` — «${U.escapeHtml(U.trunc(s.longest.titleUk || s.longest.title || '', 26))}»` : ''}</span></div>

@@ -13,7 +13,8 @@ import { suggestFilms, typeLabel, imdbTemporarilyDown, imdbById } from './imdb.j
 import { searchWikiFilms, fetchPoster, posterQuick, premiereInfo } from './wiki.js';
 import { translateToUk } from './translate.js';
 import { enrichFilm } from './enrich.js';
-import { notifyFilmAdded, notifyFilmDeleted } from './telegram.js';
+import { notifyFilmAdded, notifyFilmDeleted, notifyRatingSet, notifyRatingRemoved } from './telegram.js';
+import { rateTrailHTML, paintTrail, wireTrail } from './rating-scale.js';
 
 // ============================================================
 // Швидкий пошук для автозаповнення (спільний між відкриттями).
@@ -190,16 +191,22 @@ function cachedSearch(q, onPartial, opts = {}) {
   return p;
 }
 
-export function openFormModal({ film = null, currentUserId, allFilms = [] }) {
+export function openFormModal({ film = null, currentUserId, allFilms = [], defaultType = 'movie' }) {
   const isEdit = !!film;
   let picked = null; // обраний фільм з підказок IMDb
   // Прем'єра (повна дата «2007-09-24»), якщо вдалося дістати —
   // зберігається разом із фільмом і показується під полем «Рік»
   let pickedPremiere = (film && film.premiere) || null;
+  // Тип запису: 'movie' | 'series'. Новий — за режимом вкладки, з якої
+  // відкрито форму; редагування — за збереженим type фільму.
+  let filmType = (film ? film.type === 'series' : defaultType === 'series') ? 'series' : 'movie';
+  // Оцінка одразу у формі: підказується з режиму редагування, зберігається
+  // разом із фільмом (новий запис) або синхронізується (редагування)
+  let myRating = (film && currentUserId) ? ((film.ratings || {})[currentUserId] ?? null) : null;
 
-  const { box, close, overlay } = openModal(formHTML(isEdit, film), {
+  const { box, close, overlay } = openModal(formHTML(isEdit, film, myRating), {
     width: 640,
-    label: isEdit ? 'Редагувати фільм' : 'Новий фільм'
+    label: isEdit ? 'Редагувати запис' : 'Новий запис'
   });
 
   const $ = id => box.querySelector('#' + id);
@@ -218,6 +225,47 @@ export function openFormModal({ film = null, currentUserId, allFilms = [] }) {
     set('fPoster', film.poster || '');
     if (film.poster) showPoster(box, film.poster);
     if (film.premiere) showPremiereHint();
+  }
+
+  // ---------- Тип: фільм / серіал ----------
+  // Серіали живуть окремо (вкладка «Серіали»), у них немає тривалості —
+  // поле «Тривалість, хв» ховається, а в базі runtime очищується.
+  const typeSeg = box.querySelector('.type-seg');
+  function setType(t) {
+    filmType = t === 'series' ? 'series' : 'movie';
+    if (typeSeg) {
+      typeSeg.querySelectorAll('.type-opt').forEach(b =>
+        b.classList.toggle('active', b.dataset.type === filmType));
+    }
+    const rtField = $('fRuntimeField');
+    if (rtField) rtField.hidden = filmType === 'series';
+    const h2 = box.querySelector('#formTitle');
+    if (h2) h2.textContent = isEdit
+      ? (filmType === 'series' ? 'Редагувати серіал' : 'Редагувати фільм')
+      : (filmType === 'series' ? 'Новий серіал' : 'Новий фільм');
+  }
+  if (typeSeg) {
+    typeSeg.addEventListener('click', (e) => {
+      const btn = e.target.closest('.type-opt');
+      if (btn) setType(btn.dataset.type);
+    });
+  }
+  setType(filmType);
+
+  // ---------- Оцінка одразу у формі ----------
+  const rtRoot = $('formRating');
+  if (rtRoot) {
+    paintTrail(rtRoot, myRating);
+    wireTrail(rtRoot, { selected: myRating, onPick: (s) => {
+      if (!currentUserId) {
+        toast('Спочатку оберіть профіль у шапці', 'err');
+        paintTrail(rtRoot, myRating);
+        return;
+      }
+      // Повторний клік по тій самій зірці прибирає оцінку — як у модалці
+      myRating = (myRating === s) ? null : s;
+      paintTrail(rtRoot, myRating);
+    }});
   }
 
   // ---------- Автозаповнення (лише в режимі додавання) ----------
@@ -417,6 +465,10 @@ export function openFormModal({ film = null, currentUserId, allFilms = [] }) {
   function pickSuggestion(s) {
     if (!s) return;
     picked = s;
+
+    // Тип із підказки: серіал/мінісеріал → вкладка «Серіали», решта — фільми.
+    // Вибір користувача можна змінити перемикачем вручну.
+    if (s.type) setType((s.type === 'tvSeries' || s.type === 'tvMiniSeries') ? 'series' : 'movie');
 
     // ЯВНИЙ вибір підказки замінює дані полів (а не лише заповнює порожні):
     // так у режимі редагування можна «перезібрати» неправильно доданий
@@ -647,7 +699,10 @@ export function openFormModal({ film = null, currentUserId, allFilms = [] }) {
       director: val('fDirector').trim() || null,
       cast: U.parseGenres(val('fCast')),
       genres: U.parseGenres(val('fGenres')),
-      runtime: U.intOrNull(val('fRuntime'), 1, 1200),
+      // Тип визначає вкладку (Фільми/Серіали). У серіалів тривалість
+      // відсутня — її неможливо порахувати (серії різні), тож очищуємо.
+      type: filmType,
+      runtime: filmType === 'series' ? null : U.intOrNull(val('fRuntime'), 1, 1200),
       plot: val('fPlot').trim() || null
     };
 
@@ -672,10 +727,27 @@ export function openFormModal({ film = null, currentUserId, allFilms = [] }) {
     try {
       if (isEdit) {
         await store.updateFilm(film.id, data);
+        // Оцінка з форми: зберігаємо лише якщо вона змінилася
+        // (null прибирає оцінку — setRating це вміє)
+        const oldR = (film.ratings || {})[currentUserId] ?? null;
+        if (currentUserId && myRating !== oldR) {
+          await store.setRating(film.id, currentUserId, myRating);
+          if (myRating != null) {
+            notifyRatingSet(currentUserId, fTitle(film), myRating, oldR != null ? oldR : null);
+          } else {
+            notifyRatingRemoved(currentUserId, fTitle(film));
+          }
+        }
         toast('Зміни збережено');
       } else {
-        await store.addFilm({ ...data, addedBy: currentUserId });
-        toast('Фільм додано');
+        const key = await store.addFilm({ ...data, addedBy: currentUserId });
+        // Оцінка одразу при додаванні — щоб не шукати фільм у списку
+        if (currentUserId && myRating != null) {
+          await store.setRating(key, currentUserId, myRating);
+        }
+        toast(myRating != null
+          ? `Додано · ваша оцінка: ${myRating}${myRating >= 9 ? ' ✨' : ''}`
+          : (filmType === 'series' ? 'Серіал додано' : 'Фільм додано'));
         notifyFilmAdded(currentUserId, data);
       }
       close();
@@ -705,11 +777,11 @@ function hidePoster(box) {
   img.removeAttribute('src');
 }
 
-function formHTML(isEdit, film) {
+function formHTML(isEdit, film, initialRating = null) {
   return `
   <form id="filmForm" novalidate>
     <div class="modal-head">
-      <h2>${isEdit ? 'Редагувати фільм' : 'Новий фільм'}</h2>
+      <h2 id="formTitle">${isEdit ? 'Редагувати фільм' : 'Новий фільм'}</h2>
       <button type="button" class="icon-btn" data-close aria-label="Закрити">${icons.close}</button>
     </div>
 
@@ -742,7 +814,15 @@ function formHTML(isEdit, film) {
         <input id="fYear" type="number" min="1888" max="2100" placeholder="1994">
         <span class="hint" id="premiereHint" hidden></span>
       </label>
-      <label class="field">
+      <div class="field">
+        <span class="field-label">Тип</span>
+        <div class="type-seg" role="radiogroup" aria-label="Тип: фільм або серіал">
+          <button type="button" class="type-opt active" data-type="movie" aria-pressed="true"><span>Фільм</span></button>
+          <button type="button" class="type-opt" data-type="series" aria-pressed="false"><span>Серіал</span></button>
+        </div>
+        <span class="hint">Серіали — на окремій вкладці, без тривалості</span>
+      </div>
+      <label class="field" id="fRuntimeField">
         <span class="field-label">Тривалість, хв</span>
         <input id="fRuntime" type="number" min="1" max="1200" placeholder="142">
       </label>
@@ -768,6 +848,14 @@ function formHTML(isEdit, film) {
       <span class="field-label">Опис</span>
       <textarea id="fPlot" rows="4" placeholder="Короткий опис або сюжет…"></textarea>
     </label>
+
+    <div class="form-rating">
+      <div class="my-rating-top">
+        <span class="my-rating-label">Ваша оцінка</span>
+        <span class="rating-hint">за бажанням — можна поставити і пізніше</span>
+      </div>
+      <div class="rt" id="formRating" role="group" aria-label="Ваша оцінка від 1 до 10">${rateTrailHTML(initialRating)}</div>
+    </div>
 
     <div class="poster-edit" id="posterEditBox">
       <div class="poster-preview"><img id="fPosterPreview" alt="Прев'ю постера">${icons.film}</div>
