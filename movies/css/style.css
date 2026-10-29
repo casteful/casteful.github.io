@@ -897,15 +897,30 @@ td.u-col.mine:hover { background: color-mix(in srgb, var(--accent) 9%, var(--sur
 .rt-seg:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 /* Шкала у формі додавання («Ваша оцінка — необов'язково»):
-   кремова панель rgb(238, 236, 225) у тій самій геометрії, що й інша
-   панель форми (.enrich-status): ті самі 20px відступи від країв модалки,
-   той самий радіус 11px, що в інпутів, без рамки — чиста заливка.
-   Панель однакова в обох темах (це навмисний акцент), тому текст
-   усередині — фіксований темний, зірки до вибору темніші за звичайних
-   (var(--border-strong) зливається з кремом). */
+   кремова панель у тій самій геометрії, що й інша панель форми
+   (.enrich-status): ті самі 20px відступи від країв модалки, той самий
+   радіус 11px, що в інпутів, без рамки — чиста заливка.
+   Кольори панелі — змінні, бо темна тема має власну «нічну крем»-версію:
+   тепла темно-оливкова заливка замість світлого крему (світлий крем
+   rgb(238,236,225) у темній темі виглядав би як біла пляма). */
 .add-rate {
-  background: rgb(0, 0, 0);
+  --ar-bg: rgb(238, 236, 225);
+  --ar-label: #6d664b;
+  --ar-hint: #7a7566;
+  --ar-value: #8a8468;
+  --ar-star: #b6af93;
+  background: var(--ar-bg);
   border-radius: 11px;
+}
+/* темна тема: та сама панель, але «нічний крем» — тепла темно-оливкова
+   заливка (тепліша за --surface-2), світлий теплий текст; незаповнені
+   зірки приглушені, але помітні на темному */
+html[data-theme="dark"] .add-rate {
+  --ar-bg: rgb(58, 54, 40);
+  --ar-label: #d8d2b6;
+  --ar-hint: #a7a18a;
+  --ar-value: #b5af94;
+  --ar-star: #7d7660;
 }
 /* .field задає padding пізнішим у файлі правилом — беремо подвійний клас,
    щоб відступи панелі точно перебилися: 20px від країв (як у полів
@@ -914,12 +929,13 @@ td.u-col.mine:hover { background: color-mix(in srgb, var(--accent) 9%, var(--sur
   margin: 0 20px 13px;
   padding: 12px 13px;
 }
-.add-rate .field-label { color: #6d664b; }
-.add-rate .hint { color: #7a7566; }
-/* рядок «— Обрати оцінку» на кремі: у темній темі var(--muted) зливається */
-.add-rate .rt-value:not([style]) { color: #8a8468; }
+.add-rate .field-label { color: var(--ar-label); }
+.add-rate .hint { color: var(--ar-hint); }
+/* рядок «— Обрати оцінку»: фіксований колір-змінна, бо var(--muted)
+   зливається з кремовою заливкою в обох темах */
+.add-rate .rt-value:not([style]) { color: var(--ar-value); }
 .add-rate .rt { margin-top: 8px; }
-.add-rate .rt-seg { color: #b6af93; }
+.add-rate .rt-seg { color: var(--ar-star); }
 .add-rate .rt-seg.on { color: var(--accent); }
 .add-rate .hint { margin-top: 7px; }
 
