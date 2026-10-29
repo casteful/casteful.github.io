@@ -3,17 +3,17 @@
 // Firebase та зв'язування вкладок
 // ============================================================
 
-import { USERS } from './config.js?v=5.7';
-import * as store from './store.js?v=5.7';
-import * as filmsView from './films.js?v=5.7';
-import * as gamesView from './games.js?v=5.7';
-import * as statsView from './stats.js?v=5.7';
-import * as quizView from './quiz.js?v=5.7';
-import * as avatars from './avatars.js?v=5.7';
-import { icons, toast } from './ui.js?v=5.7';
-import { escapeHtml } from './utils.js?v=5.7';
-import { fetchPoster } from './wiki.js?v=5.7';
-import * as settings from './settings.js?v=5.7';
+import { USERS } from './config.js?v=5.9';
+import * as store from './store.js?v=5.9';
+import * as filmsView from './films.js?v=5.9';
+import * as gamesView from './games.js?v=5.9';
+import * as statsView from './stats.js?v=5.9';
+import * as quizView from './quiz.js?v=5.9';
+import * as avatars from './avatars.js?v=5.9';
+import { icons, toast } from './ui.js?v=5.9';
+import { escapeHtml } from './utils.js?v=5.9';
+import { fetchPoster } from './wiki.js?v=5.9';
+import * as settings from './settings.js?v=5.9';
 
 const view = document.getElementById('view');
 const userOverlay = document.getElementById('userOverlay');

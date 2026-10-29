@@ -3,14 +3,14 @@
 // модальне вікно фільму з оцінками 1–10
 // ============================================================
 
-import { USERS } from './config.js?v=5.7';
-import * as store from './store.js?v=5.7';
-import * as U from './utils.js?v=5.7';
-import * as A from './avatars.js?v=5.7';
-import { toast, openModal, confirmDialog, icons } from './ui.js?v=5.7';
-import { rateTrailHTML, paintTrail, popValue, openRatePop as openRatePopShared } from './rating-ui.js?v=5.7';
-import { openFormModal } from './film-form.js?v=5.7';
-import { notifyRatingSet, notifyRatingRemoved, notifyFilmDeleted } from './telegram.js?v=5.7';
+import { USERS } from './config.js?v=5.9';
+import * as store from './store.js?v=5.9';
+import * as U from './utils.js?v=5.9';
+import * as A from './avatars.js?v=5.9';
+import { toast, openModal, confirmDialog, icons } from './ui.js?v=5.9';
+import { rateTrailHTML, paintTrail, popValue, openRatePop as openRatePopShared } from './rating-ui.js?v=5.9';
+import { openFormModal } from './film-form.js?v=5.9';
+import { notifyRatingSet, notifyRatingRemoved, notifyFilmDeleted } from './telegram.js?v=5.9';
 
 let container = null;
 let gridEl = null;
@@ -663,7 +663,7 @@ function detailHTML(f) {
     `<button type="button" class="cast-chip" data-person="${U.escapeHtml(c)}" title="Фільми з цим актором">${U.escapeHtml(c)}</button>`
   ).join('');
   const directorBtn = f.director
-    ? `<button type="button" class="person-link" data-person="${U.escapeHtml(f.director)}" title="Фільми цього режисера">${U.escapeHtml(f.director)}</button>`
+    ? `<button type="button" class="person-link" data-person="${U.escapeHtml(f.director)}" title="${isSeries ? 'Серіали цього автора' : 'Фільми цього режисера'}">${U.escapeHtml(f.director)}</button>`
     : '';
 
   const friendRows = friendRowsHTML(f.ratings);
@@ -685,7 +685,7 @@ function detailHTML(f) {
       <div class="hero-text">
         <h2 class="detail-heading">${U.escapeHtml(fTitle(f))}</h2>
         ${orig ? `<div class="detail-orig">${U.escapeHtml(orig)}</div>` : ''}
-        <div class="detail-meta">${[f.director ? `реж. ${directorBtn}` : '', metaBits].filter(Boolean).join(' · ')}</div>
+        <div class="detail-meta">${[f.director ? `${isSeries ? 'авт.' : 'реж.'} ${directorBtn}` : '', metaBits].filter(Boolean).join(' · ')}</div>
         ${a != null ? `<span class="avg-big" style="background:${U.ratingColor(a)}" title="Середня оцінка">${U.fmtAvg(a)}</span>` : ''}
       </div>
     </div>

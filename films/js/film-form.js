@@ -5,16 +5,16 @@
 //  - збереження в Firebase
 // ============================================================
 
-import { USERS } from './config.js?v=5.7';
-import * as store from './store.js?v=5.7';
-import * as U from './utils.js?v=5.7';
-import { toast, openModal, confirmDialog, icons } from './ui.js?v=5.7';
-import { suggestFilms, typeLabel, imdbTemporarilyDown, imdbById } from './imdb.js?v=5.7';
-import { searchWikiFilms, fetchPoster, posterQuick, premiereInfo } from './wiki.js?v=5.7';
-import { translateToUk } from './translate.js?v=5.7';
-import { enrichFilm } from './enrich.js?v=5.7';
-import { notifyFilmAdded, notifyFilmDeleted, notifyRatingSet, notifyRatingRemoved } from './telegram.js?v=5.7';
-import { rateTrailHTML, paintTrail, popValue } from './rating-ui.js?v=5.7';
+import { USERS } from './config.js?v=5.9';
+import * as store from './store.js?v=5.9';
+import * as U from './utils.js?v=5.9';
+import { toast, openModal, confirmDialog, icons } from './ui.js?v=5.9';
+import { suggestFilms, typeLabel, imdbTemporarilyDown, imdbById } from './imdb.js?v=5.9';
+import { searchWikiFilms, fetchPoster, posterQuick, premiereInfo } from './wiki.js?v=5.9';
+import { translateToUk } from './translate.js?v=5.9';
+import { enrichFilm } from './enrich.js?v=5.9';
+import { notifyFilmAdded, notifyFilmDeleted, notifyRatingSet, notifyRatingRemoved } from './telegram.js?v=5.9';
+import { rateTrailHTML, paintTrail, popValue } from './rating-ui.js?v=5.9';
 
 // ============================================================
 // Швидкий пошук для автозаповнення (спільний між відкриттями).
@@ -239,12 +239,15 @@ export function openFormModal({ film = null, currentUserId, allFilms = [], kind:
   // У серіалів тривалості немає -> «Країна» розтягується на два стовпці,
   // щоб у сітці не лишалася діра поруч.
   const countryField = box.querySelector('#fCountryField');
+  const directorLabel = box.querySelector('#fDirectorField .field-label');
   function setKind(k) {
     formKind = k === 'series' ? 'series' : 'film';
     if (kindSeg) kindSeg.querySelectorAll('[data-kind]').forEach(b =>
       b.classList.toggle('active', b.dataset.kind === formKind));
     if (runtimeField) runtimeField.hidden = formKind === 'series';
     if (countryField) countryField.classList.toggle('span-2', formKind === 'series');
+    // у серіалів це автор/шоураниер, у фільмів — режисер
+    if (directorLabel) directorLabel.textContent = formKind === 'series' ? 'Автор / шоураниер' : 'Режисер';
   }
   if (kindSeg) {
     kindSeg.addEventListener('click', (e) => {
@@ -839,8 +842,8 @@ function formHTML({ isEdit, film, kind = 'film', withRating = false, rating = nu
         <span class="field-label">Країна</span>
         <input id="fCountry" type="text" placeholder="США" autocomplete="off">
       </label>
-      <label class="field span-2">
-        <span class="field-label">Режисер</span>
+      <label class="field span-2" id="fDirectorField">
+        <span class="field-label">${isSeries ? 'Автор / шоураниер' : 'Режисер'}</span>
         <input id="fDirector" type="text" placeholder="Френк Дарабонт">
       </label>
       <label class="field span-2">

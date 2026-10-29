@@ -9,7 +9,7 @@
 // Усе опціонально: будь-яка помилка просто лишає поля порожніми.
 // ============================================================
 
-import { qidByImdbId, enrichByQid } from './wiki.js?v=5.7';
+import { qidByImdbId, enrichByQid } from './wiki.js?v=5.9';
 
 const WD_ENDPOINT = 'https://query.wikidata.org/sparql';
 
@@ -29,7 +29,7 @@ async function enrichByImdbId(imdbId) {
   if (!imdbId || !/^tt\d+$/.test(imdbId)) return {};
 
   const query = `
-SELECT ?ukLabel ?enLabel ?enDesc ?enWikiTitle ?directorLabel ?countryLabel ?genreLabel ?actorLabel ?duration ?date WHERE {
+SELECT ?ukLabel ?enLabel ?enDesc ?enWikiTitle ?directorLabel ?creatorLabel ?execLabel ?countryLabel ?genreLabel ?actorLabel ?duration ?date WHERE {
   ?film wdt:P345 "${imdbId}" .
   OPTIONAL { ?film rdfs:label ?ukLabel . FILTER(LANG(?ukLabel) = "uk") }
   OPTIONAL { ?film rdfs:label ?enLabel . FILTER(LANG(?enLabel) = "en") }
@@ -40,6 +40,8 @@ SELECT ?ukLabel ?enLabel ?enDesc ?enWikiTitle ?directorLabel ?countryLabel ?genr
            schema:name ?enWikiTitle .
   }
   OPTIONAL { ?film wdt:P57 ?director . }
+  OPTIONAL { ?film wdt:P170 ?creator . }
+  OPTIONAL { ?film wdt:P1431 ?exec . }
   OPTIONAL { ?film wdt:P495 ?country . }
   OPTIONAL { ?film wdt:P2047 ?duration . }
   OPTIONAL { ?film wdt:P577 ?date . }
@@ -62,7 +64,11 @@ SELECT ?ukLabel ?enLabel ?enDesc ?enWikiTitle ?directorLabel ?countryLabel ?genr
   if (first.ukLabel) out.titleUk = first.ukLabel.value;
   if (first.enLabel) out.titleEn = first.enLabel.value;
   if (first.enDesc) out.desc = first.enDesc.value;
-  if (first.directorLabel) out.director = first.directorLabel.value;
+  // Режисер (P57); у серіалів його немає — автор (P170), далі перший EP (P1431)
+  const dirCell = rows.map(r => r.directorLabel && r.directorLabel.value).find(Boolean)
+    || rows.map(r => r.creatorLabel && r.creatorLabel.value).find(Boolean)
+    || rows.map(r => r.execLabel && r.execLabel.value).find(Boolean);
+  if (dirCell) out.director = dirCell;
   if (first.countryLabel) out.country = first.countryLabel.value;
   if (first.duration) out.runtime = parseInt(first.duration.value, 10) || null;
   // Точні назви статей en/uk Вікіпедії про ЦЕЙ фільм/серіал (sitelink

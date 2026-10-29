@@ -22,9 +22,10 @@
 // є fetchPoster(): IMDb за tt-ID → Wikidata sitelinks → pageimages.
 // ============================================================
 
-import { OMDB_API_KEY } from './config.js?v=5.7';
+import { OMDB_API_KEY } from './config.js?v=5.9';
 
 const WD_API = 'https://www.wikidata.org/w/api.php';
+const WD_SPARQL = 'https://query.wikidata.org/sparql';
 
 async function fetchJSON(url, timeoutMs = 8000, headers = {}) {
   // Один автоматичний повтор: короткі збої мережі/тротлінгу WMF — не рідкість
@@ -128,6 +129,20 @@ async function wdEntities(qids) {
     for (const c of claims.P57 || []) {
       const v = c.mainsnak && c.mainsnak.datavalue && c.mainsnak.datavalue.value;
       if (v && v.id && !e.directorQid) e.directorQid = v.id;
+    }
+    // У серіалів P57 (режисер) зазвичай немає. Тоді беремо автора (P170),
+    // а далі — ПЕРШОГО виконавчого продюсера (P1431): у «The Office» (US,
+    // Q23831) P57 і P170 порожні, і перший у P1431 — саме шоураниер
+    // Greg Daniels (далі йдуть інші EP, їх не чіпаємо). Поле в БД те саме
+    // (director), змінюються лише дані, що ними заповнюється.
+    if (!e.directorQid) {
+      for (const p of ['P170', 'P1431']) {
+        for (const c of claims[p] || []) {
+          const v = c.mainsnak && c.mainsnak.datavalue && c.mainsnak.datavalue.value;
+          if (v && v.id) { e.directorQid = v.id; break; }
+        }
+        if (e.directorQid) break;
+      }
     }
     // Країна походження (P495) — для статистики «Країни»
     for (const c of claims.P495 || []) {
@@ -628,14 +643,24 @@ export async function enrichByQid(qid) {
   };
 }
 
-// QID за IMDb ID (P345) — швидкий wbsearch, найнадійніший місток між джерелами
+// QID за IMDb ID (P345) — надійний SPARQL-місток між джерелами
 export async function qidByImdbId(tt) {
   if (!tt || !/^tt\d+$/.test(String(tt))) return null;
+  // Було: list=search з haswbstatement — CirrusSearch часто віддає
+  // «cirrussearch-too-busy-error», і швидкий шлях збагачення взагалі
+  // не запускався (кейс: The Office 2005 — без режисера/шоураниера).
+  // Тепер: SPARQL за P345 — той самий канал, що й СПАРКЛ-резерв,
+  // працює стабільно і з відкритим CORS.
   try {
-    const sr = await fetchJSON(`${WD_API}?action=query&format=json&list=search&srlimit=1` +
-      `&srsearch=${encodeURIComponent('haswbstatement:P345=' + tt)}`, 5000);
-    const found = sr && sr.query && sr.query.search && sr.query.search[0] && sr.query.search[0].title;
-    return (found && /^Q\d+$/.test(found)) ? found : null;
+    const q = `SELECT ?x WHERE { ?x wdt:P345 "${String(tt)}" . } LIMIT 1`;
+    const data = await fetchJSON(
+      `${WD_SPARQL}?query=${encodeURIComponent(q)}&format=json`,
+      7000,
+      { 'Accept': 'application/sparql-results+json' }
+    );
+    const b = data && data.results && Array.isArray(data.results.bindings) && data.results.bindings[0];
+    const m = b && b.x && b.x.value && String(b.x.value).match(/\/(Q\d+)$/);
+    return m ? m[1] : null;
   } catch (e) { return null; }
 }
 

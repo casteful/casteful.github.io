@@ -897,19 +897,22 @@ td.u-col.mine:hover { background: color-mix(in srgb, var(--accent) 9%, var(--sur
 .rt-seg:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 /* Шкала у формі додавання («Ваша оцінка — необов'язково»):
-   кремова панель rgb(238, 236, 225), щоб блок оцінки вирізнявся
-   поміж звичайних полів. Панель однакова в обох темах (це навмисний
-   акцент), тому текст усередині — фіксований темний, зірки до вибору
-   темніші за звичайних (var(--border-strong) зливається з кремом). */
+   кремова панель rgb(238, 236, 225) у тій самій геометрії, що й інша
+   панель форми (.enrich-status): ті самі 20px відступи від країв модалки,
+   той самий радіус 11px, що в інпутів, без рамки — чиста заливка.
+   Панель однакова в обох темах (це навмисний акцент), тому текст
+   усередині — фіксований темний, зірки до вибору темніші за звичайних
+   (var(--border-strong) зливається з кремом). */
 .add-rate {
   background: rgb(238, 236, 225);
-  border: 1px solid rgb(216, 212, 194);
-  border-radius: var(--radius);
+  border-radius: 11px;
 }
 /* .field задає padding пізнішим у файлі правилом — беремо подвійний клас,
-   щоб внутрішні відступи панелі точно перебилися */
+   щоб відступи панелі точно перебилися: 20px від країв (як у полів
+   і .enrich-status), всередині — повітря 12/13px, як у панелі статусу */
 .field.add-rate {
-  padding: 13px 16px 14px;
+  margin: 0 20px 13px;
+  padding: 12px 13px;
 }
 .add-rate .field-label { color: #6d664b; }
 .add-rate .hint { color: #7a7566; }
@@ -2260,6 +2263,7 @@ td.u-col.mine:hover { background: color-mix(in srgb, var(--accent) 9%, var(--sur
   .field, .form-grid .field { padding: 0 16px; }
   .poster-edit { padding: 0 16px; }
   .enrich-status { margin: 0 16px 13px; }
+  .field.add-rate { margin: 0 16px 13px; }
   .modal-head { padding: calc(16px + env(safe-area-inset-top, 0px)) 16px 0; }
 
   /* Автозаповнення: більші цілі під палець */
