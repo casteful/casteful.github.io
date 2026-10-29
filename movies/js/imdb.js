@@ -3,7 +3,8 @@
 // (без ключа; повертає назву, рік, постер, IMDb ID).
 //
 // Швидкість: обидва дзеркала опитуємо ПАРАЛЕЛЬНО — хто перший
-// відповів, той і виграв; таймаут 3 с замість 7 с.
+// відповів, той і виграв; таймаут 2 с, щоб повільне дзеркало не
+// тримало пайплайн (за потреби список добудує Вікіпедія).
 // Якщо IMDb недоступний (CORS/мережа/блокування) — запам'ятовуємо
 // це в sessionStorage на 10 хв, щоб не чекати таймаутів на кожне
 // натискання, і film-form одразу шукає у Вікіпедії (wiki.js).
@@ -69,7 +70,7 @@ export async function suggestFilms(query) {
     }));
 
   try {
-    const list = await Promise.any(urls.map(url => fetchJSON(url, 3000).then(parse)));
+    const list = await Promise.any(urls.map(url => fetchJSON(url, 2000).then(parse)));
     // Відповідь отримано (навіть порожня — дзеркала ідентичні), далі не йдемо
     markOk();
     return list;
@@ -92,7 +93,7 @@ export async function imdbById(tt) {
   ];
   for (const url of urls) {
     try {
-      const data = await fetchJSON(url, 3000);
+      const data = await fetchJSON(url, 2000);
       const hit = ((data && data.d) || []).find(x => x && x.id === String(tt));
       if (hit) {
         return {

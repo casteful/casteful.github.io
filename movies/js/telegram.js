@@ -105,14 +105,15 @@ function linkedTitle(title, id, kind) {
   return `<a href="${escapeHtml(link)}">«${escapeHtml(title)}»</a>`;
 }
 
-export function notifyItemAdded(userId, item, id, kind = 'film') {
+export function notifyItemAdded(userId, item, id, kind = 'film', score = null) {
   const n = NOUN[kind] || NOUN.film;
   const title = filmTitle(item);
   const when = item && item.year ? ` (${item.year})` : '';
-  const plain = `${userName(userId)} додав ${n.acc} «${title}»${when}`;
+  const rated = score != null ? ` — ${score}/10` : '';
+  const plain = `${userName(userId)} додав ${n.acc} «${title}»${when}${rated}`;
   const t = linkedTitle(title, id, kind);
   if (!t) return send(plain);
-  return send(`${userName(userId)} додав ${n.acc} ${t}${when}`, plain);
+  return send(`${userName(userId)} додав ${n.acc} ${t}${when}${rated}`, plain);
 }
 
 export function notifyItemDeleted(userId, title, kind = 'film') {

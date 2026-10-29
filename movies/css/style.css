@@ -660,6 +660,7 @@ body.no-scroll { overflow: hidden; touch-action: none; }
 .films-table th.sortable:hover { color: var(--text); }
 .films-table th.sortable.active { color: var(--accent-2); }
 .films-table th.sortable.active::after { content: ' ↓'; }
+.films-table th.sortable.active.asc::after { content: ' ↑'; }
 
 .films-table td {
   padding: 9px 12px;
@@ -883,6 +884,10 @@ td.u-col.mine:hover { background: color-mix(in srgb, var(--accent) 9%, var(--sur
   filter: drop-shadow(0 1px 3px color-mix(in srgb, var(--c) 40%, transparent));
 }
 .rt-seg:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* Шкала у формі додавання («Ваша оцінка — необов'язково») */
+.add-rate .rt { margin-top: 8px; }
+.add-rate .hint { margin-top: 7px; }
 
 .remove-rating {
   align-self: center;

@@ -9,7 +9,7 @@
 
 import * as store from './store.js';
 import * as U from './utils.js';
-import { toast, openModal, confirmDialog, icons } from './ui.js';
+import { toast, openModal, confirmDialog, icons, ratingTrailHTML, wireRatingTrail } from './ui.js';
 import { notifyItemAdded, notifyItemDeleted } from './telegram.js';
 import { cachedGameSearch } from './game-search.js';
 import { translateToUk } from './translate.js';
@@ -97,7 +97,7 @@ export function openGameFormModal({ game = null, currentUserId, allGames = [] })
       if (q.length < 2) { hideSug(); return; }
       const gen = ++searchGen;
       sugList.hidden = false;
-      sugList.innerHTML = note(icons.search, 'Шукаю гру…');
+      sugList.innerHTML = note(icons.search, 'Шукаю гру у Вікіпедії…');
 
       const renderItems = (list) => {
         sugItems = list;
@@ -132,7 +132,7 @@ export function openGameFormModal({ game = null, currentUserId, allGames = [] })
 
       if (gen !== searchGen) return; // застарілий результат — ігноруємо
       if (!items.length) {
-        sugList.innerHTML = note(icons.alert, 'Нічого не знайдено. Спробуйте оригінальну англійську назву гри або заповніть поля нижче вручну.');
+        sugList.innerHTML = note(icons.alert, 'Нічого не знайдено у Вікіпедії. Спробуйте оригінальну англійську назву гри або заповніть поля нижче вручну.');
         return;
       }
       renderItems(items);
@@ -207,6 +207,13 @@ export function openGameFormModal({ game = null, currentUserId, allGames = [] })
     }
   }
 
+  // ---------- Оцінка при додаванні (необов'язково) ----------
+  let myRating = null;
+  const rateBox = box.querySelector('#gRate');
+  if (rateBox) {
+    wireRatingTrail(rateBox, { selected: null, onPick: (s) => { myRating = s; } });
+  }
+
   // ---------- Видалення (в режимі редагування) ----------
   const delBtn = box.querySelector('[data-delete-game]');
   if (delBtn) {
@@ -272,8 +279,11 @@ export function openGameFormModal({ game = null, currentUserId, allGames = [] })
         toast('Зміни збережено');
       } else {
         const newId = await store.addTo('games', { ...data, addedBy: currentUserId });
-        toast('Гру додано');
-        notifyItemAdded(currentUserId, data, newId, 'game');
+        if (myRating != null) {
+          try { await store.setRatingIn('games', newId, currentUserId, myRating); } catch (e2) { console.error(e2); }
+        }
+        toast(myRating != null ? `Гру додано — ваша оцінка ${myRating}/10` : 'Гру додано');
+        notifyItemAdded(currentUserId, data, newId, 'game', myRating);
       }
       close();
     } catch (err) {
@@ -311,7 +321,7 @@ function gameFormHTML(isEdit) {
     </div>
 
     <label class="field">
-      <span class="field-label">Пошук гри</span>
+      <span class="field-label">Пошук гри у Вікіпедії</span>
       <div class="suggest-wrap">
         ${icons.search}
         <input id="gSearch" type="text" autocomplete="off" autocapitalize="off" autocorrect="off"
@@ -364,6 +374,13 @@ function gameFormHTML(isEdit) {
         <span class="hint">Наприклад, посилання на обкладинку з магазину чи бази ігор.</span>
       </label>
     </div>
+
+    ${!isEdit ? `
+    <div class="field add-rate">
+      <span class="field-label">Ваша оцінка — необов'язково</span>
+      <div class="rt" id="gRate" role="group" aria-label="Ваша оцінка від 1 до 10">${ratingTrailHTML(null)}</div>
+      <span class="hint">Додасте гру одразу зі своєю оцінкою — вона з'явиться в чіпах на картці та в Telegram-повідомленні.</span>
+    </div>` : ''}
 
     <div class="modal-footer between">
       ${isEdit ? `<button type="button" class="btn danger-ghost" data-delete-game>${icons.trash}<span>Видалити</span></button>` : '<span></span>'}

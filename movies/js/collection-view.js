@@ -11,18 +11,13 @@
 import { USERS } from './config.js';
 import * as store from './store.js';
 import * as U from './utils.js';
-import { toast, openModal, confirmDialog, icons, lockScroll, unlockScroll } from './ui.js';
+import { toast, openModal, confirmDialog, icons, lockScroll, unlockScroll, ratingTrailHTML, paintRatingTrail, wireRatingTrail, popRatingValue } from './ui.js';
 import { notifyRatingSet, notifyRatingRemoved, notifyItemDeleted } from './telegram.js';
 import { avatarHTML } from './avatars.js';
 
 // Слова-підписи шкали оцінок (спільні для фільмів та ігор)
-const RATE_LABELS = {
-  1: 'Жах', 2: 'Дуже погано', 3: 'Погано', 4: 'Слабко', 5: 'Так собі',
-  6: 'Нормально', 7: 'Добре', 8: 'Дуже добре', 9: 'Чудово', 10: 'Шедевр'
-};
-
-// Зірочка для шкали оцінки (розмір/колір керується CSS)
-const STAR_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.9l2.8 5.8 6.4.9-4.6 4.5 1.1 6.3L12 17.4l-5.7 3 1.1-6.3-4.6-4.5 6.4-.9z"/></svg>';
+// Шкала оцінки (зорі) і її хелпери тепер у ui.js — спільні з формою
+// додавання (ratingTrailHTML / paintRatingTrail / wireRatingTrail).
 
 export function createCollectionView(cfg) {
   const node = cfg.node; // вузол бази: 'films' | 'games'
@@ -116,7 +111,8 @@ export function createCollectionView(cfg) {
         <option value="year">За роком</option>
         <option value="title">За назвою (А–Я)</option>
         <optgroup label="Оцінки друга">
-          ${USERS.map(u => `<option value="user:${u.id}">Оцінки: ${U.escapeHtml(u.name)}</option>`).join('')}
+          ${USERS.map(u => `<option value="user:${u.id}">Оцінки: ${U.escapeHtml(u.name)} ↓</option>` +
+            `<option value="user-asc:${u.id}">Оцінки: ${U.escapeHtml(u.name)} ↑</option>`).join('')}
         </optgroup>
       </select>
       <div class="view-toggle" role="group" aria-label="Вигляд списку">
@@ -159,7 +155,9 @@ export function createCollectionView(cfg) {
     gridEl.addEventListener('click', (e) => {
       const th = e.target.closest('th[data-sort]');
       if (th) {
-        sort = th.dataset.sort;
+        const k = th.dataset.sort;
+        // Колонки друзів: повторний клік перемикає напрямок ↓ ⇄ ↑
+        sort = (k.startsWith('user:') && sort === k) ? 'user-asc:' + k.slice(5) : k;
         localStorage.setItem('films_sort', sort);
         const sel = container.querySelector('#filmSort');
         if (sel) sel.value = sort;
@@ -226,15 +224,16 @@ export function createCollectionView(cfg) {
         return false;
       });
     }
-    // Сортування за оцінками конкретного друга («user:<id>»):
-    // оцінені — зверху за спаданням, без оцінки — у кінці
-    if (typeof sort === 'string' && sort.startsWith('user:')) {
-      const uid = sort.slice(5);
+    // Сортування за оцінками конкретного друга («user:<id>» — від вищої,
+    // «user-asc:<id>» — від нижчої): оцінені — зверху, без оцінки — у кінці
+    if (typeof sort === 'string' && (sort.startsWith('user:') || sort.startsWith('user-asc:'))) {
+      const asc = sort.startsWith('user-asc:');
+      const uid = sort.slice(asc ? 9 : 5);
       const score = f => {
         const v = (f.ratings || {})[uid];
-        return v == null ? -1 : v;
+        return v == null ? (asc ? Infinity : -1) : v; // без оцінки — завжди унизу
       };
-      return [...list].sort((a, b) => score(b) - score(a));
+      return [...list].sort((a, b) => asc ? score(a) - score(b) : score(b) - score(a));
     }
     const withAvg = f => { const a = U.avg(f.ratings); return a == null ? -1 : a; };
     switch (sort) {
@@ -330,11 +329,15 @@ export function createCollectionView(cfg) {
 
     // Колонки друзів тепер теж сортовані: клік — «за оцінками друга»
     // (аватарка: фото, якщо друг його завантажив, інакше літера)
-    const userHeads = USERS.map(u => `
-    <th class="u-col sortable ${sort === 'user:' + u.id ? 'active' : ''}" data-sort="user:${u.id}"
+    const userHeads = USERS.map(u => {
+      const desc = sort === 'user:' + u.id;
+      const asc = sort === 'user-asc:' + u.id;
+      return `
+    <th class="u-col sortable ${desc || asc ? 'active' : ''} ${asc ? 'asc' : ''}" data-sort="user:${u.id}"
         scope="col" title="Сортувати за оцінками: ${U.escapeHtml(u.name)}">
       ${avatarHTML(u, 'u-head', u.id === currentUserId ? 'mine' : '')}
-    </th>`).join('');
+    </th>`;
+    }).join('');
 
     return `
   <table class="films-table">
@@ -485,82 +488,14 @@ export function createCollectionView(cfg) {
         ? `Середня <b>${U.fmtAvg(a)}</b> · ${votes} ${U.pluralRatings(votes)}${my != null ? ` · ваша ${my}` : ''}`
         : (my != null ? `Ваша оцінка ${my}` : 'Перший відгук — ваш!')
     }</div>
-    <div class="rt" role="group" aria-label="Оцінка від 1 до 10">${rateTrailHTML(my)}</div>
+    <div class="rt" role="group" aria-label="Оцінка від 1 до 10">${ratingTrailHTML(my)}</div>
     ${my != null ? '<button type="button" class="remove-rating" data-pop-remove>Прибрати мою оцінку</button>' : ''}`;
     return pop;
   }
 
   // ---------- Компонент «шкала оцінки» (зорі) ----------
-  // Єдина шкала 1–10 для спливашок, шітів і модалки: 10 зірочок,
-  // заливаються кольором до обраного значення (від червоного до
-  // зеленого), над шкалою — велике число і слово-підпис.
-  // Наведення показує прев'ю, клік зберігає миттєво.
-
-  function rateTrailHTML(selected) {
-    const stars = Array.from({ length: 10 }, (_, i) => {
-      const s = i + 1;
-      const on = selected != null && s <= selected;
-      return `<button type="button" class="rt-seg ${on ? 'on' : ''}" data-score="${s}" style="--c:${U.ratingColor(s)}" aria-label="${s} — ${RATE_LABELS[s]}">${STAR_SVG}</button>`;
-    }).join('');
-    return `
-    <div class="rt-display">
-      <span class="rt-value"${selected != null ? ` style="color:${U.ratingColor(selected)}"` : ''}>${selected != null ? selected : '—'}</span>
-      <span class="rt-word">${selected != null ? RATE_LABELS[selected] : 'Оберіть оцінку'}</span>
-    </div>
-    <div class="rt-track">${stars}</div>`;
-  }
-
-  // Перемалювати шкалу в контейнері root на значення s (null — «порожньо»)
-  function paintTrail(root, s) {
-    const track = root.querySelector('.rt-track');
-    if (track) {
-      track.querySelectorAll('.rt-seg').forEach(c =>
-        c.classList.toggle('on', s != null && +c.dataset.score <= s));
-    }
-    const v = root.querySelector('.rt-value');
-    const w = root.querySelector('.rt-word');
-    if (!v || !w) return;
-    if (s != null) {
-      v.textContent = s;
-      v.style.color = U.ratingColor(s);
-      w.textContent = RATE_LABELS[s];
-    } else {
-      v.textContent = '—';
-      v.style.color = '';
-      w.textContent = 'Оберіть оцінку';
-    }
-  }
-
-  // Пружний «піп» великого числа при виборі оцінки
-  function popValue(root) {
-    const v = root.querySelector('.rt-value');
-    if (v && v.animate) {
-      v.animate(
-        [{ transform: 'scale(1)' }, { transform: 'scale(1.22)' }, { transform: 'scale(1)' }],
-        { duration: 280, easing: 'cubic-bezier(.34,1.56,.64,1)' }
-      );
-    }
-  }
-
-  // Наведення/клік для шкали у спливашці (модалка делегує події на box,
-  // бо refreshDetail() перестикує її вміст на кожному снапшоті)
-  function wireTrail(root, { selected, onPick }) {
-    const track = root.querySelector('.rt-track');
-    if (!track) return;
-    track.addEventListener('mouseover', (e) => {
-      const seg = e.target.closest('.rt-seg');
-      if (seg) paintTrail(root, +seg.dataset.score);
-    });
-    track.addEventListener('mouseleave', () => paintTrail(root, selected));
-    track.addEventListener('click', (e) => {
-      const seg = e.target.closest('.rt-seg');
-      if (!seg) return;
-      const s = +seg.dataset.score;
-      paintTrail(root, s);
-      popValue(root);
-      onPick(s);
-    });
-  }
+  // Логіка шкали тепер у ui.js (ratingTrailHTML / paintRatingTrail /
+  // wireRatingTrail) — спільна з формою додавання фільму/гри.
 
   function openRatePop(anchor, item) {
     if (!currentUserId) { toast('Спочатку оберіть профіль', 'err'); return; }
@@ -630,7 +565,7 @@ export function createCollectionView(cfg) {
     });
 
     // Шкала: наведення — прев'ю, клік — миттєве збереження
-    wireTrail(pop, { selected: (item.ratings || {})[currentUserId], onPick: pick });
+    wireRatingTrail(pop, { selected: (item.ratings || {})[currentUserId], onPick: pick });
 
     // Клавіатура: цифри 1–9 та 0 (=10) ставлять оцінку одразу
     pop.addEventListener('keydown', (e) => {
@@ -642,7 +577,7 @@ export function createCollectionView(cfg) {
         e.preventDefault();
         const next = e.key === 'ArrowRight' ? Math.min(idx + 1, segs.length - 1) : Math.max(idx - 1, 0);
         segs[next].focus();
-        paintTrail(pop, +segs[next].dataset.score);
+        paintRatingTrail(pop, +segs[next].dataset.score);
       }
     });
 
@@ -746,7 +681,7 @@ export function createCollectionView(cfg) {
     <div class="detail-ratings">
       <div class="my-rating">
         <div class="my-rating-top"><span class="my-rating-label">Ваша оцінка</span></div>
-        <div class="rt" role="group" aria-label="Ваша оцінка від 1 до 10">${rateTrailHTML(my)}</div>
+        <div class="rt" role="group" aria-label="Ваша оцінка від 1 до 10">${ratingTrailHTML(my)}</div>
         ${my != null ? `<button class="remove-rating" data-remove-rating>Прибрати мою оцінку</button>` : ''}
       </div>
       <ul class="friends-list">${friendRows}</ul>
@@ -764,7 +699,7 @@ export function createCollectionView(cfg) {
     // тож слухач на box переживає будь-які ре-рендери.
     box.addEventListener('mouseover', (e) => {
       const seg = e.target.closest('.rt-seg');
-      if (seg) paintTrail(box, +seg.dataset.score);
+      if (seg) paintRatingTrail(box, +seg.dataset.score);
     });
     box.addEventListener('mouseout', (e) => {
       const seg = e.target.closest('.rt-seg');
@@ -773,7 +708,7 @@ export function createCollectionView(cfg) {
       if (to && box.contains(to) && to.closest('.rt-seg')) return; // перехід на сусідній сегмент
       const item0 = (detailState && document.body.contains(detailState.overlay))
         ? filmsList.find(f => f.id === detailState.filmId) : null;
-      paintTrail(box, item0 ? (item0.ratings || {})[currentUserId] : null);
+      paintRatingTrail(box, item0 ? (item0.ratings || {})[currentUserId] : null);
     });
 
     box.addEventListener('click', async (e) => {
@@ -798,8 +733,8 @@ export function createCollectionView(cfg) {
         const score = +seg.dataset.score;
         const cur = (film.ratings || {})[currentUserId];
         const next = (cur === score) ? null : score; // повторний клік прибирає оцінку
-        paintTrail(box, next);
-        popValue(box);
+        paintRatingTrail(box, next);
+        popRatingValue(box);
         try {
           await store.setRatingIn(node, film.id, currentUserId, next);
           toast(next == null ? 'Оцінку прибрано' : `Ваша оцінка: ${next}${next >= 9 ? ' ✨' : ''}`);
@@ -808,7 +743,7 @@ export function createCollectionView(cfg) {
         } catch (err) {
           console.error(err);
           toast('Не вдалося зберегти оцінку', 'err');
-          paintTrail(box, cur); // повертаємо попередній стан шкали
+          paintRatingTrail(box, cur); // повертаємо попередній стан шкали
         }
         return;
       }

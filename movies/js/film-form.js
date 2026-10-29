@@ -8,7 +8,7 @@
 import { USERS } from './config.js';
 import * as store from './store.js';
 import * as U from './utils.js';
-import { toast, openModal, confirmDialog, icons } from './ui.js';
+import { toast, openModal, confirmDialog, icons, ratingTrailHTML, wireRatingTrail } from './ui.js';
 import { suggestFilms, typeLabel, imdbTemporarilyDown, imdbById } from './imdb.js';
 import { searchWikiFilms, fetchPoster, posterQuick, premiereInfo, cleanWikiTitle } from './wiki.js';
 import { enrichFilm } from './enrich.js';
@@ -19,8 +19,9 @@ import { notifyItemAdded, notifyItemDeleted } from './telegram.js';
 // Швидкий пошук для автозаповнення (спільний між відкриттями).
 //
 // Стратегія «обидва джерела завжди»:
-//   1. IMDb стартує одразу і малюється першим, щойно відповів.
-//   2. Вікіпедія підключається через WIKI_DELAY_MS і ДОБУДОВУЄ список:
+//   1. IMDb і Вікіпедія стартують ОДНОЧАСНО; хто перший відповів —
+//      той і малюється (вікі зазвичай швидша, IMDb добудовує список).
+//   2. Вікіпедія шукає ЗАВЖДИ і добудовує список поступово (onPartial):
 //      IMDb suggestion часто «не знає» серіалів і новинок або віддає
 //      нерелевантні збіги за повної назви — тоді потрібний фільм/серіал
 //      приходить саме з Вікіпедії.
@@ -36,7 +37,8 @@ import { notifyItemAdded, notifyItemDeleted } from './telegram.js';
 //   6. Усе кешується: повторний запит тієї ж назви — миттєвий.
 // ============================================================
 
-const WIKI_DELAY_MS = 800;  // фори IMDb; потім вікі-пошук підключається завжди
+const WIKI_DELAY_MS = 0;   // вікі шукає одразу, паралельно з IMDb (перегони
+                           // запитів тротелються debounce 220мс і кешем пошуку)
 const SUG_CACHE_MAX = 60;
 const SUG_MAX = 20;          // максимум рядків у підказках (список гортається)
 const SUG_FALLBACK_MIN = 10; // знайдено менше — добираємо англійською транслітерацією
@@ -162,7 +164,7 @@ function searchFilmsFast(q, onPartial) {
   // Якщо користувач вказав рік — повнотекстово шукаємо ЩЕ і «назва рік»:
   // «creep 2004» підіймає статтю «Creep (2004 film)», якої НЕМАЄ у топ-10
   // видачі за голою назвою (префіксний пошук при цьому лишається за назвою).
-  const wikiP = new Promise(res => setTimeout(res, imdbDown ? 0 : WIKI_DELAY_MS))
+  const wikiP = new Promise(res => setTimeout(res, WIKI_DELAY_MS))
     .then(() => searchWikiFilms(qTitle, partial => { wikiList = partial || []; paint(); },
       qYear ? { textQuery: q } : {}))
     .catch(() => []);
@@ -342,7 +344,10 @@ export function openFormModal({ film = null, currentUserId, allFilms = [] }) {
 
       if (gen !== searchGen) return; // застарілий результат — ігноруємо
       if (!items.length) {
-        sugList.innerHTML = note(icons.alert, 'Нічого не знайдено — шукали на IMDb, у Вікіпедії та за англійською транслітерацією назви. Спробуйте оригінальну англійську назву або заповніть поля вручну.');
+        const down = imdbTemporarilyDown();
+        sugList.innerHTML = note(icons.alert, down
+          ? 'Нічого не знайдено (IMDb зараз недоступний — шукали у Вікіпедії та за транслітерацією). Спробуйте оригінальну англійську назву або заповніть поля вручну.'
+          : 'Нічого не знайдено — шукали на IMDb, у Вікіпедії та за англійською транслітерацією назви. Спробуйте оригінальну англійську назву або заповніть поля вручну.');
         return;
       }
       renderItems(items);
@@ -639,6 +644,13 @@ export function openFormModal({ film = null, currentUserId, allFilms = [] }) {
     });
   }
 
+  // ---------- Оцінка при додаванні (необов'язково) ----------
+  let myRating = null;
+  const rateBox = box.querySelector('#fRate');
+  if (rateBox) {
+    wireRatingTrail(rateBox, { selected: null, onPick: (s) => { myRating = s; } });
+  }
+
   // ---------- Збереження ----------
   const form = $('filmForm');
   form.addEventListener('submit', async (e) => {
@@ -688,8 +700,11 @@ export function openFormModal({ film = null, currentUserId, allFilms = [] }) {
         toast('Зміни збережено');
       } else {
         const newId = await store.addFilm({ ...data, addedBy: currentUserId });
-        toast('Фільм додано');
-        notifyItemAdded(currentUserId, data, newId, 'film');
+        if (myRating != null) {
+          try { await store.setRatingIn('films', newId, currentUserId, myRating); } catch (e2) { console.error(e2); }
+        }
+        toast(myRating != null ? `Фільм додано — ваша оцінка ${myRating}/10` : 'Фільм додано');
+        notifyItemAdded(currentUserId, data, newId, 'film', myRating);
       }
       close();
     } catch (err) {
@@ -788,6 +803,13 @@ function formHTML(isEdit, film) {
     </div>
 
     <div class="enrich-status" id="enrichStatus"></div>
+
+    ${!isEdit ? `
+    <div class="field add-rate">
+      <span class="field-label">Ваша оцінка — необов'язково</span>
+      <div class="rt" id="fRate" role="group" aria-label="Ваша оцінка від 1 до 10">${ratingTrailHTML(null)}</div>
+      <span class="hint">Додасте фільм одразу зі своєю оцінкою — вона з'явиться в чіпах на картці та в Telegram-повідомленні.</span>
+    </div>` : ''}
 
     <div class="modal-footer between">
       ${isEdit ? `<button type="button" class="btn danger-ghost" data-delete-film>${icons.trash}<span>Видалити</span></button>` : '<span></span>'}
