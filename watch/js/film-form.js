@@ -368,7 +368,7 @@ export function openFormModal({ film = null, currentUserId, allFilms = [], defau
 
       if (gen !== searchGen) return; // застарілий результат — ігноруємо
       if (!items.length) {
-        sugList.innerHTML = note(icons.alert, 'Нічого не знайдено — шукали на IMDb, у Вікіпедії та за англійською транслітерацією назви. Спробуйте оригінальну англійську назву або заповніть поля вручну.');
+        sugList.innerHTML = note(icons.alert, 'Нічого не знайдено — шукали на IMDb та у Вікіпедії (включно з пошуком за назвою статті), а також за англійською транслітерацією назви. Спробуйте оригінальну англійську назву або заповніть поля вручну.');
         return;
       }
       renderItems(items);

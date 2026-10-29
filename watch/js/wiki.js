@@ -7,9 +7,19 @@
 // назва). Пайплайн (усе ПАРАЛЕЛЬНО, де можливо — задля швидкості):
 //   1) Пошук статей у Вікіпедії (префіксний + повнотекстовий, uk+en)
 //      -> назва, мініатюра (постер), вступний текст, QID Вікіданих
-//   2) wbgetentities: claims + мітки фільмів одним викликом;
+//   2) РЯТУНОК для префіксних запитів («Алекс», «Інтерст»…):
+//      повнотекстовий пошук знаходить лише ЦІЛЕ слово, тому «Алекс»
+//      давав лише людей («Алекс Фергюсон»), а «Александр (фільм)»
+//      губився -> «Нічого не знайдено». Додаємо вибірку за назвою
+//      статті: intitle:{запит}* intitle:фільм (див. intitleSearch)
+//   3) wbgetentities: claims + мітки фільмів одним викликом;
 //      другим швидким викликом — мітки режисерів, жанрів і акторів
 //      -> P31/P345/P57/P577/P2047/P136/P161/P495
+//   4) ТРИВАЛІСТЬ: якщо у Вікіданних ще немає P2047 (типово для
+//      свіжих фільмів — «Клейфейс» (2026) мав порожнє поле тривалості),
+//      читаємо «Running time» з інфобокса статті Вікіпедії: en ПЕРШОЮ,
+//      далі інші мови, де стаття існує (див. runtimeFromSitelinks).
+//   5) Фільтрація «це кіно/серіал» (filmLike) спільна для всіх джерел.
 // Пакети результатів малюються поступово (onPartial) — не чекаємо
 // найповільніше джерело. Усе fail-safe: будь-яка помилка лишає
 // список порожнім або з базовими даними (назва/постер/опис).
@@ -190,6 +200,12 @@ async function wdEntities(qids, signal = null) {
     }
     e.labelUk = (labels.uk && labels.uk.value) || null;
     e.labelEn = (labels.en && labels.en.value) || null;
+    // Компактна мапа вікі-статей (мова -> назва статті) — для резервного
+    // пошуку тривалості в інфобоксах, коли у Вікіданних немає P2047
+    e.sitelinks = {};
+    for (const k of Object.keys(sitelinks)) {
+      if (/wiki$/.test(k)) e.sitelinks[k.replace(/wiki$/, '')] = sitelinks[k].title;
+    }
     out[qid] = e;
   }
   return out;
@@ -311,6 +327,7 @@ async function wikidataByQids(qids, opts = {}) {
       premiere: c.premiere || null,
       ukWikiTitle: c.ukWikiTitle || null,
       enWikiTitle: c.enWikiTitle || null,
+      sitelinks: c.sitelinks || {},
       classes: c.classes || []
     };
   }
@@ -504,6 +521,47 @@ function dedupeItems(items) {
   return out;
 }
 
+// ---------- Рятувальний пошук фільмів за ПРЕФІКСОМ назви статті ----------
+//
+// ПРОБЛЕМА («Алекс» → «Нічого не знайдено»): повнотекстовий пошук
+// Вікіпедії працює за ЦІЛИМИ словами — запит «Алекс» дає лише людей
+// («Алекс Фергюсон», «Алекс Сонг») і міста, а статтю «Александр
+// (фільм)» у топ-10 немає (це ще не слово «Александр»). Після
+// фільмового фільтра всі збіги відпадають і список порожній.
+//
+// Перевірені й відхилені варіанти (видавничий ранжинг «з'їдає» фільм):
+//   • prefixsearch топ-50 — фільм програвав відомим людям і містам;
+//   • повнотекст з wildcard «Алекс*» — буквений «сміттєвий» порядок;
+//   • wbsearchentities (мітки Вікіданих, uk+en, ліміт 50) — «Алекс»
+//     має сотні іменних збігів, «Александр» (фільм) поза топ-50.
+//
+// РІШЕННЯ: звужена wildcard-вибірка СТАТЕЙ-ФІЛЬМІВ за назвою:
+//     intitle:{запит}* intitle:фільм      (en: intitle:{q}* intitle:film)
+// Слово «фільм»/«film» у назві статті — це уточнення-даб («Александр
+// (фільм)», "Creep (2004 film)") або частина назви; вибірка мала й
+// цілком «фільмова». Перевірено на живому API: «Алекс» → «Александр
+// (фільм)» — 1-й рядок; «Джок» → «Джокер (фільм, 2019)» — 1-й рядок;
+// «Інтерстел» → «Інтерстеллар» — 1-й рядок (пошук intitle бачить і
+// редиректи виду «Інтерстеллар (фільм)»). Далі результати проходять
+// той самий collectItems з фільтром Вікіданих, що й звичайний пошук.
+
+function intitleSearch(lang, q, signal = null) {
+  const word = lang === 'uk' ? 'фільм' : 'film';
+  const gsrsearch = `intitle:${q}* intitle:${word}`;
+  const url =
+    `https://${lang}.wikipedia.org/w/api.php?action=query&format=json&origin=*` +
+    `&generator=search&gsrlimit=10&gsrsearch=${encodeURIComponent(gsrsearch)}` +
+    '&prop=pageimages|pageprops|extracts&exintro=1&explaintext=1&exlimit=max' +
+    '&piprop=thumbnail&pithumbsize=400&pilicense=any';
+
+  return wmfFetch(url, 6000, signal).then(data => {
+    const pages = data && data.query ? Object.values(data.query.pages || {}) : [];
+    return pages
+      .map(p => ({ ...p, _lang: lang }))
+      .sort((a, b) => (a.index || 999) - (b.index || 999));
+  });
+}
+
 export async function searchWikiFilms(query, onPartial, opts = {}) {
   const q = String(query || '').trim();
   if (q.length < 2) return [];
@@ -515,6 +573,10 @@ export async function searchWikiFilms(query, onPartial, opts = {}) {
   const langs = (opts && opts.langs) || (hasCyrillic ? ['uk', 'en'] : ['en', 'uk']);
   // opts.year — рік, який користувач вказав у запиті («creep 2004»).
   const year = opts && opts.year >= 1888 && opts.year <= 2100 ? opts.year : null;
+  // Для кириличних запитів префіксну видачу розширюємо 6 → 10: вона
+  // впорядкована за популярністю, і фільми там програють людям —
+  // «Александр (фільм)» стояв поза топ-6 людей «Алекс…»
+  const prefixLimit = hasCyrillic ? 10 : 6;
 
   const seen = new Set();    // спільна дедуплікація QID/назв між пакетами
   const thumbs = new Map(); // ключ -> мініатюра (у т.ч. з дублікатів)
@@ -531,17 +593,38 @@ export async function searchWikiFilms(query, onPartial, opts = {}) {
     if (signal && signal.aborted) return; // запит вже застарів — не поспішаємо
     let pages = [];
     try {
-      pages = prefix ? await wikiPrefix(lang, qq, 6, signal) : await wikiSearch(lang, qq, 10, signal);
+      pages = prefix
+        ? await wikiPrefix(lang, qq, prefixLimit, signal)
+        : await wikiSearch(lang, qq, 10, signal);
     } catch (e) { return; }
     if (signal && signal.aborted) return;
     let batch = [];
-    try { batch = await collectItems(pages.slice(0, prefix ? 6 : 10), seen, thumbs, q, signal); } catch (e) { return; }
+    try { batch = await collectItems(pages.slice(0, prefix ? prefixLimit : 10), seen, thumbs, q, signal); } catch (e) { return; }
     if (signal && signal.aborted) return;
     emit(batch);
   };
 
   const tasks = [runLang(langs[0], { prefix: true }), runLang(langs[0])];
   if (langs[1] && langs[1] !== langs[0]) tasks.push(runLang(langs[1]));
+
+  // Рятувальний пошук за ПРЕФІКСОМ назви статті (intitle + «фільм») —
+  // основне джерело результатів для префіксних запитів: «Алекс» знаходить
+  // «Александр (фільм)», «Джок» — «Джокер (фільм, 2019)» тощо. Для
+  // кириличних запитів шукаємо в основному розділі (uk), для латинських —
+  // в en. Транслітераційний fallback (langs=['en']) не подвоюємо.
+  if (!(opts && opts.langs) && q.length >= 3 && !signal?.aborted) {
+    const rescueLang = langs[0];
+    tasks.push(
+      intitleSearch(rescueLang, q, signal)
+        .then(async pages => {
+          if (signal && signal.aborted || !pages.length) return;
+          const batch = await collectItems(pages.slice(0, 10), seen, thumbs, q, signal);
+          if (signal && signal.aborted) return;
+          emit(batch);
+        })
+        .catch(() => {})
+    );
+  }
 
   // Рік у запиті («creep 2004») — цільові добірки повз базовий пошук
   // за назвою. У full-text пошуку «creep» стаття «Creep (2004 film)»
@@ -583,7 +666,7 @@ export async function enrichByQid(qid) {
   const { map: wd } = await wikidataByQids([qid], { keepAll: true });
   const e = wd[qid];
   if (!e) return {};
-  return {
+  const out = {
     titleUk: e.titleUk || null,
     title: e.titleEn || null,
     imdbId: e.imdbId || null,
@@ -597,6 +680,149 @@ export async function enrichByQid(qid) {
     ukWikiTitle: e.ukWikiTitle || null,
     enWikiTitle: e.enWikiTitle || null
   };
+  // Резерв тривалості: у свіжих фільмів Вікіданні ще не мають P2047
+  // («Клейфейс» (2026) — сутність створена до прем'єри, заявки ніхто не
+  // додав). Тоді читаємо «Running time» з інфобокса Вікіпедії: en
+  // ПЕРШОЮ (домовленість), далі інші мови, де стаття про фільм є.
+  // Для серіалів не робимо нічого — тривалість для них усе одно null.
+  const SERIES_CLASSES = new Set(['Q5398426', 'Q3464665', 'Q12544106']); // серіал / сезон / мінісеріал
+  if (!out.runtime && e.sitelinks && !e.classes.some(c => SERIES_CLASSES.has(c))) {
+    try {
+      const rt = await runtimeFromSitelinks(e.sitelinks);
+      if (rt) out.runtime = rt;
+    } catch (err) { /* тривалість не критична */ }
+  }
+  return out;
+}
+
+// ---------- Резерв тривалості з інфобоксів Вікіпедії ----------
+//
+// У Вікіданних поле P2047 («тривалість») часто порожнє для нових
+// фільмів, тоді як інфобокси Вікіпедії його вже мають. Ланцюжок мов:
+//   en (домовленість) -> uk (мова застосунку) -> ru, de, es, it, pt,
+//   sv -> fr -> решта. fr нижче es/it/sv: для «Клейфейса» fr пише 109 хв,
+//     тоді як it/pt/es/sv дружно 108 (і це узгоджується з IMDb).
+// Беремо лише мови, в яких стаття реально існує (sitelinks Вікіданих),
+// максимум 6 спроб — кожен запит іде через wmfFetch (пауза + ретраї).
+
+// Мови, для яких знаємо назву параметра інфобокса
+const RUNTIME_LANGS = [
+  'en', 'simple', 'uk', 'ru', 'be', 'kk', 'de', 'es', 'it', 'pt', 'sv', 'fr',
+  'pl', 'nl', 'cs', 'sk', 'hu', 'el', 'tr', 'ro', 'da', 'no', 'fi', 'ja',
+  'zh', 'ko', 'ar', 'fa', 'he', 'vi', 'id', 'ms', 'sr', 'bg', 'mk'
+];
+
+// Пріоритет: en -> uk -> решта в порядку списку
+function runtimeLangRank(l) {
+  if (l === 'en') return 0;
+  if (l === 'uk') return 1;
+  return 2 + RUNTIME_LANGS.indexOf(l);
+}
+
+// Параметри інфобоксів різних розділів (пробіл і '_' взаємозамінні,
+// регістр не важливий)
+const RUNTIME_PARAM_RE =
+  'running[_ ]?time|runtime|film[_ ]?time' +
+  '|тривал[іі]сть|длительность|продолжительность|працягласць|ұзақтығы' +
+  '|dauer|laufzeit|spielzeit|filml[äa]nge' +
+  '|dur[ée]e|duraci[óo]n|durata|dura[çc][ãa]o|tempo[_ ]?de[_ ]?dura[çc][ãa]o' +
+  '|czas[_ ]?trwania|speelduur|speltid|spilletid|l[äa]ngd|kesto|kestävyys' +
+  '|d[ée]lka|stop[áa]ž|j[áa]t[ée]kid[őo]|id[őo]tartam|s[üu]re|durasi|tempo' +
+  '|上映時間|片長|片长|时长|長さ|상영[_ ]?시간|러닝[_ ]?타임' +
+  '|المدة|مدت[_ ]?زمان|زمان|משך|משך[_ ]?זמן|μετάδοση|διάρκεια' +
+  '|th[ơo][ìi][_ ]?lượng|трајање|траjaње|продължителност|kilendarść';
+
+// Витягнути сирий рядок параметра тривалості з вікітексту статті
+function extractRuntimeParam(wikitext) {
+  const re = new RegExp(
+    '\\|\\s*(?:' + RUNTIME_PARAM_RE + ')\\s*=\\s*([\\s\\S]*?)' +
+    '(?=\\n\\s*\\|\\s*[\\wА-Яа-яІіЇїЄєҐґ\[\]"\' ()\-]+\\s*=|\\n\\}\\}|$)', 'i');
+  const m = String(wikitext || '').match(re);
+  return m ? m[1].trim() : null;
+}
+
+// «108 minutos», «{{unité|109|minutes}}», «1 год 48 хв», «109 хв»,
+// «{{Duration|1|48}}», «1 h 48 min» -> кількість хвилин (або null).
+// Діапазон довіри: 40–600 хв (короткометражки рідко в формі, епіки — рідко > 10 год).
+function clampRuntime(n) { return (n >= 40 && n <= 600) ? n : null; }
+
+export function parseRuntimeMinutes(raw) {
+  if (!raw) return null;
+  let s = String(raw)
+    .replace(/<ref[^>]*\/>/gi, ' ')
+    .replace(/<ref[^>]*>[\s\S]*?<\/ref>/gi, ' ')
+    .replace(/<!--[\s\S]*?-->/g, ' ');
+  // {{Duration|H|M|S}} / {{duration|M}}
+  const dm = s.match(/\{\{\s*[Dd]uration\s*\|([^}]*)\}\}/);
+  if (dm) {
+    const p = dm[1].split('|').map(x => parseInt(x, 10) || 0);
+    let mins = 0;
+    if (p.length === 1) mins = p[0];
+    else if (p.length === 2) mins = p[0] * 60 + p[1];
+    else mins = p[0] * 60 + p[1] + Math.round(p[2] / 60);
+    return clampRuntime(mins);
+  }
+  // {{unité|109|minutes}} / {{val|109|min}} / {{formatnum:109}} — числа з шаблонів
+  s = s.replace(/\{\{\s*(?:unit[ée]|val|fmt|formatnum|number|nobre)\s*\|/gi, ' ')
+       .replace(/\}\}/g, ' ');
+  // решта шаблонів ({{plainlist}}, {{small}}, {{refn}}…) — прибираємо
+  s = s.replace(/\{\{[^{}]*\}\}/g, ' ');
+  // [[посилання|текст]] -> текст
+  s = s.replace(/\[\[(?:[^|\]]*\|)?([^\]]+)\]\]/g, '$1');
+
+  const hourWord =
+    /год|час|hour|oras?|óra|ór|ساعة|시간|時間|小时|小時/i.test(s) ||
+    /\b(?:hrs?|h|std)\b/i.test(s); // \b — лише ASCII; «1 h 48 min» ловить другий рядок
+  const minWord = /хв|мин|min|分|분|دق/i.test(s);
+  // тільки САМОСТІЙНІ числа з 1–3 цифр: «2026-10-23» не дає сміття (2026 відкидається)
+  const nums = String(s).split(/\D+/).filter(x => x && x.length <= 3).map(Number).filter(Number.isFinite);
+
+  // «1 год 48 хв» / «1 h 48 min» — перше число години, друге хвилини
+  if (nums.length >= 2 && hourWord) {
+    const [h, m] = nums;
+    if (h <= 5 && m <= 59) return clampRuntime(h * 60 + m);
+  }
+  // єдине число: 40..600 — це хвилини; малими числами з словом «год/час» — години
+  if (nums.length === 1) {
+    const n = nums[0];
+    if (n >= 40) return clampRuntime(n);
+    if (n <= 5 && hourWord && !minWord) return clampRuntime(n * 60);
+  }
+  // діапазон/зайві числа («95–108 minutes», «108 (2 диски)») — перше адекватне
+  for (const n of nums) if (n >= 40 && n <= 600) return n;
+  return null;
+}
+
+const infoboxRuntimeCache = new Map(); // "lang:title" -> хвилини|null
+
+async function wikiInfoboxRuntime(lang, title, signal = null) {
+  const key = lang + ':' + title;
+  if (infoboxRuntimeCache.has(key)) return infoboxRuntimeCache.get(key);
+  let mins = null;
+  try {
+    const url = `https://${lang}.wikipedia.org/w/api.php?action=parse&format=json` +
+      `&formatversion=2&redirects=1&prop=wikitext&origin=*&page=${encodeURIComponent(title)}`;
+    const data = await wmfFetch(url, 6000, signal);
+    const wt = data && data.parse && data.parse.wikitext;
+    if (wt) mins = parseRuntimeMinutes(extractRuntimeParam(wt));
+  } catch (e) { mins = null; }
+  infoboxRuntimeCache.set(key, mins);
+  return mins;
+}
+
+// Тривалість за мапою sitelinks (мова -> назва статті): перебираємо мови
+// за пріоритетом, поки десь в інфобоксі не знайдемо «running time».
+export async function runtimeFromSitelinks(sitelinks, signal = null) {
+  const langs = Object.keys(sitelinks || {})
+    .filter(l => sitelinks[l] && RUNTIME_LANGS.includes(l))
+    .sort((a, b) => runtimeLangRank(a) - runtimeLangRank(b))
+    .slice(0, 6);
+  for (const lang of langs) {
+    if (signal && signal.aborted) return null;
+    const rt = await wikiInfoboxRuntime(lang, sitelinks[lang], signal);
+    if (rt) return rt;
+  }
+  return null;
 }
 
 // QID за IMDb ID (P345) — швидкий wbsearch, найнадійніший місток між джерелами
