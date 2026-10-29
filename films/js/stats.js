@@ -8,10 +8,10 @@
 //   onOpenFilm(id)  -> відкрити вікно фільму (панель «Рекорди»)
 // ============================================================
 
-import { USERS } from './config.js?v=5.6';
-import * as A from './avatars.js?v=5.6';
-import * as U from './utils.js?v=5.6';
-import { icons } from './ui.js?v=5.6';
+import { USERS } from './config.js?v=5.7';
+import * as A from './avatars.js?v=5.7';
+import * as U from './utils.js?v=5.7';
+import { icons } from './ui.js?v=5.7';
 
 export function mount(container, filmsArr, handlers = {}) {
   if (filmsArr === null) {

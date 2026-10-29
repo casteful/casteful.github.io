@@ -3,14 +3,14 @@
 // модальне вікно фільму з оцінками 1–10
 // ============================================================
 
-import { USERS } from './config.js?v=5.6';
-import * as store from './store.js?v=5.6';
-import * as U from './utils.js?v=5.6';
-import * as A from './avatars.js?v=5.6';
-import { toast, openModal, confirmDialog, icons } from './ui.js?v=5.6';
-import { rateTrailHTML, paintTrail, popValue, openRatePop as openRatePopShared } from './rating-ui.js?v=5.6';
-import { openFormModal } from './film-form.js?v=5.6';
-import { notifyRatingSet, notifyRatingRemoved, notifyFilmDeleted } from './telegram.js?v=5.6';
+import { USERS } from './config.js?v=5.7';
+import * as store from './store.js?v=5.7';
+import * as U from './utils.js?v=5.7';
+import * as A from './avatars.js?v=5.7';
+import { toast, openModal, confirmDialog, icons } from './ui.js?v=5.7';
+import { rateTrailHTML, paintTrail, popValue, openRatePop as openRatePopShared } from './rating-ui.js?v=5.7';
+import { openFormModal } from './film-form.js?v=5.7';
+import { notifyRatingSet, notifyRatingRemoved, notifyFilmDeleted } from './telegram.js?v=5.7';
 
 let container = null;
 let gridEl = null;
@@ -813,7 +813,8 @@ function wireDetail(box) {
       // (detailState став null). Раніше тут був detailState.close(),
       // який падав з TypeError -> показувалась і помилка, і успіх.
       toast('Фільм видалено');
-      notifyFilmDeleted(currentUserId, fTitle(film));
+      // передаємо сам запис (а не лише назву) — щоб пуш розрізняв фільм/серіал
+      notifyFilmDeleted(currentUserId, film);
       if (detailState) { detailState.close(); detailState = null; }
     }
   });

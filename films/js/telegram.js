@@ -23,10 +23,10 @@
 // повідомлення через «битий» HTML.
 // ============================================================
 
-import { USERS } from './config.js?v=5.6';
-import * as store from './store.js?v=5.6';
-import { toast, openModal, icons } from './ui.js?v=5.6';
-import { escapeHtml } from './utils.js?v=5.6';
+import { USERS } from './config.js?v=5.7';
+import * as store from './store.js?v=5.7';
+import { toast, openModal, icons } from './ui.js?v=5.7';
+import { escapeHtml } from './utils.js?v=5.7';
 
 let cfg = null; // { enabled, token, chatId, chatTitle } | null
 
@@ -105,28 +105,35 @@ function filmNameHTML(film) {
 }
 
 // Чисті збирачі тексту (експортовані для тестів — нічого не надсилають)
-export function filmAddedText(userId, film) {
-  const year = film && typeof film === 'object' && film.year ? ` (${film.year})` : '';
-  // Фільм додано одразу з оцінкою автора (шкала «Ваша оцінка» у формі) —
-  // показуємо її в пуші, щоб друзі одразу бачили вердикт
-  const mine = film && typeof film === 'object' && film.ratings ? film.ratings[userId] : null;
-  const rated = mine != null ? ` — одразу з оцінкою ${mine}/10` : '';
-  return `${esc(userName(userId))} додав фільм ${filmNameHTML(film)}${year}${rated}`;
+
+// Запис — серіал? (поле kind: 'film' | 'series'; старі записи без kind — фільми)
+function isSeriesRec(film) {
+  return !!(film && typeof film === 'object' && film.kind === 'series');
 }
 
-export function filmDeletedText(userId, title) {
-  return `${esc(userName(userId))} видалив фільм ${filmNameHTML(String(title || ''))}`;
+export function filmAddedText(userId, film) {
+  const what = isSeriesRec(film) ? 'серіал' : 'фільм';
+  const year = film && typeof film === 'object' && film.year ? ` (${film.year})` : '';
+  // Якщо фільм/серіал додали одразу з оцінкою автора — показуємо її в пуші
+  const mine = film && typeof film === 'object' && film.ratings ? film.ratings[userId] : null;
+  const rated = mine != null ? ` — ${mine}/10` : '';
+  return `${esc(userName(userId))} додав ${what} ${filmNameHTML(film)}${year}${rated}`;
+}
+
+export function filmDeletedText(userId, film) {
+  // рядок (старі виклики) — «фільм»; запис із kind:'series' — «серіал»
+  return `${esc(userName(userId))} видалив ${isSeriesRec(film) ? 'серіал' : 'фільм'} ${filmNameHTML(film)}`;
 }
 
 export function ratingSetText(userId, film, score, prev) {
   const name = filmNameHTML(film);
   return (prev != null && prev !== score)
     ? `${esc(userName(userId))} змінив оцінку ${name}: ${prev} → ${score}`
-    : `${esc(userName(userId))} оцінив фільм ${name} на ${score}/10`;
+    : `${esc(userName(userId))} оцінив ${isSeriesRec(film) ? 'серіал' : 'фільм'} ${name} на ${score}/10`;
 }
 
 export function ratingRemovedText(userId, film) {
-  return `${esc(userName(userId))} прибрав свою оцінку фільму ${filmNameHTML(film)}`;
+  return `${esc(userName(userId))} прибрав свою оцінку ${isSeriesRec(film) ? 'серіалу' : 'фільму'} ${filmNameHTML(film)}`;
 }
 
 // Надсилання готових повідомлень

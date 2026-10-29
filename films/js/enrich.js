@@ -9,7 +9,7 @@
 // Усе опціонально: будь-яка помилка просто лишає поля порожніми.
 // ============================================================
 
-import { qidByImdbId, enrichByQid } from './wiki.js?v=5.6';
+import { qidByImdbId, enrichByQid } from './wiki.js?v=5.7';
 
 const WD_ENDPOINT = 'https://query.wikidata.org/sparql';
 
