@@ -4,14 +4,14 @@
 // з оцінками 1–10. Дані — в окремому вузлі games/.
 // ============================================================
 
-import { USERS } from './config.js?v=5.5';
-import * as store from './store.js?v=5.5';
-import * as U from './utils.js?v=5.5';
-import * as A from './avatars.js?v=5.5';
-import { toast, openModal, confirmDialog, icons } from './ui.js?v=5.5';
-import { rateTrailHTML, paintTrail, popValue, openRatePop as openRatePopShared } from './rating-ui.js?v=5.5';
-import { openFormModal } from './game-form.js?v=5.5';
-import { notifyGameRatingSet, notifyGameRatingRemoved, notifyGameDeleted } from './telegram.js?v=5.5';
+import { USERS } from './config.js?v=5.6';
+import * as store from './store.js?v=5.6';
+import * as U from './utils.js?v=5.6';
+import * as A from './avatars.js?v=5.6';
+import { toast, openModal, confirmDialog, icons } from './ui.js?v=5.6';
+import { rateTrailHTML, paintTrail, popValue, openRatePop as openRatePopShared } from './rating-ui.js?v=5.6';
+import { openFormModal } from './game-form.js?v=5.6';
+import { notifyGameRatingSet, notifyGameRatingRemoved, notifyGameDeleted } from './telegram.js?v=5.6';
 
 let container = null;
 let gridEl = null;

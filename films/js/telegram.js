@@ -23,10 +23,10 @@
 // повідомлення через «битий» HTML.
 // ============================================================
 
-import { USERS } from './config.js?v=5.5';
-import * as store from './store.js?v=5.5';
-import { toast, openModal, icons } from './ui.js?v=5.5';
-import { escapeHtml } from './utils.js?v=5.5';
+import { USERS } from './config.js?v=5.6';
+import * as store from './store.js?v=5.6';
+import { toast, openModal, icons } from './ui.js?v=5.6';
+import { escapeHtml } from './utils.js?v=5.6';
 
 let cfg = null; // { enabled, token, chatId, chatTitle } | null
 
@@ -107,7 +107,11 @@ function filmNameHTML(film) {
 // Чисті збирачі тексту (експортовані для тестів — нічого не надсилають)
 export function filmAddedText(userId, film) {
   const year = film && typeof film === 'object' && film.year ? ` (${film.year})` : '';
-  return `${esc(userName(userId))} додав фільм ${filmNameHTML(film)}${year}`;
+  // Фільм додано одразу з оцінкою автора (шкала «Ваша оцінка» у формі) —
+  // показуємо її в пуші, щоб друзі одразу бачили вердикт
+  const mine = film && typeof film === 'object' && film.ratings ? film.ratings[userId] : null;
+  const rated = mine != null ? ` — одразу з оцінкою ${mine}/10` : '';
+  return `${esc(userName(userId))} додав фільм ${filmNameHTML(film)}${year}${rated}`;
 }
 
 export function filmDeletedText(userId, title) {
