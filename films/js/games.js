@@ -4,14 +4,14 @@
 // з оцінками 1–10. Дані — в окремому вузлі games/.
 // ============================================================
 
-import { USERS } from './config.js?v=5.1';
-import * as store from './store.js?v=5.1';
-import * as U from './utils.js?v=5.1';
-import * as A from './avatars.js?v=5.1';
-import { toast, openModal, confirmDialog, icons } from './ui.js?v=5.1';
-import { rateTrailHTML, paintTrail, popValue, openRatePop as openRatePopShared } from './rating-ui.js?v=5.1';
-import { openFormModal } from './game-form.js?v=5.1';
-import { notifyGameRatingSet, notifyGameRatingRemoved, notifyGameDeleted } from './telegram.js?v=5.1';
+import { USERS } from './config.js?v=5.4';
+import * as store from './store.js?v=5.4';
+import * as U from './utils.js?v=5.4';
+import * as A from './avatars.js?v=5.4';
+import { toast, openModal, confirmDialog, icons } from './ui.js?v=5.4';
+import { rateTrailHTML, paintTrail, popValue, openRatePop as openRatePopShared } from './rating-ui.js?v=5.4';
+import { openFormModal } from './game-form.js?v=5.4';
+import { notifyGameRatingSet, notifyGameRatingRemoved, notifyGameDeleted } from './telegram.js?v=5.4';
 
 let container = null;
 let gridEl = null;
@@ -263,14 +263,44 @@ function updateFriendSortRow() {
   const row = container && container.querySelector('#gameFriendSortRow');
   if (!row) return;
   row.hidden = sort !== 'friend';
-  row.querySelectorAll('[data-friend-chip]').forEach(b =>
-    b.classList.toggle('active', b.dataset.friendChip === friendId));
+  row.querySelectorAll('[data-friend-chip]').forEach(b => {
+    const u = USERS.find(x => x.id === b.dataset.friendChip);
+    const av = b.querySelector('.avatar');
+    // Аватарки живуть в окремому вузлі бази й можуть прийти пізніше за
+    // монтування — щоразу перемальовуємо свіжим HTML (фото або ініціал)
+    if (u && av) av.outerHTML = A.avatarHTML(u, 'sm');
+    b.classList.toggle('active', b.dataset.friendChip === friendId);
+  });
   const dirBtn = row.querySelector('#gameFriendDirBtn');
   if (dirBtn) {
     const desc = friendDir !== 'asc';
     dirBtn.innerHTML = desc ? icons.arrowDown : icons.arrowUp;
     dirBtn.title = desc ? 'Спочатку вищі оцінки' : 'Спочатку нижчі оцінки';
   }
+}
+
+// Аватарки (avatars/{uid}) можуть завантажитися пізніше за монтування
+// вкладки — app.js викликає це на кожну зміну вузла avatars.
+export function repaintAvatars() {
+  updateFriendSortRow();
+  if (detailState && document.body.contains(detailState.overlay)) {
+    const game = gamesList.find(g => g.id === detailState.gameId);
+    const list = detailState.box && detailState.box.querySelector('.friends-list');
+    if (game && list) list.innerHTML = friendRowsHTML(game.ratings);
+  }
+}
+
+function friendRowsHTML(ratings) {
+  return USERS.map(u => {
+    const v = (ratings || {})[u.id];
+    return `<li class="f-row">
+      ${A.avatarHTML(u, 'sm')}
+      <span class="f-name">${U.escapeHtml(u.name)}</span>
+      ${v != null
+        ? `<span class="f-score" style="background:${U.ratingColor(v)}">${v}</span>`
+        : `<span class="f-score empty">—</span>`}
+    </li>`;
+  }).join('');
 }
 
 function wireFriendSortRow() {
@@ -559,16 +589,7 @@ function detailHTML(g) {
     : '';
   const pubLine = g.publisher ? `<span class="pub-line">видавець: <b>${U.escapeHtml(g.publisher)}</b></span>` : '';
 
-  const friendRows = USERS.map(u => {
-    const v = (g.ratings || {})[u.id];
-    return `<li class="f-row">
-      ${A.avatarHTML(u, 'sm')}
-      <span class="f-name">${U.escapeHtml(u.name)}</span>
-      ${v != null
-        ? `<span class="f-score" style="background:${U.ratingColor(v)}">${v}</span>`
-        : `<span class="f-score empty">—</span>`}
-    </li>`;
-  }).join('');
+  const friendRows = friendRowsHTML(g.ratings);
 
   const adder = USERS.find(u => u.id === g.addedBy);
   const addedLine = g.addedBy

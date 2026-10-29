@@ -10,11 +10,11 @@
 //      з файлу (повна заміна вмісту бази після підтвердження).
 // ============================================================
 
-import { USERS } from './config.js?v=5.1';
-import * as store from './store.js?v=5.1';
-import * as telegram from './telegram.js?v=5.1';
-import * as avatars from './avatars.js?v=5.1';
-import { toast, openModal, confirmDialog, icons } from './ui.js?v=5.1';
+import { USERS } from './config.js?v=5.4';
+import * as store from './store.js?v=5.4';
+import * as telegram from './telegram.js?v=5.4';
+import * as avatars from './avatars.js?v=5.4';
+import { toast, openModal, confirmDialog, icons } from './ui.js?v=5.4';
 
 export function init() {
   const btn = document.getElementById('settingsBtn');

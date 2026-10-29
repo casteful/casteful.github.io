@@ -3,14 +3,14 @@
 // модальне вікно фільму з оцінками 1–10
 // ============================================================
 
-import { USERS } from './config.js?v=5.1';
-import * as store from './store.js?v=5.1';
-import * as U from './utils.js?v=5.1';
-import * as A from './avatars.js?v=5.1';
-import { toast, openModal, confirmDialog, icons } from './ui.js?v=5.1';
-import { rateTrailHTML, paintTrail, popValue, openRatePop as openRatePopShared } from './rating-ui.js?v=5.1';
-import { openFormModal } from './film-form.js?v=5.1';
-import { notifyRatingSet, notifyRatingRemoved, notifyFilmDeleted } from './telegram.js?v=5.1';
+import { USERS } from './config.js?v=5.4';
+import * as store from './store.js?v=5.4';
+import * as U from './utils.js?v=5.4';
+import * as A from './avatars.js?v=5.4';
+import { toast, openModal, confirmDialog, icons } from './ui.js?v=5.4';
+import { rateTrailHTML, paintTrail, popValue, openRatePop as openRatePopShared } from './rating-ui.js?v=5.4';
+import { openFormModal } from './film-form.js?v=5.4';
+import { notifyRatingSet, notifyRatingRemoved, notifyFilmDeleted } from './telegram.js?v=5.4';
 
 let container = null;
 let gridEl = null;
@@ -253,8 +253,14 @@ function updateFriendSortRow() {
   const row = container && container.querySelector('#friendSortRow');
   if (!row) return;
   row.hidden = sort !== 'friend';
-  row.querySelectorAll('[data-friend-chip]').forEach(b =>
-    b.classList.toggle('active', b.dataset.friendChip === friendId));
+  row.querySelectorAll('[data-friend-chip]').forEach(b => {
+    const u = USERS.find(x => x.id === b.dataset.friendChip);
+    const av = b.querySelector('.avatar');
+    // Аватарки живуть в окремому вузлі бази й можуть прийти пізніше за
+    // монтування — щоразу перемальовуємо свіжим HTML (фото або ініціал)
+    if (u && av) av.outerHTML = A.avatarHTML(u, 'sm');
+    b.classList.toggle('active', b.dataset.friendChip === friendId);
+  });
   const dirBtn = row.querySelector('#friendDirBtn');
   if (dirBtn) {
     const desc = friendDir !== 'asc';
@@ -479,12 +485,12 @@ function rowHTML(f) {
           ? `<img src="${U.escapeHtml(U.posterUrl(f.poster, 80))}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">`
           : icons.film}</span>
         <span class="t-titles">
-          <span class="t-name">${U.escapeHtml(mainTitle)}${isSeries ? ' <span class="t-kind">серіал</span>' : ''}</span>
+          <span class="t-name">${U.escapeHtml(mainTitle)}</span>
           ${orig ? `<span class="t-orig">${U.escapeHtml(orig)}</span>` : ''}
         </span>
       </div>
     </td>
-    <td class="t-num t-muted">${f.year || '—'}</td>
+    <td class="t-num t-muted">${f.year || '—'}${isSeries ? '<span class="t-kind">серіал</span>' : ''}</td>
     ${isSeries ? '' : `<td class="t-muted" title="${U.escapeHtml(f.director || '')}">${f.director ? U.escapeHtml(U.trunc(f.director, 28)) : '—'}</td>`}
     <td class="t-muted t-genres" title="${U.escapeHtml((f.genres || []).join(', '))}">${f.genres && f.genres.length ? U.escapeHtml(U.trunc(f.genres.join(', '), 32)) : '—'}</td>
     ${isSeries ? '' : `<td class="t-num t-muted">${f.runtime || '—'}</td>`}
@@ -505,12 +511,14 @@ function cardHTML(f) {
   const mainTitle = f.titleUk || f.title || 'Без назви';
   const orig = (f.titleUk && f.title && f.titleUk !== f.title) ? f.title : '';
   const ratedCount = Object.keys(f.ratings || {}).length;
-  // У серіалів замість тривалості — позначка типу (час перегляду рахувати неможливо)
-  const metaBits = [
-    f.year,
-    isSeries ? 'серіал' : (f.runtime ? `${f.runtime} хв` : ''),
+  // Тип — кольоровою пігулкою праворуч від року (фільм або серіал);
+  // у серіалів тривалості немає — час перегляду рахувати неможливо
+  const metaParts = [
+    f.year ? U.escapeHtml(String(f.year)) : '',
+    `<span class="t-kind">${isSeries ? 'серіал' : 'фільм'}</span>`,
+    !isSeries && f.runtime ? `${f.runtime} хв` : '',
     ratedCount ? `${ratedCount} ${U.pluralRatings(ratedCount)}` : 'без оцінок'
-  ].filter(Boolean).join(' · ');
+  ].filter(Boolean);
 
   const friendChips = USERS
     .filter(u => (f.ratings || {})[u.id] != null)
@@ -528,7 +536,7 @@ function cardHTML(f) {
     <div class="card-body">
       <h3 class="card-title">${U.escapeHtml(mainTitle)}</h3>
       ${orig ? `<div class="card-sub">${U.escapeHtml(orig)}</div>` : ''}
-      <div class="card-meta">${U.escapeHtml(metaBits)}</div>
+      <div class="card-meta">${metaParts.join(' · ')}</div>
       <div class="rating-row">
         <button class="rate-btn ${my != null ? 'rated' : ''}" data-rate aria-label="Оцінити фільм" ${my != null ? `style="--my:${U.ratingColor(my)}"` : ''}>
           ${icons.star}<span>${my != null ? my : 'Оцінити'}</span>
@@ -602,6 +610,30 @@ function openDetail(filmId) {
 
 function fTitle(f) { return f.titleUk || f.title || 'Без назви'; }
 
+function friendRowsHTML(ratings) {
+  return USERS.map(u => {
+    const v = (ratings || {})[u.id];
+    return `<li class="f-row">
+      ${A.avatarHTML(u, 'sm')}
+      <span class="f-name">${U.escapeHtml(u.name)}</span>
+      ${v != null
+        ? `<span class="f-score" style="background:${U.ratingColor(v)}">${v}</span>`
+        : `<span class="f-score empty">—</span>`}
+    </li>`;
+  }).join('');
+}
+
+// Аватарки (avatars/{uid}) можуть завантажитися пізніше за монтування
+// вкладки — app.js викликає це на кожну зміну вузла avatars.
+export function repaintAvatars() {
+  updateFriendSortRow();
+  if (detailState && document.body.contains(detailState.overlay)) {
+    const film = filmsList.find(f => f.id === detailState.filmId);
+    const list = detailState.box && detailState.box.querySelector('.friends-list');
+    if (film && list) list.innerHTML = friendRowsHTML(film.ratings);
+  }
+}
+
 function detailHTML(f) {
   const a = U.avg(f.ratings);
   const my = (f.ratings || {})[currentUserId];
@@ -610,11 +642,19 @@ function detailHTML(f) {
   // Якщо відома повна дата прем'єри («24 вересня 2007») — показуємо її
   // замість голого року; інакше — рік, як раніше
   const prem = U.fmtPremiere(f.premiere);
+  // Тип («фільм»/«серіал») — праворуч від року/премʼєри; далі — кольорова
+  // позначка власної оцінки (той самий стиль пігулки, колір як в avg/t-score)
+  const kindBadge = `<span class="kind-badge">${isSeries ? 'серіал' : 'фільм'}</span>`;
+  const myBadge = my != null
+    ? `<span class="my-badge" style="background:${U.ratingColor(my)}" title="Ваша оцінка">ваша ${my}</span>`
+    : '';
   const metaBits = [
     // країна — клікабельна (фільтрує список), тому поза metaBits
     f.country ? `<button type="button" class="person-link" data-person="${U.escapeHtml(f.country)}" title="Фільми цієї країни">${U.escapeHtml(f.country)}</button>` : '',
     prem ? `прем'єра ${prem}` : f.year,
-    isSeries ? 'серіал' : (f.runtime ? `${f.runtime} хв` : '')
+    kindBadge,
+    myBadge,
+    isSeries ? '' : (f.runtime ? `${f.runtime} хв` : '')
   ].filter(Boolean).join(' · ');
   const genres = (f.genres || []).map(g =>
     `<button type="button" class="genre-chip clickable" data-person="${U.escapeHtml(g)}" title="Фільми цього жанру">${U.escapeHtml(g)}</button>`
@@ -626,16 +666,7 @@ function detailHTML(f) {
     ? `<button type="button" class="person-link" data-person="${U.escapeHtml(f.director)}" title="Фільми цього режисера">${U.escapeHtml(f.director)}</button>`
     : '';
 
-  const friendRows = USERS.map(u => {
-    const v = (f.ratings || {})[u.id];
-    return `<li class="f-row">
-      ${A.avatarHTML(u, 'sm')}
-      <span class="f-name">${U.escapeHtml(u.name)}</span>
-      ${v != null
-        ? `<span class="f-score" style="background:${U.ratingColor(v)}">${v}</span>`
-        : `<span class="f-score empty">—</span>`}
-    </li>`;
-  }).join('');
+  const friendRows = friendRowsHTML(f.ratings);
 
   const adder = USERS.find(u => u.id === f.addedBy);
   const addedLine = f.addedBy
@@ -652,7 +683,7 @@ function detailHTML(f) {
         ? `<img class="hero-poster" src="${U.escapeHtml(U.posterUrl(f.poster, 300))}" alt="Постер: ${U.escapeHtml(fTitle(f))}" referrerpolicy="no-referrer" onerror="this.classList.add('broken'); this.removeAttribute('src')">`
         : `<span class="hero-poster placeholder">${icons.film}</span>`}
       <div class="hero-text">
-        <h2 class="detail-heading">${U.escapeHtml(fTitle(f))}${isSeries ? ' <span class="kind-badge">серіал</span>' : ''}</h2>
+        <h2 class="detail-heading">${U.escapeHtml(fTitle(f))}</h2>
         ${orig ? `<div class="detail-orig">${U.escapeHtml(orig)}</div>` : ''}
         <div class="detail-meta">${[f.director ? `реж. ${directorBtn}` : '', metaBits].filter(Boolean).join(' · ')}</div>
         ${a != null ? `<span class="avg-big" style="background:${U.ratingColor(a)}" title="Середня оцінка">${U.fmtAvg(a)}</span>` : ''}

@@ -22,7 +22,7 @@
 // є fetchPoster(): IMDb за tt-ID → Wikidata sitelinks → pageimages.
 // ============================================================
 
-import { OMDB_API_KEY } from './config.js?v=5.1';
+import { OMDB_API_KEY } from './config.js?v=5.4';
 
 const WD_API = 'https://www.wikidata.org/w/api.php';
 
@@ -53,10 +53,18 @@ async function fetchOnce(url, timeoutMs, headers = {}) {
 
 // ---------- Пошук статей у розділі Вікіпедії ----------
 
-async function wikiSearch(lang, query, limit = 10) {
+// cat — необов'язкове ключове слово deepcategory:<категорія>: обмежує видачу
+// деревом категорій Вікіпедії (та всіма підкатегоріями). Саме воно рятує
+// короткі кириличні запити: звичайний повнотекстовий пошук за «Алекс»
+// знаходить лише біографії та міста, а сторінки фільмів («Александр
+// (фільм)») витіснені з топ-10 — deepcategory:Фільми повертає саме кіно.
+// (Дерево Films в en.Вікіпедії занадто велике — deepcat там таймаутить,
+// тож en-пошук працює без deepcategory.)
+async function wikiSearch(lang, query, limit = 10, cat = null) {
+  const sr = encodeURIComponent(cat ? `${query} deepcategory:${cat}` : query);
   const url =
     `https://${lang}.wikipedia.org/w/api.php?action=query&format=json&origin=*` +
-    `&generator=search&gsrlimit=${limit}&gsrsearch=${encodeURIComponent(query)}` +
+    `&generator=search&gsrlimit=${limit}&gsrsearch=${sr}` +
     '&prop=pageimages|pageprops|extracts&exintro=1&explaintext=1&exlimit=max' +
     // pilicense=any: без цього en.вікі НЕ віддає fair-use постери фільмів
     '&piprop=thumbnail&pithumbsize=400&pilicense=any';
@@ -70,8 +78,10 @@ async function wikiSearch(lang, query, limit = 10) {
 }
 
 // Швидкий ПРЕФІКСНИЙ пошук (тільки за назвами статей) — легкий і
-// зазвичай вдвічі-втричі швидший за повнотекстовий; дає найперші підказки
-async function wikiPrefix(lang, query, limit = 6) {
+// зазвичай вдвічі-втричі швидший за повнотекстовий; дає найперші підказки.
+// gpslimit=10: за загальними префіксами («Алекс», «Джон») топ-6 забитий
+// людьми та містами, фільмова стаття могла не потрапити у видачу взагалі.
+async function wikiPrefix(lang, query, limit = 10) {
   const url =
     `https://${lang}.wikipedia.org/w/api.php?action=query&format=json&origin=*` +
     `&generator=prefixsearch&gpslimit=${limit}&gpssearch=${encodeURIComponent(query)}` +
@@ -489,18 +499,36 @@ export async function searchWikiFilms(query, onPartial, opts = {}) {
     if (typeof onPartial === 'function' && merged.length) onPartial(merged);
   };
 
-  const runLang = async (lang, { prefix = false, query: qq = q } = {}) => {
+  const runLang = async (lang, { prefix = false, query: qq = q, cat = null } = {}) => {
     let pages = [];
     try {
-      pages = prefix ? await wikiPrefix(lang, qq) : await wikiSearch(lang, qq);
+      pages = prefix ? await wikiPrefix(lang, qq) : await wikiSearch(lang, qq, 10, cat);
     } catch (e) { return; }
     let batch = [];
-    try { batch = await collectItems(pages.slice(0, prefix ? 6 : 10), seen, thumbs, q); } catch (e) { return; }
+    try { batch = await collectItems(pages.slice(0, prefix ? 8 : 10), seen, thumbs, q); } catch (e) { return; }
     emit(batch);
   };
 
   const tasks = [runLang(langs[0], { prefix: true }), runLang(langs[0])];
   if (langs[1] && langs[1] !== langs[0]) tasks.push(runLang(langs[1]));
+
+  // Короткі кириличні ПРЕФІКСИ назви («Алекс», «Джок», «Інтерст»):
+  // звичайний повнотекстовий пошук за «Алекс» не знаходить жодного фільму
+  // (стемінг не пов'язує «Алекс» із «Александром», а в видачі біографії та
+  // міста), і навіть префіксний пошук забитий людьми. Цільові пошуки
+  // WILDCARD + deepcategory шукають у деревах категорій «Фільми» та
+  // «Телесеріали» uk.Вікіпедії — і повертають саме кіно:
+  //   «Алекс* deepcategory:Фільми» -> «Александр (фільм)», «Про Алекса»,
+  //   «Фанні та Александр»; биографії з видачі відсіює фільтр Вікіданих.
+  // Два окремі проходи (а не «Фільми|Телесеріали» разом): дерево
+  // телесеріалів + фільмів разом перевищує ліміт deepcat — CirrusSearch
+  // відкидає частину категорій («returned too many categories»). en.Вікі-
+  // педію тут не чіпаємо: дерево Films занадто велике (deepcat таймаутить),
+  // а латиницю покривають IMDb та звичайні проходи.
+  if (hasCyrillic && q.length >= 3) {
+    tasks.push(runLang('uk', { query: `${q}*`, cat: 'Фільми' }));
+    tasks.push(runLang('uk', { query: `${q}*`, cat: 'Телесеріали' }));
+  }
 
   // Рік у запиті («creep 2004») — цільові добірки повз базовий пошук
   // за назвою. У full-text пошуку «creep» стаття «Creep (2004 film)»
@@ -534,6 +562,44 @@ export async function searchWikiFilms(query, onPartial, opts = {}) {
 
 // ---------- Добір даних за QID (коли фільм обрано з Вікіпедії) ----------
 
+// ---------- en.Вікіпедія: тривалість з Infobox (fallback) ----------
+// Багато нових фільмів у Вікіданнах ще НЕ мають твердження P2047
+// («тривалість»), тоді як в en.Вікіпедії поле |runtime= в Infobox film
+// вже заповнене («108 minutes»). Приклад: Clayface (2026) — Q131460936
+// без P2047, але в en-wiki тривалість є. Тягнемо її звідти.
+
+function parseRuntimeFromWikitext(wikitext) {
+  const m = String(wikitext || '').match(/^\s*\|\s*runtime\s*=\s*(.+?)\s*$/im);
+  if (!m) return null;
+  // прибираємо ref-теги й шаблони, щоб не плутати парсер чисел
+  const raw = m[1]
+    .replace(/<ref[^>]*>[\s\S]*?<\/ref\s*>/gi, '')
+    .replace(/<ref[^>]*\/>/gi, '')
+    .replace(/{{[^{}]*}}/g, '');
+  const h = raw.match(/(\d+)\s*(?:hours?|h|год)\b/i);
+  const min = raw.match(/(\d+)\s*(?:min|хв|хвилин)/i);
+  let total = 0;
+  if (h) total += parseInt(h[1], 10) * 60;
+  if (min) total += parseInt(min[1], 10);
+  if (!total) {
+    const only = raw.match(/(\d{2,3})/);
+    if (only) total = parseInt(only[1], 10);
+  }
+  // розумний діапазон: 5 хв — 10 год
+  return total >= 5 && total < 600 ? total : null;
+}
+
+async function enWikiRuntime(title) {
+  if (!title) return null;
+  try {
+    // section=0 — лише лід-секція з Infobox (кілька КБ, не вся стаття)
+    const url = 'https://en.wikipedia.org/w/api.php?action=parse&format=json&origin=*&formatversion=2' +
+      '&prop=wikitext&section=0&page=' + encodeURIComponent(title);
+    const data = await fetchJSON(url, 6000);
+    return parseRuntimeFromWikitext(data && data.parse && data.parse.wikitext);
+  } catch (e) { return null; }
+}
+
 export async function enrichByQid(qid) {
   if (!qid || !/^Q\d+$/.test(qid)) return {};
   // keepAll: QID тут відомий точно (фільм обрано користувачем або знайдено
@@ -542,6 +608,10 @@ export async function enrichByQid(qid) {
   const { map: wd } = await wikidataByQids([qid], { keepAll: true });
   const e = wd[qid];
   if (!e) return {};
+  // Тривалість: спершу Вікіданні (P2047); якщо там порожньо —
+  // Infobox en.Вікіпедії (один легкий запит, лише коли треба)
+  let runtime = e.runtime || null;
+  if (!runtime && e.enWikiTitle) runtime = await enWikiRuntime(e.enWikiTitle);
   return {
     titleUk: e.titleUk || null,
     title: e.titleEn || null,
@@ -550,7 +620,7 @@ export async function enrichByQid(qid) {
     country: e.country || null,
     genres: e.genres || [],
     cast: e.cast || [],
-    runtime: e.runtime || null,
+    runtime,
     year: e.year || null,
     premiere: e.premiere || null,
     ukWikiTitle: e.ukWikiTitle || null,

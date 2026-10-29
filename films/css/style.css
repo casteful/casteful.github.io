@@ -2902,7 +2902,6 @@ td.u-col.mine:hover { background: color-mix(in srgb, var(--accent) 9%, var(--sur
 }
 .kind-badge {
   display: inline-block;
-  margin-left: 8px;
   padding: 3px 10px;
   border-radius: 999px;
   background: var(--accent-soft);
@@ -2911,6 +2910,19 @@ td.u-col.mine:hover { background: color-mix(in srgb, var(--accent) 9%, var(--sur
   font-weight: 700;
   vertical-align: middle;
 }
+/* Кольорова позначка власної оцінки в meta-рядку вікна деталей —
+   та сама пігулка, що й тип, але кольором оцінки (як avg/t-score) */
+.my-badge {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 999px;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 800;
+  vertical-align: middle;
+}
+td.t-num .t-kind { margin-left: 6px; }
+.card-meta .t-kind { margin-left: 0; }
 
 /* Сегментований перемикач «Фільм / Серіал» у формі */
 .seg {

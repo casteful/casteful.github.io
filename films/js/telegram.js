@@ -23,10 +23,10 @@
 // повідомлення через «битий» HTML.
 // ============================================================
 
-import { USERS } from './config.js?v=5.1';
-import * as store from './store.js?v=5.1';
-import { toast, openModal, icons } from './ui.js?v=5.1';
-import { escapeHtml } from './utils.js?v=5.1';
+import { USERS } from './config.js?v=5.4';
+import * as store from './store.js?v=5.4';
+import { toast, openModal, icons } from './ui.js?v=5.4';
+import { escapeHtml } from './utils.js?v=5.4';
 
 let cfg = null; // { enabled, token, chatId, chatTitle } | null
 
