@@ -73,6 +73,39 @@ async function wikiPrefix(lang, query, limit = 6) {
     .sort((a, b) => (a.index || 999) - (b.index || 999));
 }
 
+// ПРЕФІКСНИЙ пошук за НАЗВОЮ статті через CirrusSearch intitle:…
+//
+// Навіщо третій пошук: повнотекстовий пошук знає лише ЦІЛІ слова
+// («Алекс» ≠ слово «Александр» — у видачі лише люди й міста), а
+// generator=prefixsearch бачить перші кілька назв-префіксів, які
+// ті самі люди забивають під корінь — стаття «Александр (фільм)»
+// не потрапляє ні туди, ні туди. intitle:{запит}* ловить ПРЕФІКС
+// слова в назві, а другий термін intitle:фільм працює магічним
+// фільтром: уточнення «(фільм)» у назві статті відсікає людей і
+// міста ще на рівні пошукового індексу. Далі той самий фільтр
+// фільмів Wikidata, що й у звичайному пошуку, тож шуму немає.
+async function wikiIntitle(lang, query, limit = 10) {
+  const filmWord = lang === 'uk' ? 'фільм' : 'film';
+  const q = String(query || '').trim();
+  // Багатослівні запити: intitle чіпляється лише за перший термін
+  // («harry pot*» = назва містить "harry" + повний текст "pot*"), тож
+  // фразу беремо в лапки без wildcard — префіксні багатослів'я й так
+  // ловить prefixsearch, а тут важлива точна фраза в назві.
+  const needle = /\s/.test(q) ? `intitle:"${q}"` : `intitle:${q}*`;
+  const url =
+    `https://${lang}.wikipedia.org/w/api.php?action=query&format=json&origin=*` +
+    `&generator=search&gsrlimit=${limit}` +
+    `&gsrsearch=${encodeURIComponent(`${needle} intitle:${filmWord}`)}` +
+    '&prop=pageimages|pageprops|extracts&exintro=1&explaintext=1&exlimit=max' +
+    '&piprop=thumbnail&pithumbsize=400&pilicense=any';
+
+  const data = await fetchJSON(url, 6000);
+  const pages = data && data.query ? Object.values(data.query.pages || {}) : [];
+  return pages
+    .map(p => ({ ...p, _lang: lang, _intitle: true }))
+    .sort((a, b) => (a.index || 999) - (b.index || 999));
+}
+
 // ---------- Wikidata: claims + мітки фільмів ОДНИМ викликом ----------
 // (швидше, ніж два окремі запити claims і labels)
 
@@ -345,15 +378,21 @@ function looksLikeFilmByExtract(text) {
 // АЛЕ їхні мініатюри зберігаються тут: якщо в першого пакета мініатюри
 // не було, а в дубліката-статті (інший розділ вікі) — є, постер
 // "перетікає" з дубліката.
-async function collectItems(pages, seen, thumbs, rescueQuery = '') {
+async function collectItems(pages, seen, thumbs, rescueQuery = '', registry = null) {
   // дедуплікація за QID або назвою (seen — спільний між розділами Вікіпедії)
   pages = pages.filter(p => {
     const qid = p.pageprops && p.pageprops.wikibase_item;
     const key = qid || ('t:' + String(p.title || '').toLowerCase());
     const thumb = p.thumbnail && p.thumbnail.source;
     if (seen.has(key)) {
-      // дублікат: як у першої сторінки не було мініатюри — забираємо з цього дубліката
+      // дублікат: як у першої сторінки не було мініатюри — забираємо з цього дубліката;
+      // якщо дублікат прийшов зі intitle-пошуку — передаємо прапор уже
+      // створеному елементу (назва статті починається із запиту + «фільм»)
       if (thumb && thumbs.get(key) == null) thumbs.set(key, thumb);
+      if (registry && p._intitle) {
+        const prev = registry.get(key);
+        if (prev && !prev._intitle) prev._intitle = true;
+      }
       return false;
     }
     seen.add(key);
@@ -427,6 +466,10 @@ async function collectItems(pages, seen, thumbs, rescueQuery = '') {
       poster,
       type,
       source: 'wiki',
+      // Сторінка зі intitle-пошуку (назва статті починається із запиту
+      // і містить «фільм») — найсильніший сигнал релевантності, mergeLists
+      // тримає такі рядки попереду інших префіксних збігів
+      ...(p._intitle ? { _intitle: true } : {}),
       // Точна назва статті en.Вікіпедії — за нею posterQuick швидко
       // добирає мініатюру, якщо POSTER не прийшов одразу
       enWikiTitle: (e && e.enWikiTitle) || (p._lang === 'en' ? p.title : null),
@@ -436,6 +479,7 @@ async function collectItems(pages, seen, thumbs, rescueQuery = '') {
       runtime: (e && e.runtime) || null,
       plot
     });
+    if (registry) registry.set(key, items[items.length - 1]);
   }
   return items;
 }
@@ -488,6 +532,10 @@ function dedupeItems(items) {
       for (const f of ['poster', 'plot', 'year', 'premiere', 'director', 'runtime', 'imdbId', 'qid', 'enWikiTitle']) {
         if (keep[f] == null && it[f] != null) keep[f] = it[f];
       }
+      // intitle-прапор «передається»: навіть якщо сторінку вперше побачив
+      // prefixsearch, дублікат-доказ зі intitle означає, що назва статті
+      // починається із запиту + містить «фільм» — сигнал не втрачаємо
+      if (!keep._intitle && it._intitle) keep._intitle = true;
       if ((!keep.genres || !keep.genres.length) && it.genres && it.genres.length) keep.genres = it.genres;
       if ((!keep.cast || !keep.cast.length) && it.cast && it.cast.length) keep.cast = it.cast;
       reg(k, at);
@@ -517,6 +565,7 @@ export async function searchWikiFilms(query, onPartial, opts = {}) {
 
   const seen = new Set();    // спільна дедуплікація QID/назв між пакетами
   const thumbs = new Map(); // ключ -> мініатюра (у т.ч. з дублікатів)
+  const made = new Map();   // ключ -> створений елемент (для передачі _intitle)
   const all = [];
 
   const emit = (batch) => {
@@ -532,12 +581,22 @@ export async function searchWikiFilms(query, onPartial, opts = {}) {
       pages = prefix ? await wikiPrefix(lang, q) : await wikiSearch(lang, qText);
     } catch (e) { return; }
     let batch = [];
-    try { batch = await collectItems(pages.slice(0, prefix ? 6 : 10), seen, thumbs, q); } catch (e) { return; }
+    try { batch = await collectItems(pages.slice(0, prefix ? 6 : 10), seen, thumbs, q, made); } catch (e) { return; }
     emit(batch);
   };
 
-  const tasks = [runLang(langs[0], { prefix: true }), runLang(langs[0])];
-  if (langs[1] && langs[1] !== langs[0]) tasks.push(runLang(langs[1]));
+  // intitle-пошук: ловить фільми, назва статті яких ПОЧИНАЄТЬСЯ із запиту
+  // («Алекс» → «Александр (фільм)») — див. коментар над wikiIntitle().
+  const runIntitle = async (lang) => {
+    let pages = [];
+    try { pages = await wikiIntitle(lang, q); } catch (e) { return; }
+    let batch = [];
+    try { batch = await collectItems(pages.slice(0, 10), seen, thumbs, q, made); } catch (e) { return; }
+    emit(batch);
+  };
+
+  const tasks = [runLang(langs[0], { prefix: true }), runLang(langs[0]), runIntitle(langs[0])];
+  if (langs[1] && langs[1] !== langs[0]) tasks.push(runLang(langs[1]), runIntitle(langs[1]));
   await Promise.allSettled(tasks);
 
   const final = dedupeItems(all).slice(0, 12);

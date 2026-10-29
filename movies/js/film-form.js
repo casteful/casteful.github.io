@@ -105,7 +105,7 @@ function mergeLists(imdbList, wikiList, query, expectedYear = null) {
     if (at === undefined) at = findAt(ku);
     if (at !== undefined) {
       const keep = out[at];
-      for (const f of ['poster', 'plot', 'year', 'premiere', 'director', 'runtime', 'imdbId', 'qid', 'titleUk', 'type', 'enWikiTitle']) {
+      for (const f of ['poster', 'plot', 'year', 'premiere', 'director', 'runtime', 'imdbId', 'qid', 'titleUk', 'type', 'enWikiTitle', '_intitle']) {
         if (keep[f] == null && it[f] != null) keep[f] = it[f];
       }
       if ((!keep.genres || !keep.genres.length) && it.genres && it.genres.length) keep.genres = it.genres;
@@ -122,15 +122,66 @@ function mergeLists(imdbList, wikiList, query, expectedYear = null) {
   (imdbList || []).forEach(add);
   (wikiList || []).forEach(add);
   let ordered = out;
+  // Точні збіги із запитом — завжди найпершими
   if (normQ && normQ.length >= 3) {
     const isExact = it => {
-      const t = String(it.title || '').toLowerCase().replace(/[^a-zа-яіїєґ0-9]/g, '');
-      const tu = String(it.titleUk || '').toLowerCase().replace(/[^a-zа-яіїєґ0-9]/g, '');
+      const t = norm(it.title);
+      const tu = norm(it.titleUk);
       return t === normQ || (tu && tu === normQ);
     };
     const exact = ordered.filter(isExact);
-    if (exact.length && exact.length < ordered.length) {
-      ordered = exact.concat(ordered.filter(it => !isExact(it)));
+    let rest = ordered.filter(it => !isExact(it));
+    if (exact.length && rest.length) {
+      // Префіксні збіги шукаємо лише поміж НЕточних: точні й так
+      // нагорі, і їх не можна перекривати («Гладіатор» не повинен
+      // віддати перше місце "Gladiators of Rome")
+      promotePrefix(rest);
+      ordered = exact.concat(rest);
+    } else if (!exact.length) {
+      promotePrefix(ordered);
+    }
+
+    function promotePrefix(list) {
+      if (list.length < 2) return;
+      const { title: qT } = splitQueryYear(query);
+      const nqs = [norm(qT), ...U.translitVariants(qT).map(norm)].filter(Boolean);
+      if (!nqs.length) return;
+      const isPref = it => {
+        const t = norm(it.title);
+        const tu = norm(it.titleUk);
+        return nqs.some(nq => (t && t.startsWith(nq)) || (tu && tu.startsWith(nq)));
+      };
+      if (!list.some(isPref) || list.every(isPref)) return;
+      let heads = list.filter(isPref);
+      const tails = list.filter(it => !isPref(it));
+      // Рядки, знайдені intitle-пошуком (назва статті ПОЧИНАЄТЬСЯ із
+      // запиту + «фільм» у назві) — найсильніший сигнал: такі сторінки
+      // ніколи не приходять від пошуку за цілими словами. Тримаємо їх
+      // попереду інших префіксних збігів — це прибирає залежність від
+      // того, який запит до WMF повернувся першим.
+      const fromIntitle = heads.filter(it => it._intitle);
+      if (fromIntitle.length && fromIntitle.length < heads.length) {
+        heads = fromIntitle.concat(heads.filter(it => !it._intitle));
+      }
+      // Запит БЕЗ року: збіг-ПРОДОВЖЕННЯ слова («Алекс» → «Александр»,
+      // «Джок» → «Джокер») — це те, чого пошук за цілими словами ніколи
+      // не знаходив, і воно релевантніше за окреме слово-префікс
+      // («Alex Rider»). З явним роком («creep 2004») — навпаки: рік
+      // домінує, а «продовження» на кшталт «Creepschool» лише шумить.
+      if (!expectedYear) {
+        const nqsRaw = [qT, ...U.translitVariants(qT)].map(v => v.toLowerCase());
+        const isCont = it => {
+          const raws = [it.title, it.titleUk].filter(Boolean).map(s => String(s).toLowerCase());
+          return raws.some(r => nqsRaw.some(nq =>
+            r.startsWith(nq) && r.length > nq.length &&
+            /[a-zа-яіїєґ0-9]/.test(r.charAt(nq.length))));
+        };
+        if (heads.some(isCont) && !heads.every(isCont)) {
+          heads = heads.filter(isCont).concat(heads.filter(it => !isCont(it)));
+        }
+      }
+      list.length = 0;
+      list.push(...heads, ...tails);
     }
   }
   if (expectedYear && ordered.length > 1) {
