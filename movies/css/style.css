@@ -904,7 +904,7 @@ td.u-col.mine:hover { background: color-mix(in srgb, var(--accent) 9%, var(--sur
    усередині — фіксований темний, зірки до вибору темніші за звичайних
    (var(--border-strong) зливається з кремом). */
 .add-rate {
-  background: rgb(238, 236, 225);
+  background: rgb(0, 0, 0);
   border-radius: 11px;
 }
 /* .field задає padding пізнішим у файлі правилом — беремо подвійний клас,
