@@ -10,7 +10,7 @@ import * as store from './store.js';
 import * as U from './utils.js';
 import { toast, openModal, confirmDialog, icons, ratingTrailHTML, wireRatingTrail } from './ui.js';
 import { suggestFilms, typeLabel, imdbTemporarilyDown, imdbById } from './imdb.js';
-import { searchWikiFilms, fetchPoster, posterQuick, premiereInfo, cleanWikiTitle } from './wiki.js';
+import { searchWikiFilms, searchWikidataFilms, fetchPoster, posterQuick, premiereInfo, cleanWikiTitle } from './wiki.js';
 import { enrichFilm } from './enrich.js';
 import { translateToUk } from './translate.js';
 import { notifyItemAdded, notifyItemDeleted } from './telegram.js';
@@ -27,9 +27,11 @@ import { notifyItemAdded, notifyItemDeleted } from './telegram.js';
 //      приходить саме з Вікіпедії.
 //   3. Результати зливаються без дублікатів (IMDb зверху, збіги за
 //      назвою доповнюють один одного: постер з IMDb + укр. назва з вікі).
-//   4. Якщо запит кирилицею і знайдено замало — назва ТРАНСЛІТЕРУЄТЬСЯ
+//   4. Якщо знайдено замало — резервна фаза: пошук фільмів БЕЗПОСЕРЕДНЬО
+//      у Вікіданнах (мітки uk/en є майже в усіх фільмів — навіть без
+//      статті в uk.Вікіпедії: «Алекс», новинки 2026) + назва ТРАНСЛІТЕРУЄТЬСЯ
 //      латиницею і пошук повторюється нею на IMDb та в en.Вікіпедії
-//      («Інтерстеллар» → "Interstellar", «Джокер» → "Joker").
+//      («Інтерстеллар» → "Interstellar", «Алекс» → "Aleks"/"Alex").
 //   5. «Назва 2007» / «назва (2007)»: рік відділяється — IMDb шукає
 //      повний запит (він розуміє рік), Вікіпедія — лише назву (рік у
 //      повнотекстовому пошуку підіймає списки епізодів і сезони), а
@@ -41,7 +43,9 @@ const WIKI_DELAY_MS = 0;   // вікі шукає одразу, паралель
                            // запитів тротелються debounce 220мс і кешем пошуку)
 const SUG_CACHE_MAX = 60;
 const SUG_MAX = 20;          // максимум рядків у підказках (список гортається)
-const SUG_FALLBACK_MIN = 10; // знайдено менше — добираємо англійською транслітерацією
+const SUG_FALLBACK_MIN = 12; // знайдено менше — добираємо з Вікіданних і за
+                             // англійською транслітерацією (12 = максимум
+                             // видачі IMDb, тож «неповний» IMDb теж добираємо)
 
 const sugCache = new Map(); // ключ запиту -> Promise зі списком підказок
 
@@ -175,21 +179,28 @@ function searchFilmsFast(q, onPartial) {
       wikiList = wl || [];
       paint();
 
-      // Кириличний запит знайшов замало — добираємо англійською:
-      // транслітеруємо назву БЕЗ року і шукаємо нею (IMDb + en.Вікіпедія).
-      // Це дає результати для «Інтерстеллар», «Джокер», «Гладіатор» тощо,
-      // які IMDb за кирилицею часто не знаходить узагалі.
+      // Замало результатів — РЕЗЕРВНА ФАЗА (раз на запит):
+      //   a) фільми БЕЗПОСЕРЕДНЬО з Вікіданних — uk/en мітки є майже в усіх
+      //      фільмів, навіть коли статті в uk.Вікіпедії немає («Алекс»);
+      //   b) кириличний запит транслітерується і шукається нею (IMDb +
+      //      en.Вікіпедія) — для «Інтерстеллар», «Джокер», «Гладіатор» тощо,
+      //      які IMDb за кирилицею часто не знаходить узагалі.
+      // IMDb тут пробується попри «недоступність» (force) — раз на запит
+      // це дешево, а результати найцінніші саме тут.
       const variants = U.translitVariants(qTitle);
-      if (variants.length && mergeLists(imdbList, wikiList, q, qYear).length < SUG_FALLBACK_MIN) {
-        paint('Мало збігів — шукаю ще за англійською транслітерацією…');
-        const [moreImdb, moreWiki] = await Promise.all([
-          Promise.all(variants.map(v => suggestFilms(v).catch(() => [])))
+      if (mergeLists(imdbList, wikiList, q, qYear).length < SUG_FALLBACK_MIN) {
+        paint('Мало збігів — шукаю ще у Вікіданнах і за англійською транслітерацією…');
+        const [moreImdb, moreWiki, moreWd] = await Promise.all([
+          Promise.all(variants.map(v => suggestFilms(v, { force: true }).catch(() => [])))
             .then(lists => lists.flat()),
           Promise.all(variants.map(v => searchWikiFilms(v, null, { langs: ['en'] }).catch(() => [])))
-            .then(lists => lists.flat())
+            .then(lists => lists.flat()),
+          searchWikidataFilms(qTitle).catch(() => [])
         ]);
         imdbList = imdbList.concat(moreImdb);
-        wikiList = wikiList.concat(moreWiki);
+        // Вікідані раніше транслітераційних добірок: фільми, що збігаються
+        // за назвою із запитом, релевантніші за випадкові збіги en.вікі
+        wikiList = wikiList.concat(moreWd, moreWiki);
         paint();
       }
     })
@@ -297,7 +308,7 @@ export function openFormModal({ film = null, currentUserId, allFilms = [] }) {
             <span class="s-text">
               <span class="s-name">${U.escapeHtml(main)}</span>
               ${alt ? `<span class="s-orig">${U.escapeHtml(alt)}</span>` : ''}
-              <span class="s-year">${[s.year || '', typeLabel(s.type), s.source === 'wiki' ? 'Вікіпедія' : ''].filter(Boolean).join(' · ')}</span>
+              <span class="s-year">${[s.year || '', typeLabel(s.type), s.source === 'wiki' ? 'Вікіпедія' : s.source === 'wikidata' ? 'Вікідані' : ''].filter(Boolean).join(' · ')}</span>
             </span>
           </button>`;
         }).join('') +
@@ -346,8 +357,8 @@ export function openFormModal({ film = null, currentUserId, allFilms = [] }) {
       if (!items.length) {
         const down = imdbTemporarilyDown();
         sugList.innerHTML = note(icons.alert, down
-          ? 'Нічого не знайдено (IMDb зараз недоступний — шукали у Вікіпедії та за транслітерацією). Спробуйте оригінальну англійську назву або заповніть поля вручну.'
-          : 'Нічого не знайдено — шукали на IMDb, у Вікіпедії та за англійською транслітерацією назви. Спробуйте оригінальну англійську назву або заповніть поля вручну.');
+          ? 'Нічого не знайдено (IMDb зараз недоступний — шукали у Вікіпедії, Вікіданних та за транслітерацією). Спробуйте оригінальну англійську назву або заповніть поля вручну.'
+          : 'Нічого не знайдено — шукали на IMDb, у Вікіпедії, Вікіданних та за англійською транслітерацією назви. Спробуйте оригінальну англійську назву або заповніть поля вручну.');
         return;
       }
       renderItems(items);

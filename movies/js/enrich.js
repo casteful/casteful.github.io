@@ -9,7 +9,7 @@
 // Усе опціонально: будь-яка помилка просто лишає поля порожніми.
 // ============================================================
 
-import { qidByImdbId, enrichByQid } from './wiki.js';
+import { qidByImdbId, enrichByQid, fetchWikiRuntime } from './wiki.js';
 
 const WD_ENDPOINT = 'https://query.wikidata.org/sparql';
 
@@ -188,6 +188,25 @@ export async function enrichFilm({ imdbId, qid, title, year, titleUkHint }) {
     } catch (e) {
       console.warn('[enrich] Wikidata недоступна:', e && e.message);
     }
+  }
+
+  // ---- 2.5) ТРИВАЛІСТЬ: у Вікіданнах P2047 часто порожній для нових
+  // релізів (Clayface 2026), а в інфобоксі статті Вікіпедії «runtime»
+  // вже стоїть. Англійська стаття — перша (домовленість з користувачем),
+  // українська — страховка. Тільки коли тривалість ніхто ще не дав —
+  // інакше це зайвий запит до Вікіпедії на кожне збагачення.
+  if (!out.runtime) {
+    try {
+      const rt = await fetchWikiRuntime({
+        imdbId: imdbId,
+        enWikiTitle: out.enWikiTitle,
+        ukWikiTitle: out.ukWikiTitle,
+        title: out.titleEn || title,
+        titleUk: out.titleUk || titleUkHint,
+        year: out.year
+      });
+      if (rt) out.runtime = rt;
+    } catch (e) { /* тривалість не критична */ }
   }
 
   // ---- 3) СЮЖЕТ — АНГЛІЙСЬКИЙ ПЕРШИМ (усі дані окрім назви — англійською,

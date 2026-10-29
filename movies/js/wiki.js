@@ -23,6 +23,7 @@
 // ============================================================
 
 import { OMDB_API_KEY } from './config.js';
+import { translitVariants } from './utils.js';
 
 const WD_API = 'https://www.wikidata.org/w/api.php';
 
@@ -552,6 +553,88 @@ export async function searchWikiFilms(query, onPartial, opts = {}) {
   return final;
 }
 
+// ---------- Пошук фільмів БЕЗПОСЕРЕДНЬО у Вікіданнах ----------
+//
+// Навіщо: Вікіпедія шукає лише СТАТТІ, а в укр. розділі статті про фільм
+// може не бути взагалі («Алекс», «Alex Strangelove», новинки 2026). Мітки
+// Вікіданих (uk/en) є майже в УСІХ фільмів — навіть без жодної статті.
+// Цей пошук ловить саме їх: CirrusSearch haswbstatement обмежує видачу
+// кінокласами (фільм/серіал/ТВ-фільм/короткометражка/мінісеріал), далі
+// мапа QID -> дані (та сама, що для вікі-сторінок), і фільтр «мітка
+// містить запит» відсіює псевдозбіги по аліасах (типу «Грек Зорба» на
+// запит «Алекс»). Викликається з film-form у резервній фазі, коли
+// Вікіпедія + IMDb дали замало результатів.
+
+const WD_FILM_CLASSES = 'Q11424|Q5398426|Q506240|Q24869|Q7725310|Q336144';
+
+export async function searchWikidataFilms(query, opts = {}) {
+  const q = String(query || '').trim();
+  if (q.length < 2) return [];
+
+  // 1) CirrusSearch: запит + обмеження класом кіно (P31). Один легкий
+  //    виклик — далі всі дані тягне звичайна мапа wbgetentities.
+  let qids = [];
+  try {
+    const sr = await fetchJSON(`${WD_API}?action=query&format=json&origin=*` +
+      `&list=search&srlimit=10&srsearch=${encodeURIComponent(`${q} haswbstatement:P31=${WD_FILM_CLASSES}`)}`, 4500);
+    qids = (((sr || {}).query || {}).search || [])
+      .map(x => x && x.title)
+      .filter(t => /^Q\d+$/.test(String(t)));
+  } catch (e) { return []; }
+  if (!qids.length) return [];
+
+  // 2) Повні дані за QID (та сама мапа, що й для вікі-сторінок;
+  //    rescueQuery рятує легітимні сезони серіалів із точною назвою)
+  const { map } = await wikidataByQids(qids, { rescueQuery: q });
+
+  // 3) Фільтр релевантності: uk/en мітка містить запит (без регістру і
+  //    розділових). «Я, Алекс Кросс» підходить під «Алекс», «Грек Зорба» — ні.
+  //    ВАЖЛИВО: запит і мітка можуть бути в РІЗНИХ системах письма
+  //    («Алекс» кирилицею, а мітка "Alex Strangelove" латиницею) —
+  //    зіставляємо і з транслітераційними варіантами запиту.
+  const norm = s => String(s || '').toLowerCase().replace(/[^a-zа-яіїєґ0-9]/g, '');
+  const nqs = [norm(q), ...translitVariants(q).map(norm)].filter(Boolean);
+  const labelHit = e => nqs.some(nq =>
+    (e.titleUk && norm(e.titleUk).includes(nq)) ||
+    (e.titleEn && norm(e.titleEn).includes(nq)));
+  const items = [];
+  for (const qid of qids) {
+    const e = map[qid];
+    if (!e) continue;
+    if (nqs.length && !labelHit(e)) continue;
+
+    // Мітки бувають статтєві («Джокер (фільм, 1991)») — чистимо суфікси,
+    // а рік із дужок забираємо собі (іначе рядок Вікіданних не зіллється
+    // з однойменним рядком Вікіпедії/IMDb — буде дубль у підказках)
+    const cEn = e.titleEn ? cleanWikiTitle(e.titleEn) : { title: null, year: null };
+    const cUk = e.titleUk ? cleanWikiTitle(e.titleUk) : { title: null, year: null };
+
+    const cl = e.classes || [];
+    const type = cl.includes('Q5398426') || cl.includes('Q3464665') ? 'tvSeries'
+      : cl.includes('Q506240') ? 'tvMovie'
+      : 'movie';
+    items.push({
+      imdbId: e.imdbId || null,
+      qid,
+      title: cEn.title || cUk.title || qid,
+      titleUk: cUk.title || null,
+      year: e.year || cEn.year || cUk.year || null,
+      premiere: e.premiere || null,
+      poster: null, // підтягне fillMissingPosters (sitelinks/IMDb/TVMaze)
+      type,
+      source: 'wikidata',
+      ukWikiTitle: e.ukWikiTitle || null,
+      enWikiTitle: e.enWikiTitle || null,
+      director: e.director || null,
+      genres: e.genres || [],
+      cast: e.cast || [],
+      runtime: e.runtime || null,
+      plot: null // сюжет добере enrichFilm після вибору (sitelink -> стаття)
+    });
+  }
+  return items;
+}
+
 // ---------- Добір даних за QID (коли фільм обрано з Вікіпедії) ----------
 
 export async function enrichByQid(qid) {
@@ -586,6 +669,158 @@ export async function qidByImdbId(tt) {
     const found = sr && sr.query && sr.query.search && sr.query.search[0] && sr.query.search[0].title;
     return (found && /^Q\d+$/.test(found)) ? found : null;
   } catch (e) { return null; }
+}
+
+// ============================================================
+// ТРИВАЛІСТЬ з інфобокса статті Вікіпедії (fetchWikiRuntime).
+// Навіщо: у Вікіданнах P2047 (тривалість) часто порожній для нових
+// релізів — Clayface (2026) мав повну статтю en.вікі та взагалі без
+// P2047. А в інфобоксі en.статті поле «runtime» заповнюється майже
+// завжди одразу після прем'єри (і часто ще до неї). Тож коли швидкий
+// шлях (Wikidata) і СПАРКЛ-резерв не дали хвилин — читаємо статтю.
+//
+// Джерела wikitext: action=parse&prop=wikitext&section=0 (легкий
+// запит лише вступу+інфобокса). Порядок спроб:
+//   1) точна en-стаття (sitelink Вікіданих / назва результату);
+//   2) точна uk-стаття;
+//   3) en «Назва (рік film)» / «Назва (film)» — канонічні назви статей;
+//   4) uk «Назва (фільм)» / «Назва (фільм, рік)».
+// Поле «length» НЕ чіпаємо: ним позначають довжину альбомів — так в
+// підказки не просочується тривалість платівки замість фільму.
+// ============================================================
+
+// Sitelinks en/uk лише (легкий wbgetentities — без claims)
+async function wikiSitelinks(qid) {
+  const d = await fetchJSON(`${WD_API}?action=wbgetentities&format=json&origin=*` +
+    `&props=sitelinks&ids=${encodeURIComponent(qid)}`, 5000);
+  const sl = (d && d.entities && d.entities[qid] && d.entities[qid].sitelinks) || {};
+  return {
+    en: (sl.enwiki && sl.enwiki.title) || null,
+    uk: (sl.ukwiki && sl.ukwiki.title) || null
+  };
+}
+
+// Хвилини з вмісту поля «| runtime = …» інфобокса. Формати, що
+// зустрічаються у статтях: «108 minutes», «108 хв», «104–108 minutes»
+// (діапазон — число біля одиниці вимірювання), «1 година 48 хвилин»,
+// «1 h 48 min», «{{Duration|1|48}}», «{{Duration|h=1|m=48}}», з <ref/> та <!-- -->.
+function runtimeFromWikitext(wikitext) {
+  const s0 = String(wikitext || '');
+  // Поле інфобокса: до початку наступного «| параметр =» (після | теж
+  // бувають пробіли — «| runtime = 108 |» сусідить із «| country = US»),
+  // до кінця інфобокса «}}» або до кінця тексту
+  const m = s0.match(/\|\s*(?:runtime|duration|тривал[іi]сть)\s*=\s*([\s\S]*?)(?=\n\s*\|\s*[a-zа-яіїєґ_0-9][a-zа-яіїєґ_0-9\s]*=|\n\}\}|$)/i);
+  if (!m) return null;
+  let s = m[1]
+    .replace(/<ref[^>]*\/\s*>/gi, '')
+    .replace(/<ref[^>]*>[\s\S]*?<\/ref\s*>/gi, '')
+    .replace(/<!--[\s\S]*?-->/g, '')
+    .trim();
+  if (!s) return null;
+
+  const ok = n => n >= 5 && n <= 600; // правдоподібна тривалість у хвилинах
+
+  // {{Duration|h|m|s}} / {{Duration|h=…|m=…}} / {{Тривалість|…}}
+  const dm = s.match(/\{\{\s*(?:Duration|Тривалість)\s*\|([^{}]*)\}\}/i);
+  if (dm) {
+    let h = 0, mn = 0, sec = 0;
+    const positional = [];
+    for (const p of dm[1].split('|').map(x => x.trim())) {
+      const kv = p.match(/^([a-zа-яіїєґ])\w*\s*=\s*(\d+(?:[.,]\d+)?)/i);
+      const n = p.match(/^(\d+(?:[.,]\d+)?)$/);
+      if (kv) {
+        const k = kv[1].toLowerCase();
+        const v = parseFloat(kv[2].replace(',', '.'));
+        if (k === 'h') h = v; else if (k === 'm') mn = v; else if (k === 's') sec = v;
+      } else if (n) {
+        positional.push(parseFloat(n[1].replace(',', '.')));
+      }
+    }
+    let mins = null;
+    if (positional.length >= 2) {
+      h = positional[0]; mn = positional[1]; sec = positional[2] || 0;
+      mins = Math.round(h * 60 + mn + sec / 60);
+    } else if (h || mn || sec) {
+      mins = Math.round(h * 60 + mn + sec / 60);
+    } else if (positional.length === 1) {
+      // {{Duration|N}}: за документацією шаблону один параметр — це
+      // СЕКУНДИ; віримо лише «секундам», що правдоподібно схожі на фільм
+      const secOnly = positional[0];
+      mins = secOnly >= 300 && secOnly <= 36000 ? Math.round(secOnly / 60) : null;
+    }
+    if (ok(mins)) return mins;
+  }
+
+  // «1 година 48 хвилин» / «1 год 48 хв» / «1 h 48 min»
+  const hm = s.match(/(\d{1,2})\s*(?:годин[иа]?|год|г\b|hours?|h)[\s.,]{0,6}?(\d{1,2})\s*(?:хвилин[иа]?|хв|минут[ыа]?|мин|minutes?|mins?)/i);
+  if (hm) {
+    const mins = parseInt(hm[1], 10) * 60 + parseInt(hm[2], 10);
+    if (ok(mins)) return mins;
+  }
+
+  // «108 minutes» / «108 хв» / «104–108 minutes» (перше число діапазону).
+  // УВАГА: \b у JS не працює з кирилицею — після «хв» ставимо
+  // негативний lookahead за українську літеру замість \b
+  const unit = String.raw`(?:хвилин[иа]?|хвил|хв|мінут|минут[ыа]?|мин|minutes?|mins?|min)\.?` + String.raw`(?![а-яіїєґ])`;
+  const nums = [...s.matchAll(new RegExp(String.raw`(\d{1,4})(?:[.,]\d{1,2})?\s*` + unit, 'gi'))]
+    .map(x => parseInt(x[1], 10))
+    .filter(ok);
+  if (nums.length) return nums[0];
+
+  // Голе число у полі («| runtime = 108») — тільки якщо поле коротке
+  // і чисте, щоб не винести рік чи номер серії з сусіднього тексту
+  const bare = s.match(/^(\d{2,3})$/);
+  if (bare) {
+    const n = parseInt(bare[1], 10);
+    if (n >= 10 && n <= 300) return n;
+  }
+  return null;
+}
+
+// Тривалість за інфобоксом статті. imdbId — запасний місток до точних
+// назв статей (IMDb ID -> QID -> sitelinks), коли sitelink не передали.
+export async function fetchWikiRuntime({ imdbId, enWikiTitle, ukWikiTitle, title, titleUk, year } = {}) {
+  let enT = enWikiTitle || null;
+  let ukT = ukWikiTitle || null;
+
+  // Точних назв статей немає — пробуємо дістати їх через Вікідані
+  if ((!enT || !ukT) && imdbId && /^tt\d+$/.test(String(imdbId))) {
+    try {
+      const q = await qidByImdbId(imdbId);
+      if (q) {
+        const sl = await wikiSitelinks(q);
+        enT = enT || sl.en;
+        ukT = ukT || sl.uk;
+      }
+    } catch (e) { /* далі пошук за назвою */ }
+  }
+
+  const tries = [];
+  if (enT) tries.push({ lang: 'en', t: enT });
+  if (ukT) tries.push({ lang: 'uk', t: ukT });
+  if (title && year) tries.push({ lang: 'en', t: `${title} (${year} film)` });
+  if (title) tries.push({ lang: 'en', t: `${title} (film)` });
+  if (titleUk && String(titleUk) !== String(title || '')) {
+    if (year) tries.push({ lang: 'uk', t: `${titleUk} (фільм, ${year})` });
+    tries.push({ lang: 'uk', t: `${titleUk} (фільм)` });
+  }
+  // Останній шанс: укр. назва БЕЗ уточнення — багато uk-статей про фільми
+  // не мають суфікса («Втеча з Шоушенка», «Глиноликий»). Безпечно:
+  // сторінки значень/не-фільмів без поля «Тривалість» просто дадуть null
+  if (titleUk) tries.push({ lang: 'uk', t: titleUk });
+
+  for (const { lang, t } of tries) {
+    try {
+      const url = `https://${lang}.wikipedia.org/w/api.php?action=parse&format=json&origin=*` +
+        `&redirects=1&prop=wikitext&section=0&page=${encodeURIComponent(t)}`;
+      const d = await fetchJSON(url, 6000);
+      const wt = d && d.parse && d.parse.wikitext && d.parse.wikitext['*'];
+      if (!wt) continue; // статті немає (parse повертає error без wikitext)
+      const rt = runtimeFromWikitext(wt);
+      if (rt) return rt;
+    } catch (e) { /* наступна спроба */ }
+  }
+  return null;
 }
 
 // ============================================================

@@ -568,10 +568,21 @@ body.no-scroll { overflow: hidden; touch-action: none; }
   color: var(--accent-2);
   transform: translateY(-1px);
 }
+/* «Ваша оцінка» на картці — суцільно залита плашка кольором оцінки:
+   та сама сім'я бейджів, що й середня оцінка (.avg-badge) та комірки
+   таблиці (.t-score) — біла цифра на ratingColor. Раніше була лише
+   ледь помітна 12% підкладка, і власна оцінка губилася на картці. */
 .rate-btn.rated {
-  color: var(--my, var(--accent-2));
-  border-color: color-mix(in srgb, var(--my, var(--accent)) 45%, var(--border));
-  background: color-mix(in srgb, var(--my, var(--accent)) 12%, var(--surface));
+  color: #fff;
+  border-color: var(--my, var(--accent));
+  background: var(--my, var(--accent-2));
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+}
+.rate-btn.rated:hover {
+  background: var(--my, var(--accent-2));
+  border-color: var(--my, var(--accent));
+  color: #fff;
+  filter: brightness(1.07);
 }
 
 .fchips {

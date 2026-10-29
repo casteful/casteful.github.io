@@ -240,6 +240,16 @@ export function translitVariants(q) {
   for (const v of [translitUk(s, 'national'), translitUk(s, 'phon'), translitUk(s, 'g')]) {
     const t = v.trim();
     if (t && !out.includes(t)) out.push(t);
+    // «Алекс» → "Alex", «Макс» → "Max", «Фелікс» → "Felix", «Бокс» → "Box":
+    // після голосної uk-трансліт дає "ks", а в англійських назвах цей звук
+    // зазвичай передається літерою "x" — без цього варіанту IMDb і en.вікі
+    // за "Aleks" фільм не знаходять. «Джексон» → "Jackson" НЕ чіпаємо
+    // (перед "ks" стоїть приголосна — заміна дала б безглузде "Jacxson").
+    if (t) {
+      const xv = t.replace(/([aeiouy])ks/gi, '$1x');
+      if (xv !== t && !out.includes(xv)) out.push(xv);
+    }
   }
-  return out;
+  // резервна фаза робить по одному запиту на варіант — більше 5 не даємо
+  return out.length > 5 ? out.slice(0, 5) : out;
 }

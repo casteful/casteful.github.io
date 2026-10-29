@@ -10,7 +10,7 @@ import { gamesView } from './games.js';
 import * as statsView from './stats.js';
 import { icons, toast } from './ui.js';
 import { escapeHtml } from './utils.js';
-import { fetchPoster } from './wiki.js';
+import { fetchPoster, fetchWikiRuntime } from './wiki.js';
 import * as telegram from './telegram.js';
 import { openSettings } from './settings.js';
 import { initAvatars, avatarHTML } from './avatars.js';
@@ -112,6 +112,7 @@ store.onFilms((list, err) => {
   renderTab();
   tryOpenPending(); // deep-link ?film=… з Telegram — коли база вже тут
   healMissingPosters(list); // тихо підтягуємо постери для фільмів без них
+  healMissingRuntime(list); // тихо підтягуємо тривалість (Вікіпедія)
 });
 
 store.onList('games', (list, err) => {
@@ -139,6 +140,7 @@ store.onList('games', (list, err) => {
 
 const HEAL_COOLDOWN_MS = 3 * 24 * 60 * 60 * 1000;
 const healingNow = new Set();
+const healingRuntimeNow = new Set();
 
 function healMissingPosters(list) {
   const need = list.filter(f => !f.poster);
@@ -168,6 +170,44 @@ async function healPoster(film) {
     /* тихо: постер — не критично */
   } finally {
     healingNow.delete(film.id);
+  }
+}
+
+// ---------- Автоматичне підтягування тривалості ----------
+// Фільм міг зберегтися без «Тривалості»: у Вікіданнах P2047 для нових
+// релізів часто порожній (Clayface 2026), а інфобокс en.статті вже
+// заповнений. Ланцюжок: точні sitelinks через IMDb ID -> en/uk стаття ->
+// «Назва (рік film)» / «Назва (film)» / «Назва (фільм)». Кулдаун той
+// самий, 3 доби. (Сьогодні в базі всі фільми з тривалістю — це страхівка.)
+
+function healMissingRuntime(list) {
+  const need = list.filter(f => f.runtime == null);
+  need.forEach((f, i) => setTimeout(() => healRuntime(f), Math.min(i, 5) * 1500));
+}
+
+async function healRuntime(film) {
+  if (healingRuntimeNow.has(film.id)) return;
+  try {
+    const last = parseInt(localStorage.getItem('runtimeHeal_' + film.id), 10) || 0;
+    if (Date.now() - last < HEAL_COOLDOWN_MS) return;
+    localStorage.setItem('runtimeHeal_' + film.id, String(Date.now()));
+  } catch (e) { /* localStorage недоступний — працюємо без кулдауну */ }
+  healingRuntimeNow.add(film.id);
+  try {
+    const runtime = await fetchWikiRuntime({
+      imdbId: film.imdbId || null,
+      title: film.title || null,
+      titleUk: film.titleUk || null,
+      year: film.year || null
+    });
+    if (runtime) {
+      await store.updateFilm(film.id, { runtime });
+      toast(`Тривалість для «${film.titleUk || film.title || ''}» підтягнуто автоматично`);
+    }
+  } catch (e) {
+    /* тихо: тривалість — не критично */
+  } finally {
+    healingRuntimeNow.delete(film.id);
   }
 }
 

@@ -43,16 +43,23 @@ export function typeLabel(qid) {
   return ALLOWED_TYPES[qid] ?? null;
 }
 
-export async function suggestFilms(query) {
+export async function suggestFilms(query, opts = {}) {
   const q = String(query || '').trim();
   if (q.length < 2) return [];
 
-  // Нещодавно вже був збій — не чекаємо таймаутів, одразу Вікіпедія
-  if (imdbTemporarilyDown()) return [];
+  // Нещодавно вже був збій — не чекаємо таймаутів, одразу Вікіпедія.
+  // force:true (резервна фаза пошуку, раз на запит) — пробуємо один раз
+  // попри прапорець: IMDb міг уже оговтатися, а результати тут найдорожчі.
+  if (imdbTemporarilyDown() && !(opts && opts.force)) return [];
 
+  // v2-дзеркало працює ЛИШЕ з латинською першою літерою: на кирилицю
+  // віддає HTTP 404 без CORS-заголовків (шум у консолі і марний запит).
+  const latin = /^[a-z0-9]/i.test(q);
   const urls = [
     `https://v3.sg.media-imdb.com/suggestion/x/${encodeURIComponent(q)}.json?includeVideos=0`,
-    `https://v2.sg.media-imdb.com/suggestion/${encodeURIComponent(q.charAt(0).toLowerCase())}/${encodeURIComponent(q)}.json`
+    ...(latin
+      ? [`https://v2.sg.media-imdb.com/suggestion/${encodeURIComponent(q.charAt(0).toLowerCase())}/${encodeURIComponent(q)}.json`]
+      : [])
   ];
 
   // Обидва дзеркала — паралельно; перша успішна відповідь перемагає
