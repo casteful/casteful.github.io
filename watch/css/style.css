@@ -1273,14 +1273,27 @@ td.u-col.mine:hover { background: color-mix(in srgb, var(--accent) 9%, var(--sur
 
 .type-opt.active[aria-pressed="true"] { box-shadow: 0 0 0 1.5px var(--accent) inset, 0 1px 4px rgba(20, 15, 5, 0.1); }
 
-/* Блок «Ваша оцінка» у формі — той самий вигляд, що в модалці фільму */
+/* Блок «Ваша оцінка» у формі — вписаний у сітку полів:
+   ті самі бокові відступи (20px) і ритм знизу (13px), що в .field та .poster-edit;
+   колір не змінюємо (surface-2), радіус — як у інпутів (11px → 12px для більшого блока) */
 .form-rating {
   background: var(--surface-2);
   border: 1px solid var(--border);
-  border-radius: 16px;
-  padding: 13px 16px 14px;
-  margin-top: 14px;
+  border-radius: 12px;
+  padding: 12px 14px 13px;
+  margin: 0 20px 13px;
+  transition: border-color 0.18s ease, box-shadow 0.18s ease;
 }
+
+/* поки користувач ставить оцінку — підсвічується так само, як інпути у фокусі */
+.form-rating:focus-within {
+  border-color: var(--accent);
+  box-shadow: var(--ring);
+}
+
+/* підпис блока — точно такий же, як у решти полів форми */
+.form-rating .my-rating-label { font-size: 12px; letter-spacing: 0.07em; }
+.form-rating .my-rating-top { margin-bottom: 8px; }
 
 .rating-hint { font-size: 12px; color: var(--muted); font-weight: 600; }
 
@@ -2259,6 +2272,7 @@ td.u-col.mine:hover { background: color-mix(in srgb, var(--accent) 9%, var(--sur
   .form-grid .span-2 { grid-column: auto; }
   .field, .form-grid .field { padding: 0 16px; }
   .poster-edit { padding: 0 16px; }
+  .form-rating { margin: 0 16px 13px; }
   .enrich-status { margin: 0 16px 13px; }
   .modal-head { padding: calc(16px + env(safe-area-inset-top, 0px)) 16px 0; }
 
