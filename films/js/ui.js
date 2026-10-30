@@ -2,7 +2,7 @@
 // UI-примітиви: іконки (SVG), тости, модальні вікна, підтвердження
 // ============================================================
 
-import { escapeHtml } from './utils.js?v=5.9';
+import { escapeHtml } from './utils.js?v=6.1';
 
 // --- Мінімалістичні SVG-іконки (stroke = currentColor) ---
 const I = (paths, extra = '') =>
@@ -41,7 +41,14 @@ export const icons = {
   camera: I(`<path d="M3 8.5A2.5 2.5 0 0 1 5.5 6h1.6a1 1 0 0 0 .83-.45l.74-1.1A1 1 0 0 1 9.5 4h5a1 1 0 0 1 .83.45l.74 1.1a1 1 0 0 0 .83.45h1.6A2.5 2.5 0 0 1 21 8.5v9a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 3 17.5z"/><circle cx="12" cy="12.5" r="3.5"/>`),
   arrowDown: I(`<path d="M12 5v14"/><path d="M19 12l-7 7-7-7"/>`),
   arrowUp: I(`<path d="M12 19V5"/><path d="M5 12l7-7 7 7"/>`),
-  refresh: I(`<path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/>`)
+  refresh: I(`<path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/>`),
+  // Музика/книги (вкладки «Альбоми», «Сингли», «Книги»)
+  album: I(`<circle cx="12" cy="12" r="8.6"/><circle cx="12" cy="12" r="2.4"/><path d="M12 3.4v2.2M12 18.4v2.2"/>`),
+  note: I(`<path d="M9 17.5V5.2l11-2v12.3"/><circle cx="6.2" cy="17.6" r="2.8"/><circle cx="17.2" cy="15.6" r="2.8"/>`),
+  book: I(`<path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/><path d="M8.5 7h7"/>`),
+  // Прев'ю 30-секундного фрагмента (сингли/альбоми)
+  play: `<svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" stroke="none" aria-hidden="true"><path d="M8 5.5v13l11-6.5z"/></svg>`,
+  pause: `<svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" stroke="none" aria-hidden="true"><rect x="6.5" y="5" width="3.6" height="14" rx="1.1"/><rect x="13.9" y="5" width="3.6" height="14" rx="1.1"/></svg>`
 };
 
 // --- Тости ---

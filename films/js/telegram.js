@@ -23,10 +23,10 @@
 // повідомлення через «битий» HTML.
 // ============================================================
 
-import { USERS } from './config.js?v=5.9';
-import * as store from './store.js?v=5.9';
-import { toast, openModal, icons } from './ui.js?v=5.9';
-import { escapeHtml } from './utils.js?v=5.9';
+import { USERS } from './config.js?v=6.1';
+import * as store from './store.js?v=6.1';
+import { toast, openModal, icons } from './ui.js?v=6.1';
+import { escapeHtml } from './utils.js?v=6.1';
 
 let cfg = null; // { enabled, token, chatId, chatTitle } | null
 
@@ -209,6 +209,81 @@ export function notifyGameRatingSet(userId, game, score, prev) {
 
 export function notifyGameRatingRemoved(userId, game) {
   return send(gameRatingRemovedText(userId, game));
+}
+
+// ---------- Альбоми / Сингли / Книги: ті самі пуші, посилання
+// ?album=<id> / ?single=<id> / ?book=<id> ----------
+// Рід відновлюємо з поля запису kind ('album' | 'single' | 'book'):
+// «додав альбом/сингл/книгу», «оцінив книгу…», «оцінку альбому…».
+
+const MEDIA_KINDS = {
+  album:  { acc: 'альбом', gen: 'альбому', link: 'album' },
+  single: { acc: 'сингл',  gen: 'синглу',  link: 'single' },
+  book:   { acc: 'книгу',  gen: 'книги',   link: 'book' }
+};
+
+function mediaKindOf(item) {
+  return MEDIA_KINDS[item && typeof item === 'object' && MEDIA_KINDS[item.kind] ? item.kind : 'album'];
+}
+
+export function mediaTitle(m) {
+  return (m && (m.titleUk || m.title)) || 'Без назви';
+}
+
+function mediaLink(item) {
+  if (!item || typeof item !== 'object' || !item.id) return '';
+  const param = mediaKindOf(item).link;
+  try {
+    return `${location.origin}${location.pathname}?${param}=${encodeURIComponent(String(item.id))}`;
+  } catch (e) {
+    return '';
+  }
+}
+
+function mediaNameHTML(item) {
+  const title = (typeof item === 'string' ? item : mediaTitle(item)) || 'Без назви';
+  const link = mediaLink(item);
+  const name = esc(`«${title}»`);
+  return link ? `<a href="${esc(link)}">${name}</a>` : name;
+}
+
+export function mediaAddedText(userId, item) {
+  const what = mediaKindOf(item).acc;
+  const year = item && typeof item === 'object' && item.year ? ` (${item.year})` : '';
+  const mine = item && typeof item === 'object' && item.ratings ? item.ratings[userId] : null;
+  const rated = mine != null ? ` — ${mine}/10` : '';
+  return `${esc(userName(userId))} додав ${what} ${mediaNameHTML(item)}${year}${rated}`;
+}
+
+export function mediaRatingSetText(userId, item, score, prev) {
+  const name = mediaNameHTML(item);
+  return (prev != null && prev !== score)
+    ? `${esc(userName(userId))} змінив оцінку ${name}: ${prev} → ${score}`
+    : `${esc(userName(userId))} оцінив ${mediaKindOf(item).acc} ${name} на ${score}/10`;
+}
+
+export function mediaRatingRemovedText(userId, item) {
+  return `${esc(userName(userId))} прибрав свою оцінку ${mediaKindOf(item).gen} ${mediaNameHTML(item)}`;
+}
+
+export function mediaDeletedText(userId, item) {
+  return `${esc(userName(userId))} видалив ${mediaKindOf(item).acc} ${mediaNameHTML(item)}`;
+}
+
+export function notifyMediaAdded(userId, item) {
+  return send(mediaAddedText(userId, item));
+}
+
+export function notifyMediaRatingSet(userId, item, score, prev) {
+  return send(mediaRatingSetText(userId, item, score, prev));
+}
+
+export function notifyMediaRatingRemoved(userId, item) {
+  return send(mediaRatingRemovedText(userId, item));
+}
+
+export function notifyMediaDeleted(userId, item) {
+  return send(mediaDeletedText(userId, item));
 }
 
 // ---------- Вбудований блок Telegram у вікні «Налаштування» ----------

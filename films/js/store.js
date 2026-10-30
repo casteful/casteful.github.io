@@ -6,7 +6,7 @@ import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.14.1/fireba
 import {
   getDatabase, ref, onValue, push, set, update, remove, get, runTransaction
 } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-database.js';
-import { firebaseConfig } from './config.js?v=5.9';
+import { firebaseConfig } from './config.js?v=6.1';
 
 const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
@@ -90,6 +90,47 @@ export async function deleteGame(gameId) {
 
 export async function setGameRating(gameId, user, score) {
   await set(ref(db, `games/${gameId}/ratings/${user}`), score ?? null);
+}
+
+// ---------- Універсальні бібліотеки: альбоми, сингли, книги ----------
+// Той самий формат запису, що й в ігор, у власних вузлах albums/,
+// singles/ і books/ (жодна колекція не впливає на інші та на
+// статистику фільмів):
+//   { title, titleUk, kind: 'album'|'single'|'book', year,
+//     artist | author, genres: [], tracks: [] (альбоми),
+//     publisher, pages (книги), plot, cover, wikiUrl, qid,
+//     ratings: { userId: score }, addedBy, createdAt, updatedAt }
+
+export function onMedia(node, cb) {
+  return onValue(
+    ref(db, node),
+    (snap) => cb(toList(snap.val())),
+    (err) => cb(null, err)
+  );
+}
+
+export async function addMedia(node, data) {
+  const r = push(ref(db, node));
+  const now = Date.now();
+  await set(r, {
+    ratings: {},
+    ...data,
+    createdAt: now,
+    updatedAt: now
+  });
+  return r.key;
+}
+
+export async function updateMedia(node, itemId, patch) {
+  await update(ref(db, `${node}/${itemId}`), { ...patch, updatedAt: Date.now() });
+}
+
+export async function deleteMedia(node, itemId) {
+  await remove(ref(db, `${node}/${itemId}`));
+}
+
+export async function setMediaRating(node, itemId, user, score) {
+  await set(ref(db, `${node}/${itemId}/ratings/${user}`), score ?? null);
 }
 
 // ---------- Аватарки профілів ----------

@@ -3,17 +3,19 @@
 // Firebase та зв'язування вкладок
 // ============================================================
 
-import { USERS } from './config.js?v=5.9';
-import * as store from './store.js?v=5.9';
-import * as filmsView from './films.js?v=5.9';
-import * as gamesView from './games.js?v=5.9';
-import * as statsView from './stats.js?v=5.9';
-import * as quizView from './quiz.js?v=5.9';
-import * as avatars from './avatars.js?v=5.9';
-import { icons, toast } from './ui.js?v=5.9';
-import { escapeHtml } from './utils.js?v=5.9';
-import { fetchPoster } from './wiki.js?v=5.9';
-import * as settings from './settings.js?v=5.9';
+import { USERS } from './config.js?v=6.1';
+import * as store from './store.js?v=6.1';
+import * as filmsView from './films.js?v=6.1';
+import * as gamesView from './games.js?v=6.1';
+import * as libraryView from './library.js?v=6.1';
+import { MEDIA_KINDS } from './media-kinds.js?v=6.1';
+import * as statsView from './stats.js?v=6.1';
+import * as quizView from './quiz.js?v=6.1';
+import * as avatars from './avatars.js?v=6.1';
+import { icons, toast } from './ui.js?v=6.1';
+import { escapeHtml } from './utils.js?v=6.1';
+import { fetchPoster } from './wiki.js?v=6.1';
+import * as settings from './settings.js?v=6.1';
 
 const view = document.getElementById('view');
 const userOverlay = document.getElementById('userOverlay');
@@ -24,22 +26,36 @@ const fab = document.getElementById('fabAdd');
 
 let filmsArr = null;      // null = ще завантажується з бази
 let gamesArr = null;
+const mediaArr = { albums: null, singles: null, books: null };
+// Вкладки бібліотеки мають множинні назви (albums/…), колекції —
+// од ones (album/…): єдина мапа, щоб не роз'їжджалося ніде
+const TAB2KIND = { albums: 'album', singles: 'single', books: 'book' };
 let activeTab = 'films';
+// Повертаємось на останню відкриту вкладку (глибокі лінки все одно
+// перекриють), щоб застосунок відкривався там, де користувач зупинився
+try {
+  const savedTab = localStorage.getItem('films_last_tab');
+  if (savedTab && document.querySelector(`.tab[data-tab="${savedTab}"]`)) activeTab = savedTab;
+} catch (e) {}
 let mountedTab = null;    // яку вкладку зараз змонтовано у #view
 let currentUser = null;
 let errNotified = false;
 let gamesErrNotified = false;
+const mediaErrNotified = {};
 
-// ---------- Глибоке посилання: index.html?film=<id> / ?game=<id> ----------
-// Telegram-сповіщення ведуть прямо на фільм або гру: щойно список прийде
+// ---------- Глибоке посилання: ?film=<id> / ?game=<id> / ?album= ?single= ?book= ----------
+// Telegram-сповіщення ведуть прямо на запис: щойно список прийде
 // з бази — відкриваємо картку, і друг може одразу ставити свою оцінку.
 // Якщо профіль ще не обрано, спершу покажеться вибір профілю, а картка
 // чекатиме під ним.
 let deepLinkFilmId = null;
 let deepLinkGameId = null;
+const deepLinkMedia = { album: null, single: null, book: null };
 try {
-  deepLinkFilmId = new URLSearchParams(location.search).get('film');
-  deepLinkGameId = new URLSearchParams(location.search).get('game');
+  const params = new URLSearchParams(location.search);
+  deepLinkFilmId = params.get('film');
+  deepLinkGameId = params.get('game');
+  for (const k of Object.keys(deepLinkMedia)) deepLinkMedia[k] = params.get(k);
 } catch (e) {}
 
 // ---------- Ініціалізація ----------
@@ -49,6 +65,31 @@ initSettings();
 initFab();
 initUser();
 initTabs();
+initChrome();
+
+// Дрібниці, що роблять щоденне користування приємнішим:
+//  1) sticky-тулбар списків (пошук/сортування) їде під шапкою —
+//     її висоту (на вузьких екранах вона дворядна) міряємо наживо;
+//  2) «/» фокусує пошук активної вкладки з клавіатури.
+function initChrome() {
+  const tb = document.querySelector('.topbar');
+  if (tb && window.ResizeObserver) {
+    const setTbH = () => document.documentElement.style
+      .setProperty('--tb-h', Math.round(tb.getBoundingClientRect().height) + 'px');
+    try { new ResizeObserver(setTbH).observe(tb); } catch (e) {}
+    setTbH();
+  }
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== '/' || e.ctrlKey || e.metaKey || e.altKey) return;
+    if (e.target && e.target.closest && e.target.closest('input, textarea, select')) return;
+    const inp = document.querySelector('#view .search-wrap input');
+    if (inp && document.activeElement !== inp) {
+      e.preventDefault();
+      inp.focus();
+      try { inp.setSelectionRange(inp.value.length, inp.value.length); } catch (e2) {}
+    }
+  });
+}
 
 // Клік на людину/жанр у модалці фільму чи статистиці: переключає потрібну
 // вкладку (Фільми або Серіали) і фільтрує список
@@ -139,6 +180,26 @@ store.onGames((list, err) => {
   handleGameDeepLink(list);
 });
 
+// ---------- Бібліотеки: альбоми / сингли / книги ----------
+for (const k of Object.keys(MEDIA_KINDS)) {
+  const node = MEDIA_KINDS[k].node;
+  store.onMedia(node, (list, err) => {
+    if (err) {
+      console.error(`[store] Помилка Firebase (${node}):`, err);
+      if (!mediaErrNotified[k]) {
+        mediaErrNotified[k] = true;
+        toast(`Немає доступу до колекції «${MEDIA_KINDS[k].addBtn.replace('Додати ', '')}». Перевірте правила безпеки Firebase.`, 'err');
+      }
+      libraryView.setError(err);
+      libraryView.setItems(k, null);
+      return;
+    }
+    mediaArr[node] = list;
+    renderTab();
+    handleMediaDeepLink(k, list);
+  });
+}
+
 // Відкрити фільм/гру з ?film=<id> / ?game=<id> (одноразово, на першому
 // знімку бази). Параметр із адреси прибираємо, щоб F5 не відкривав картку
 // знову.
@@ -168,6 +229,21 @@ function handleGameDeepLink(list) {
     gamesView.openGameById(id);
   } else {
     toast('Гру за посиланням не знайдено — можливо, її вже видалили', 'err');
+  }
+}
+
+// ?album= / ?single= / ?book= — відкрити запис бібліотеки
+function handleMediaDeepLink(kindKey, list) {
+  if (!deepLinkMedia[kindKey]) return;
+  const id = deepLinkMedia[kindKey];
+  deepLinkMedia[kindKey] = null;
+  try { history.replaceState(null, '', location.pathname); } catch (e) {}
+  if (Array.isArray(list) && list.some(m => m.id === id)) {
+    const tab = MEDIA_KINDS[kindKey].kind === 'book' ? 'books' : MEDIA_KINDS[kindKey].kind === 'single' ? 'singles' : 'albums';
+    if (activeTab !== tab) switchTab(tab);
+    libraryView.openItemById(id);
+  } else {
+    toast('Запис за посиланням не знайдено — можливо, його вже видалили', 'err');
   }
 }
 
@@ -271,6 +347,10 @@ function initFab() {
       gamesView.openAdd();
       return;
     }
+    if (TAB2KIND[activeTab]) {
+      libraryView.openAdd(); // openAdd() знає поточний рід з mount()
+      return;
+    }
     if (activeTab !== 'films') switchTab('films');
     filmsView.openAdd();
   });
@@ -310,6 +390,7 @@ function initUser() {
     renderUserBadge();
     filmsView.setUser(currentUser.id);
     gamesView.setUser(currentUser.id);
+    libraryView.setUser(currentUser.id);
     quizView.setUser(currentUser.id);
     toast(`Вітаємо, ${currentUser.name}!`);
   });
@@ -360,6 +441,7 @@ function initTabs() {
     // монтуванні — аватарки могли підтягнутися пізніше, перемалюємо
     filmsView.repaintAvatars();
     gamesView.repaintAvatars();
+    libraryView.repaintAvatars();
   });
   avatars.initAvatars();
 }
@@ -367,7 +449,20 @@ function initTabs() {
 function switchTab(name) {
   if (activeTab === name) return;
   activeTab = name;
+  try { localStorage.setItem('films_last_tab', name); } catch (e) {}
   renderTab();
+  // FAB має відповідати вкладці («Додати фільм/гру/альбом…»)
+  const c = TAB2KIND[activeTab] ? MEDIA_KINDS[TAB2KIND[activeTab]] : null;
+  const noun = activeTab === 'games' ? 'гру'
+    : c ? c.oneAcc : 'фільм';
+  fab.setAttribute('aria-label', 'Додати ' + noun);
+  fab.title = 'Додати ' + noun;
+  // На вузьких екранах панель вкладок гортається вбік — активна
+  // вкладка має сама доїхати у видиму зону (глибокі лінки тощо)
+  const btn = document.querySelector(`.tab[data-tab="${name}"]`);
+  if (btn && btn.scrollIntoView) {
+    try { btn.scrollIntoView({ block: 'nearest', inline: 'nearest' }); } catch (e) {}
+  }
 }
 
 function renderTab() {
@@ -394,6 +489,16 @@ function renderTab() {
     }
     if (currentUser) gamesView.setUser(currentUser.id);
     gamesView.setGames(gamesArr);
+  } else if (TAB2KIND[activeTab]) {
+    // Три колекції бібліотеки — один універсальний view-модуль
+    // (library.js); у кожної колекції свій пошук/сортування/вигляд
+    const kindKey = TAB2KIND[activeTab];
+    if (mountedTab !== activeTab) {
+      libraryView.mount(view, kindKey);
+      mountedTab = activeTab;
+    }
+    if (currentUser) libraryView.setUser(currentUser.id);
+    libraryView.setItems(kindKey, mediaArr[MEDIA_KINDS[kindKey].node]);
   } else if (activeTab === 'quiz') {
     // Гра читає ті самі дані; mount() ідемпотентний — снапшот бази
     // лише перемальовує поточний стан, не ламаючи рахунок
