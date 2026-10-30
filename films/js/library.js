@@ -1,33 +1,34 @@
 // ============================================================
-// Вкладки «Альбоми», «Сингли», «Книги»: ОДИН універсальний модуль
-// для трьох колекцій — той самий дизайн і потік, що й у «Фільмів»
-// та «Ігор»: сітка обкладинок АБО таблиця, пошук/сортування (у
-// кожної колекції СВОЇ ключі), модальне вікно з оцінками 1–10,
+// Вкладки «Альбоми», «Сингли», «Книги», «Комікси»: ОДИН універсальний
+// модуль для чотирьох колекцій — той самий дизайн і потік, що й у
+// «Фільмів» та «Ігор»: сітка обкладинок АБО таблиця, пошук/сортування
+// (у кожної колекції СВОЇ ключі), модальне вікно з оцінками 1–10,
 // швидке оцінювання, редагування й видалення. Дані — у вузлах
-// albums/, singles/, books/.
+// albums/, singles/, books/, comics/.
 // ============================================================
 
-import { USERS } from './config.js?v=6.2';
-import * as store from './store.js?v=6.2';
-import * as U from './utils.js?v=6.2';
-import * as A from './avatars.js?v=6.2';
-import { toast, openModal, confirmDialog, icons } from './ui.js?v=6.2';
-import { rateTrailHTML, paintTrail, popValue, openRatePop as openRatePopShared } from './rating-ui.js?v=6.2';
-import { openFormModal } from './media-form.js?v=6.2';
-import { notifyMediaRatingSet, notifyMediaRatingRemoved, notifyMediaDeleted } from './telegram.js?v=6.2';
-import { mediaCfg } from './media-kinds.js?v=6.2';
+import { USERS } from './config.js?v=6.3';
+import * as store from './store.js?v=6.3';
+import * as U from './utils.js?v=6.3';
+import * as A from './avatars.js?v=6.3';
+import { toast, openModal, confirmDialog, icons } from './ui.js?v=6.3';
+import { rateTrailHTML, paintTrail, popValue, openRatePop as openRatePopShared } from './rating-ui.js?v=6.3';
+import { openFormModal } from './media-form.js?v=6.3';
+import { notifyMediaRatingSet, notifyMediaRatingRemoved, notifyMediaDeleted } from './telegram.js?v=6.3';
+import { mediaCfg } from './media-kinds.js?v=6.3';
 
 // Конфігурація колекцій (назви, вузол бази, іконки) — у media-kinds.js,
 // спільно з формою додавання
 const KINDS = {
   album: mediaCfg('album'),
   single: mediaCfg('single'),
-  book: mediaCfg('book')
+  book: mediaCfg('book'),
+  comic: mediaCfg('comic')
 };
 
 let container = null;
 let gridEl = null;
-let kind = 'album';          // album | single | book
+let kind = 'album';          // album | single | book | comic
 let list = [];               // записи поточної колекції
 let isLoading = true;
 let loadError = null;
@@ -93,8 +94,23 @@ function loadKindState() {
   friendId = friendId || (USERS.find(u => u.id !== currentUserId) || USERS[0] || {}).id || null;
 }
 
-function mTitle(m) { return m.title || m.titleUk || 'Без назви'; }
-function personOf(m) { return kind === 'book' ? (m.author || null) : (m.artist || null); }
+// Головна назва: у двомовних колекціях (книги/комікси — ukTitle: true)
+// першою показується укр. назва, як у фільмів; в музики — оригінал
+function isUkKind() { return !!cfg().ukTitle; }
+function mTitle(m) {
+  if (isUkKind()) return m.titleUk || m.title || 'Без назви';
+  return m.title || m.titleUk || 'Без назви';
+}
+// Оригінал другим рядком — лише якщо він є і відрізняється від головної
+function origTitle(m) {
+  if (!isUkKind()) return null;
+  const uk = m.titleUk || '', orig = m.title || '';
+  if (!uk || !orig || uk.toLowerCase() === orig.toLowerCase()) return null;
+  return orig;
+}
+function personOf(m) {
+  return (kind === 'book' || kind === 'comic') ? (m.author || null) : (m.artist || null);
+}
 
 // ---------- Публічний інтерфейс ----------
 
@@ -403,7 +419,7 @@ function refreshGrid() {
     gridEl.innerHTML = `
       <div class="state-box">
         <span class="state-icon err">${icons.alert}</span>
-        <h3>Не вдалося завантажити ${kind === 'book' ? 'книги' : kind === 'single' ? 'сингли' : 'альбоми'}</h3>
+        <h3>Не вдалося завантажити ${c.plAcc}</h3>
         <p>Перевірте зʼєднання та правила доступу Firebase Realtime Database.</p>
         <button class="btn primary" onclick="location.reload()">Спробувати знову</button>
       </div>`;
@@ -489,7 +505,7 @@ function tableHTML(rows) {
   return `
   <table class="films-table">
     <thead><tr>
-      ${thSort('title', kind === 'book' ? 'Книга' : kind === 'single' ? 'Сингл' : 'Альбом')}
+      ${thSort('title', c.one.charAt(0).toUpperCase() + c.one.slice(1))}
       ${thSort('year', 'Рік')}
       <th scope="col">${c.person}</th>
       <th scope="col">Жанри</th>
@@ -504,6 +520,7 @@ function tableHTML(rows) {
 function rowHTML(m) {
   const a = U.avg(m.ratings);
   const mainTitle = mTitle(m);
+  const orig = origTitle(m);
   const person = personOf(m);
 
   const userCells = USERS.map(u => {
@@ -523,6 +540,7 @@ function rowHTML(m) {
           : cfg().icon}</span>
         <span class="t-titles">
           <span class="t-name">${U.escapeHtml(mainTitle)}</span>
+          ${orig ? `<span class="t-orig">${U.escapeHtml(orig)}</span>` : ''}
         </span>
       </div>
     </td>
@@ -544,6 +562,7 @@ function cardHTML(m) {
   const a = U.avg(m.ratings);
   const my = (m.ratings || {})[currentUserId];
   const mainTitle = mTitle(m);
+  const orig = origTitle(m);
   const person = personOf(m);
   const ratedCount = Object.keys(m.ratings || {}).length;
   const metaBits = [
@@ -570,6 +589,7 @@ function cardHTML(m) {
     </div>
     <div class="card-body">
       <h3 class="card-title">${U.escapeHtml(mainTitle)}</h3>
+      ${orig ? `<div class="card-sub">${U.escapeHtml(orig)}</div>` : ''}
       <div class="card-meta">${U.escapeHtml(metaBits)}</div>
       <div class="rating-row">
         <button class="rate-btn ${my != null ? 'rated' : ''}" data-rate aria-label="Оцінити" ${my != null ? `style="--my:${U.ratingColor(my)}"` : ''}>
@@ -661,13 +681,17 @@ function detailHTML(m) {
   const a = U.avg(m.ratings);
   const my = (m.ratings || {})[currentUserId];
   const person = personOf(m);
-  const personTitle = kind === 'book' ? 'Твори цього автора' : (kind === 'single' ? 'Сингли цього виконавця' : 'Альбоми цього виконавця');
+  const orig = origTitle(m);
+  const printish = kind === 'book' || kind === 'comic';
+  const personTitle = kind === 'comic' ? 'Комікси цього автора'
+    : kind === 'book' ? 'Твори цього автора'
+    : (kind === 'single' ? 'Сингли цього виконавця' : 'Альбоми цього виконавця');
   const kindBadge = `<span class="kind-badge">${c.one}</span>`;
   const metaBits = [
     m.year,
     kindBadge,
     kind === 'album' && m.tracks && m.tracks.length ? `${m.tracks.length} ${U.plural(m.tracks.length, ['трек', 'треки', 'треків'])}` : '',
-    kind === 'book' && m.pages ? `${m.pages} ${U.plural(m.pages, ['сторінка', 'сторінки', 'сторінок'])}` : ''
+    printish && m.pages ? `${m.pages} ${U.plural(m.pages, ['сторінка', 'сторінки', 'сторінок'])}` : ''
   ].filter(Boolean).join(' · ');
   const genres = (m.genres || []).map(g =>
     `<button type="button" class="genre-chip clickable" data-person="${U.escapeHtml(g)}" title="Записи цього жанру">${U.escapeHtml(g)}</button>`
@@ -676,7 +700,7 @@ function detailHTML(m) {
     ? `<button type="button" class="person-link" data-person="${U.escapeHtml(person)}" title="${personTitle}">${U.escapeHtml(person)}</button>`
     : '';
   const pubLine = m.publisher
-    ? `<p class="pub-note"><span class="pub-line">${kind === 'book' ? 'видавництво' : 'лейбл'}: <b>${U.escapeHtml(m.publisher)}</b></span></p>` : '';
+    ? `<p class="pub-note"><span class="pub-line">${printish ? 'видавництво' : 'лейбл'}: <b>${U.escapeHtml(m.publisher)}</b></span></p>` : '';
 
   const tracks = kind === 'album' && (m.tracks || []).length
     ? `<div class="tracks-box"><span class="cast-label">Трекліст:</span><ol class="tracks">${m.tracks.map(t =>
@@ -700,6 +724,7 @@ function detailHTML(m) {
         : `<span class="hero-poster placeholder ${c.sq ? 'sq' : ''}">${c.icon}</span>`}
       <div class="hero-text">
         <h2 class="detail-heading">${U.escapeHtml(mTitle(m))}</h2>
+        ${orig ? `<div class="detail-orig">${U.escapeHtml(orig)}</div>` : ''}
         <div class="detail-meta">${[person ? personBtn : '', metaBits].filter(Boolean).join(' · ')}</div>
         <div class="hero-actions">
           ${a != null ? `<span class="avg-big" style="background:${U.ratingColor(a)}" title="Середня оцінка">${U.fmtAvg(a)}</span>` : ''}

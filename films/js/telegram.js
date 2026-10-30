@@ -23,10 +23,10 @@
 // повідомлення через «битий» HTML.
 // ============================================================
 
-import { USERS } from './config.js?v=6.2';
-import * as store from './store.js?v=6.2';
-import { toast, openModal, icons } from './ui.js?v=6.2';
-import { escapeHtml } from './utils.js?v=6.2';
+import { USERS } from './config.js?v=6.3';
+import * as store from './store.js?v=6.3';
+import { toast, openModal, icons } from './ui.js?v=6.3';
+import { escapeHtml } from './utils.js?v=6.3';
 
 let cfg = null; // { enabled, token, chatId, chatTitle } | null
 
@@ -225,16 +225,17 @@ export function notifyGameRatingRemoved(userId, game) {
   return send(gameRatingRemovedText(userId, game));
 }
 
-// ---------- Альбоми / Сингли / Книги: ті самі пуші, посилання
-// ?album=<id> / ?single=<id> / ?book=<id> ----------
-// Рід відновлюємо з поля запису kind ('album' | 'single' | 'book'):
-// «додав альбом/сингл/книгу», «оцінив книгу…», «оцінку альбому…».
-// «Автор» для пуша: виконавець/гурт (музика) або автор (книги).
+// ---------- Альбоми / Сингли / Книги / Комікси: ті самі пуші, посилання
+// ?album=<id> / ?single=<id> / ?book=<id> / ?comic=<id> ----------
+// Рід відновлюємо з поля запису kind ('album' | 'single' | 'book' | 'comic'):
+// «додав альбом/сингл/книгу/комікс», «оцінив книгу…», «оцінку альбому…».
+// «Автор» для пуша: виконавець/гурт (музика) або автор (книги/комікси).
 
 const MEDIA_KINDS = {
   album:  { acc: 'альбом', gen: 'альбому', link: 'album' },
   single: { acc: 'сингл',  gen: 'синглу',  link: 'single' },
-  book:   { acc: 'книгу',  gen: 'книги',   link: 'book' }
+  book:   { acc: 'книгу',  gen: 'книги',   link: 'book' },
+  comic:  { acc: 'комікс', gen: 'коміксу', link: 'comic' }
 };
 
 function mediaKindOf(item) {

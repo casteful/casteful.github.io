@@ -3097,7 +3097,7 @@ td.t-num .t-kind { margin-left: 6px; }
 .form-rating .remove-rating { align-self: flex-start; }
 .s-retry { display: flex; justify-content: center; padding: 6px 0 2px; }
 
-/* 8 вкладок: на середніх екранах панель переїжджає окремим рядком —
+/* 9 вкладок: на середніх екранах панель переїжджає окремим рядком —
    рівномірно на всю ширину; так бренд і дії не тиснуть одна одну */
 @media (max-width: 1180px) {
   .topbar { flex-wrap: wrap; }
@@ -3105,7 +3105,7 @@ td.t-num .t-kind { margin-left: 6px; }
   .tab { flex: 1; text-align: center; padding: 8px 10px; }
 }
 
-/* 8 вкладок: трохи менші на вузьких екранах; якщо всі не вміщуються —
+/* 9 вкладок: трохи менші на вузьких екранах; якщо всі не вміщуються —
    панель гортається вбік (скролбар сховано, активна вкладка сама
    доїжджає у видиму зону) */
 @media (max-width: 640px) {

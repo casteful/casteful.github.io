@@ -2,7 +2,7 @@
 // UI-примітиви: іконки (SVG), тости, модальні вікна, підтвердження
 // ============================================================
 
-import { escapeHtml } from './utils.js?v=6.2';
+import { escapeHtml } from './utils.js?v=6.3';
 
 // --- Мінімалістичні SVG-іконки (stroke = currentColor) ---
 const I = (paths, extra = '') =>
@@ -46,6 +46,8 @@ export const icons = {
   album: I(`<circle cx="12" cy="12" r="8.6"/><circle cx="12" cy="12" r="2.4"/><path d="M12 3.4v2.2M12 18.4v2.2"/>`),
   note: I(`<path d="M9 17.5V5.2l11-2v12.3"/><circle cx="6.2" cy="17.6" r="2.8"/><circle cx="17.2" cy="15.6" r="2.8"/>`),
   book: I(`<path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/><path d="M8.5 7h7"/>`),
+  // Розгорнута книга — вкладка «Комікси» (манґа), щоб не зливалася з «Книгами»
+  comic: I(`<path d="M2.5 4h5.5a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3h-6.5z"/><path d="M21.5 4H16a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h6.5z"/>`),
   // Прев'ю 30-секундного фрагмента (сингли/альбоми)
   play: `<svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" stroke="none" aria-hidden="true"><path d="M8 5.5v13l11-6.5z"/></svg>`,
   pause: `<svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" stroke="none" aria-hidden="true"><rect x="6.5" y="5" width="3.6" height="14" rx="1.1"/><rect x="13.9" y="5" width="3.6" height="14" rx="1.1"/></svg>`

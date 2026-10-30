@@ -22,7 +22,7 @@
 // є fetchPoster(): IMDb за tt-ID → Wikidata sitelinks → pageimages.
 // ============================================================
 
-import { OMDB_API_KEY } from './config.js?v=6.2';
+import { OMDB_API_KEY } from './config.js?v=6.3';
 
 const WD_API = 'https://www.wikidata.org/w/api.php';
 const WD_SPARQL = 'https://query.wikidata.org/sparql';
@@ -217,6 +217,10 @@ const NOT_FILM_CLASSES = new Set([
   'Q7889',     // відеогра
   'Q277759',   // серія книг
   'Q3331189',  // видання
+  'Q1004',     // комікс (v6.3 — окрема колекція «Комікси»)
+  'Q8274',     // манґа
+  'Q725377',   // графічний роман
+  'Q213369',   // вебкомікс
   'Q21191270', // епізод телесеріалу
   'Q3464665',  // сезон телесеріалу (не сам витвір — інакше підказки
                // забиваються сезонами: «The Big Bang Theory season 1»)

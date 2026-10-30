@@ -5,12 +5,12 @@
 //  - збереження у вузол games/ + Telegram-сповіщення
 // ============================================================
 
-import { USERS } from './config.js?v=6.2';
-import * as store from './store.js?v=6.2';
-import * as U from './utils.js?v=6.2';
-import { toast, openModal, confirmDialog, icons } from './ui.js?v=6.2';
-import { searchGames, enrichGame } from './game-lookup.js?v=6.2';
-import { notifyGameAdded, notifyGameDeleted } from './telegram.js?v=6.2';
+import { USERS } from './config.js?v=6.3';
+import * as store from './store.js?v=6.3';
+import * as U from './utils.js?v=6.3';
+import { toast, openModal, confirmDialog, icons } from './ui.js?v=6.3';
+import { searchGames, enrichGame } from './game-lookup.js?v=6.3';
+import { notifyGameAdded, notifyGameDeleted } from './telegram.js?v=6.3';
 
 const SUG_CACHE_MAX = 40;
 const sugCache = new Map();

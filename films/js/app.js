@@ -3,19 +3,19 @@
 // Firebase та зв'язування вкладок
 // ============================================================
 
-import { USERS } from './config.js?v=6.2';
-import * as store from './store.js?v=6.2';
-import * as filmsView from './films.js?v=6.2';
-import * as gamesView from './games.js?v=6.2';
-import * as libraryView from './library.js?v=6.2';
-import { MEDIA_KINDS } from './media-kinds.js?v=6.2';
-import * as statsView from './stats.js?v=6.2';
-import * as quizView from './quiz.js?v=6.2';
-import * as avatars from './avatars.js?v=6.2';
-import { icons, toast } from './ui.js?v=6.2';
-import { escapeHtml } from './utils.js?v=6.2';
-import { fetchPoster } from './wiki.js?v=6.2';
-import * as settings from './settings.js?v=6.2';
+import { USERS } from './config.js?v=6.3';
+import * as store from './store.js?v=6.3';
+import * as filmsView from './films.js?v=6.3';
+import * as gamesView from './games.js?v=6.3';
+import * as libraryView from './library.js?v=6.3';
+import { MEDIA_KINDS } from './media-kinds.js?v=6.3';
+import * as statsView from './stats.js?v=6.3';
+import * as quizView from './quiz.js?v=6.3';
+import * as avatars from './avatars.js?v=6.3';
+import { icons, toast } from './ui.js?v=6.3';
+import { escapeHtml } from './utils.js?v=6.3';
+import { fetchPoster } from './wiki.js?v=6.3';
+import * as settings from './settings.js?v=6.3';
 
 const view = document.getElementById('view');
 const userOverlay = document.getElementById('userOverlay');
@@ -26,10 +26,10 @@ const fab = document.getElementById('fabAdd');
 
 let filmsArr = null;      // null = ще завантажується з бази
 let gamesArr = null;
-const mediaArr = { albums: null, singles: null, books: null };
+const mediaArr = { albums: null, singles: null, books: null, comics: null };
 // Вкладки бібліотеки мають множинні назви (albums/…), колекції —
 // од ones (album/…): єдина мапа, щоб не роз'їжджалося ніде
-const TAB2KIND = { albums: 'album', singles: 'single', books: 'book' };
+const TAB2KIND = { albums: 'album', singles: 'single', books: 'book', comics: 'comic' };
 let activeTab = 'films';
 // Повертаємось на останню відкриту вкладку (глибокі лінки все одно
 // перекриють), щоб застосунок відкривався там, де користувач зупинився
@@ -50,7 +50,7 @@ const mediaErrNotified = {};
 // чекатиме під ним.
 let deepLinkFilmId = null;
 let deepLinkGameId = null;
-const deepLinkMedia = { album: null, single: null, book: null };
+const deepLinkMedia = { album: null, single: null, book: null, comic: null };
 try {
   const params = new URLSearchParams(location.search);
   deepLinkFilmId = params.get('film');
@@ -180,7 +180,7 @@ store.onGames((list, err) => {
   handleGameDeepLink(list);
 });
 
-// ---------- Бібліотеки: альбоми / сингли / книги ----------
+// ---------- Бібліотеки: альбоми / сингли / книги / комікси ----------
 for (const k of Object.keys(MEDIA_KINDS)) {
   const node = MEDIA_KINDS[k].node;
   store.onMedia(node, (list, err) => {
@@ -232,14 +232,15 @@ function handleGameDeepLink(list) {
   }
 }
 
-// ?album= / ?single= / ?book= — відкрити запис бібліотеки
+// ?album= / ?single= / ?book= / ?comic= — відкрити запис бібліотеки.
+// Вкладка = вузол колекції (albums/singles/books/comics збігаються з іменами вкладок)
 function handleMediaDeepLink(kindKey, list) {
   if (!deepLinkMedia[kindKey]) return;
   const id = deepLinkMedia[kindKey];
   deepLinkMedia[kindKey] = null;
   try { history.replaceState(null, '', location.pathname); } catch (e) {}
   if (Array.isArray(list) && list.some(m => m.id === id)) {
-    const tab = MEDIA_KINDS[kindKey].kind === 'book' ? 'books' : MEDIA_KINDS[kindKey].kind === 'single' ? 'singles' : 'albums';
+    const tab = MEDIA_KINDS[kindKey].node;
     if (activeTab !== tab) switchTab(tab);
     libraryView.openItemById(id);
   } else {
@@ -490,7 +491,7 @@ function renderTab() {
     if (currentUser) gamesView.setUser(currentUser.id);
     gamesView.setGames(gamesArr);
   } else if (TAB2KIND[activeTab]) {
-    // Три колекції бібліотеки — один універсальний view-модуль
+    // Чотири колекції бібліотеки — один універсальний view-модуль
     // (library.js); у кожної колекції свій пошук/сортування/вигляд
     const kindKey = TAB2KIND[activeTab];
     if (mountedTab !== activeTab) {

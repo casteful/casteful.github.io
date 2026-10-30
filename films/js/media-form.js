@@ -1,20 +1,22 @@
 // ============================================================
-// Модальне вікно «Додати / Редагувати» для «Альбомів», «Синглів»
-// і «Книг» (один універсальний модуль на три колекції):
+// Модальне вікно «Додати / Редагувати» для «Альбомів», «Синглів»,
+// «Книг» і «Коміксів» (один універсальний модуль на чотири колекції):
 //  - швидке автозаповнення з Вікіпедії/Вікіданих (media-lookup.js,
 //    усе паралельно й поступово, як у фільмів та ігор)
 //  - обкладинка, виконавець/автор, рік, жанри, трекліст, опис
+//  - книги/комікси двомовні, як фільми: поле «Назва (українською)»
+//    з автоперекладом (translate.js)
 //  - «Ваша оцінка» одразу у формі (як у фільмів)
-//  - збереження у вузол albums/ | singles/ | books/ + Telegram-пуш
+//  - збереження у вузол albums/ | singles/ | books/ | comics/ + пуш
 // ============================================================
 
-import * as store from './store.js?v=6.2';
-import * as U from './utils.js?v=6.2';
-import { toast, openModal, confirmDialog, icons } from './ui.js?v=6.2';
-import { searchMedia, enrichMedia } from './media-lookup.js?v=6.2';
-import { mediaCfg } from './media-kinds.js?v=6.2';
-import { notifyMediaAdded, notifyMediaDeleted, notifyMediaRatingSet, notifyMediaRatingRemoved } from './telegram.js?v=6.2';
-import { rateTrailHTML, paintTrail, popValue } from './rating-ui.js?v=6.2';
+import * as store from './store.js?v=6.3';
+import * as U from './utils.js?v=6.3';
+import { toast, openModal, confirmDialog, icons } from './ui.js?v=6.3';
+import { searchMedia, enrichMedia, translateTitle } from './media-lookup.js?v=6.3';
+import { mediaCfg } from './media-kinds.js?v=6.3';
+import { notifyMediaAdded, notifyMediaDeleted, notifyMediaRatingSet, notifyMediaRatingRemoved } from './telegram.js?v=6.3';
+import { rateTrailHTML, paintTrail, popValue } from './rating-ui.js?v=6.3';
 
 const SUG_CACHE_MAX = 40;
 const sugCache = new Map(); // `${kind}:${query}` -> Promise зі списком підказок
@@ -35,6 +37,7 @@ function cachedSearch(q, kind, onPartial) {
 export function openFormModal({ kind = 'album', item = null, currentUserId, allItems = [] }) {
   const c = mediaCfg(kind);
   const isEdit = !!item;
+  const printish = kind === 'book' || kind === 'comic'; // друкована продукція: автор, видавництво, сторінки
   let picked = null; // обраний запис із підказок
 
   // Оцінка одразу під час додавання/редагування (як у фільмів)
@@ -53,11 +56,12 @@ export function openFormModal({ kind = 'album', item = null, currentUserId, allI
 
   if (item) {
     set('mTitle', item.title || item.titleUk || '');
+    if (c.ukTitle) set('mTitleUk', item.titleUk || '');
     set('mYear', item.year || '');
-    if (kind === 'book') set('mAuthor', item.author || '');
+    if (printish) set('mAuthor', item.author || '');
     else set('mArtist', item.artist || '');
     if (c.tracks) set('mTracks', (item.tracks || []).join('\n'));
-    if (kind === 'book') {
+    if (printish) {
       set('mPublisher', item.publisher || '');
       set('mPages', item.pages || '');
     }
@@ -124,7 +128,7 @@ export function openFormModal({ kind = 'album', item = null, currentUserId, allI
           : 'Вікіпедія';
         sugList.innerHTML = list.map((s, i) => {
           const main = U.stripDab(s.title || s.titleUk || '');
-          const who = kind === 'book' ? s.author : s.artist;
+          const who = printish ? s.author : s.artist;
           const kindTag = kind === 'single' ? 'пісня' : kind === 'album' ? 'альбом' : '';
           const sub = [s.year || '', who || '', s.genres && s.genres.length ? s.genres.slice(0, 3).join(', ') : '']
             .filter(Boolean).join(' · ');
@@ -154,7 +158,7 @@ export function openFormModal({ kind = 'album', item = null, currentUserId, allI
 
       if (gen !== searchGen) return;
       if (!items.length) {
-        sugList.innerHTML = note(icons.alert, `Нічого не знайдено у Вікіпедії. Спробуйте оригінальну назву ${kind === 'book' ? 'книги' : 'запису'} латиницею або заповніть поля вручну.`) +
+        sugList.innerHTML = note(icons.alert, `Нічого не знайдено у Вікіпедії. Спробуйте оригінальну назву ${c.oneGen} латиницею або заповніть поля вручну.`) +
           `<div class="s-retry"><button type="button" class="btn" id="mSugRetry">${icons.refresh}<span>Спробувати ще раз</span></button></div>`;
         const retry = sugList.querySelector('#mSugRetry');
         if (retry) retry.addEventListener('click', () => {
@@ -248,14 +252,15 @@ export function openFormModal({ kind = 'album', item = null, currentUserId, allI
 
     // Явний вибір підказки замінює дані полів (як у фільмів/ігор —
     // так можна «перезібрати» неправильно доданий запис у режимі редагування).
-    // ОДНА назва — оригінальна (укр. переклад у цих колекціях не ведемо)
+    // Книги/комікси двомовні: укр. назва теж підтягується з підказки
     set('mTitle', U.stripDab(s.title || s.titleUk || ''));
+    if (c.ukTitle && s.titleUk) set('mTitleUk', U.stripDab(s.titleUk));
     if (s.year != null) set('mYear', s.year);
-    if (kind === 'book') {
+    if (printish) {
       if (s.author) set('mAuthor', s.author);
     } else if (s.artist) set('mArtist', s.artist);
     if (c.tracks && s.tracks && s.tracks.length) set('mTracks', s.tracks.join('\n'));
-    if (kind === 'book' && s.publisher) set('mPublisher', s.publisher);
+    if (printish && s.publisher) set('mPublisher', s.publisher);
     if (s.genres && s.genres.length) set('mGenres', s.genres.join(', '));
     if (s.plot) set('mPlot', s.plot);
     if (s.cover) { set('mCover', s.cover); showCover(box, s.cover); }
@@ -292,8 +297,9 @@ export function openFormModal({ kind = 'album', item = null, currentUserId, allI
         pages: picked.pages || null
       });
       if (!val('mTitle') && (d.title || d.titleUk)) fillIfEmpty('mTitle', U.stripDab(d.title || d.titleUk));
+      if (c.ukTitle) fillIfEmpty('mTitleUk', U.stripDab(d.titleUk));
       if (!val('mYear') && d.year) set('mYear', d.year);
-      if (kind === 'book') {
+      if (printish) {
         fillIfEmpty('mAuthor', d.author);
         fillIfEmpty('mPublisher', d.publisher);
         if (d.pages) fillIfEmpty('mPages', String(d.pages));
@@ -310,9 +316,25 @@ export function openFormModal({ kind = 'album', item = null, currentUserId, allI
       }
       if (!val('mCover') && d.cover) { set('mCover', d.cover); showCover(box, d.cover); }
 
-      const got = [d.artist, d.author, (d.genres || []).length, (d.tracks || []).length, d.plot, val('mCover'), val('mTitle')].some(Boolean);
+      // УКР. НАЗВА ПЕРЕКЛАДОМ (книги/комікси): після всіх джерел
+      // української назви досі немає — перекладаємо оригінал автоматично
+      // (той самий механізм, що й у фільмів; рукописну назву не чіпаємо)
+      let autoTranslated = false;
+      if (c.ukTitle && !val('mTitleUk') && val('mTitle').trim()) {
+        st.textContent = 'Перекладаю назву українською…';
+        const tr = await translateTitle(val('mTitle').trim());
+        // дослівний збіг («1984» -> «1984») — назвою не вважаємо
+        if (tr && tr.toLowerCase() !== val('mTitle').trim().toLowerCase() && !val('mTitleUk')) {
+          set('mTitleUk', tr);
+          autoTranslated = true;
+        }
+      }
+
+      const got = [d.artist, d.author, (d.genres || []).length, (d.tracks || []).length, d.plot, val('mCover'), val('mTitle'), val('mTitleUk')].some(Boolean);
       st.textContent = got
-        ? 'Готово — деталі підтягнуто. Перевірте й за потреби виправте поля.'
+        ? (autoTranslated
+          ? 'Готово — деталі підтягнуто. Укр. назву перекладено автоматично — перевірте й виправте за потреби.'
+          : 'Готово — деталі підтягнуто. Перевірте й за потреби виправте поля.')
         : 'Додаткові дані не знайдено — заповніть поля вручну.';
     } catch (e) {
       st.textContent = 'Не вдалося отримати додаткові дані — заповніть поля вручну.';
@@ -362,15 +384,18 @@ export function openFormModal({ kind = 'album', item = null, currentUserId, allI
     e.preventDefault();
 
     const title = val('mTitle').trim();
-    if (!title) { toast(`Вкажіть назву ${c.oneGen}`, 'err'); return; }
+    const titleUk = val('mTitleUk').trim();
+    if (c.ukTitle ? (!title && !titleUk) : !title) { toast(`Вкажіть назву ${c.oneGen}`, 'err'); return; }
 
     const tracks = c.tracks
       ? val('mTracks').split('\n').map(x => x.trim()).filter(Boolean).slice(0, 40)
       : [];
 
     const data = {
-      title,
-      titleUk: null, // у цих колекціях укр. переклад не ведемо (на редагуванні затираємо старий)
+      title: title || titleUk,
+      // Книги/комікси — двомовні (як фільми): укр. назва зберігається;
+      // в музики — null (на редагуванні затираємо старе значення)
+      titleUk: c.ukTitle ? (titleUk || null) : null,
       kind, // пуші й глибокі лінки відновлюють рід із цього поля
       year: U.intOrNull(val('mYear'), 1400, 2100),
       cover: val('mCover').trim() || null,
@@ -380,7 +405,7 @@ export function openFormModal({ kind = 'album', item = null, currentUserId, allI
       plot: val('mPlot').trim() || null,
       wikiUrl: (picked ? picked.wikiUrl : null) || (item ? item.wikiUrl : null) || null
     };
-    if (kind === 'book') {
+    if (printish) {
       data.author = val('mAuthor').trim() || null;
       data.publisher = val('mPublisher').trim() || null;
       data.pages = U.intOrNull(val('mPages'), 1, 20000);
@@ -459,7 +484,8 @@ function hideCover(box) {
 
 function formHTML(c, isEdit, item, withRating = false, rating = null) {
   const kind = c.kind;
-  const personInput = kind === 'book'
+  const printish = kind === 'book' || kind === 'comic';
+  const personInput = printish
     ? `<label class="field">
         <span class="field-label">Автор</span>
         <input id="mAuthor" type="text" placeholder="${c.personPh}" autocomplete="off">
@@ -469,7 +495,7 @@ function formHTML(c, isEdit, item, withRating = false, rating = null) {
         <input id="mArtist" type="text" placeholder="${c.personPh}" autocomplete="off">
       </label>`;
 
-  const bookRow = kind === 'book'
+  const bookRow = printish
     ? `<label class="field">
         <span class="field-label">Видавництво</span>
         <input id="mPublisher" type="text" placeholder="Напр.: Penguin Books" autocomplete="off">
@@ -479,6 +505,22 @@ function formHTML(c, isEdit, item, withRating = false, rating = null) {
         <input id="mPages" type="number" min="1" max="20000" placeholder="328">
       </label>`
     : '';
+
+  // Книги/комікси — двомовні, як фільми: укр. назва + оригінал поруч;
+  // музика залишається з однією назвою (оригінальною)
+  const titleFields = c.ukTitle
+    ? `<label class="field">
+        <span class="field-label">Назва (українською)</span>
+        <input id="mTitleUk" type="text" placeholder="${kind === 'comic' ? 'Напр.: Акіра' : 'Напр.: Володар кілець'}">
+      </label>
+      <label class="field">
+        <span class="field-label">Оригінальна назва</span>
+        <input id="mTitle" type="text" placeholder="${kind === 'comic' ? 'Akira' : 'Nineteen Eighty-Four'}">
+      </label>`
+    : `<label class="field span-2">
+        <span class="field-label">Назва</span>
+        <input id="mTitle" type="text" placeholder="Abbey Road">
+      </label>`;
 
   const tracksField = c.tracks
     ? `<label class="field span-2">
@@ -497,7 +539,7 @@ function formHTML(c, isEdit, item, withRating = false, rating = null) {
 
     ${`
     <label class="field">
-      <span class="field-label">Пошук ${kind === 'book' ? 'книги' : 'запису'}${isEdit ? ' — заміна даних' : ''}</span>
+      <span class="field-label">Пошук ${c.oneGen}${isEdit ? ' — заміна даних' : ''}</span>
       <div class="suggest-wrap">
         ${icons.search}
         <input id="mSearch" type="text" autocomplete="off" autocapitalize="off" autocorrect="off"
@@ -511,19 +553,16 @@ function formHTML(c, isEdit, item, withRating = false, rating = null) {
     </label>`}
 
     <div class="form-grid">
-      <label class="field span-2">
-        <span class="field-label">Назва</span>
-        <input id="mTitle" type="text" placeholder="${kind === 'book' ? 'Nineteen Eighty-Four' : 'Abbey Road'}">
-      </label>
+      ${titleFields}
       <label class="field">
         <span class="field-label">Рік</span>
-        <input id="mYear" type="number" min="1400" max="2100" placeholder="${kind === 'book' ? '1949' : '1969'}">
+        <input id="mYear" type="number" min="1400" max="2100" placeholder="${kind === 'book' ? '1949' : kind === 'comic' ? '1982' : '1969'}">
       </label>
       ${personInput}
       ${bookRow}
       <label class="field span-2">
         <span class="field-label">Жанри (через кому)</span>
-        <input id="mGenres" type="text" placeholder="${kind === 'book' ? 'роман, антиутопія' : 'рок, поп'}">
+        <input id="mGenres" type="text" placeholder="${kind === 'book' ? 'роман, антиутопія' : kind === 'comic' ? 'манґа, сьонен' : 'рок, поп'}">
       </label>
       ${tracksField}
     </div>

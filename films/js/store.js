@@ -6,7 +6,7 @@ import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.14.1/fireba
 import {
   getDatabase, ref, onValue, push, set, update, remove, get, runTransaction
 } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-database.js';
-import { firebaseConfig } from './config.js?v=6.2';
+import { firebaseConfig } from './config.js?v=6.3';
 
 const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
@@ -92,13 +92,13 @@ export async function setGameRating(gameId, user, score) {
   await set(ref(db, `games/${gameId}/ratings/${user}`), score ?? null);
 }
 
-// ---------- Універсальні бібліотеки: альбоми, сингли, книги ----------
+// ---------- Універсальні бібліотеки: альбоми, сингли, книги, комікси ----------
 // Той самий формат запису, що й в ігор, у власних вузлах albums/,
-// singles/ і books/ (жодна колекція не впливає на інші та на
+// singles/, books/ і comics/ (жодна колекція не впливає на інші та на
 // статистику фільмів):
-//   { title, titleUk, kind: 'album'|'single'|'book', year,
+//   { title, titleUk, kind: 'album'|'single'|'book'|'comic', year,
 //     artist | author, genres: [], tracks: [] (альбоми),
-//     publisher, pages (книги), plot, cover, wikiUrl, qid,
+//     publisher, pages (книги/комікси), plot, cover, wikiUrl, qid,
 //     ratings: { userId: score }, addedBy, createdAt, updatedAt }
 
 export function onMedia(node, cb) {

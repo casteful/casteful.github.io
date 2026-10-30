@@ -19,8 +19,8 @@
 //     назва — з мітки/статті або автопереклад.
 // ============================================================
 
-import * as U from './utils.js?v=6.2';
-import { translateToUk } from './translate.js?v=6.2';
+import * as U from './utils.js?v=6.3';
+import { translateToUk } from './translate.js?v=6.3';
 
 const WD_API = 'https://www.wikidata.org/w/api.php';
 
@@ -52,22 +52,27 @@ async function fetchOnce(url, timeoutMs, headers = {}) {
 }
 
 // ---------- Класи Вікіданих ----------
-// Тільки QID, у яких упевнені: перелік книг збігається з «сірим
-// списком» у wiki.js (NOT_FILM_CLASSES), музика — базові релізи.
+// Тільки QID, у яких упевнені (перевірені API): книги — «сірий
+// список» у wiki.js (NOT_FILM_CLASSES), музика — базові релізи,
+// комікси — Q1004/Q8274/Q725377/Q213369 (манхва/маньгуа зазвичай
+// несуть P31 = комікс або манґа, тож покриваються ними ж).
 
 const KIND_CLASSES = {
   album: ['Q482994'],                                     // музичний альбом
   single: ['Q134556', 'Q7366'],                           // сингл, пісня
   book: ['Q571', 'Q8261', 'Q149838', 'Q699', 'Q25379',    // книга, роман, повість,
-    'Q277759', 'Q3331189', 'Q1004', 'Q8274',              // оповідання, п'єса, серія
-    'Q7725634']                                           // книг, видання, комікс,
-};                                                        // манґа, літературний твір
+    'Q277759', 'Q3331189', 'Q7725634'],                   // оповідання, п'єса, серія
+  comic: ['Q1004', 'Q8274', 'Q725377', 'Q213369']         // комікс, манґа, графічний
+};                                                        // роман, вебкомікс
 
-// Музика «не того роду»: у пошуку альбома сингли зайві, і навпаки
+// Музика «не того роду»: у пошуку альбома сингли зайві, і навпаки.
+// Коміксам зайві прозаїчні жанри (роман/повість/оповідання/п'єса),
+// АЛЕ не «книга» (Q571): багато манґ несуть обидва класи одночасно
 const WRONG_KIND = {
   album: ['Q134556', 'Q7366'],
   single: ['Q482994'],
-  book: ['Q134556', 'Q7366', 'Q482994']
+  book: ['Q134556', 'Q7366', 'Q482994'],
+  comic: ['Q134556', 'Q7366', 'Q482994', 'Q8261', 'Q149838', 'Q699', 'Q25379']
 };
 
 // Очевидно не наші сутності: люди, кіно, ігри, службові сторінки
@@ -91,9 +96,10 @@ const BLOCKED = new Set([
 // Проходи best-effort: дерево, що перевищило ліміт deepcat, тихо
 // повертає 0 результатів — решта проходів паралельно донесуться.
 const UK_DEEPCAT = {
-  album: 'Музичні альбоми',
-  single: 'Сингли',
-  book: 'Книги'
+  album: ['Музичні альбоми'],
+  single: ['Сингли'],
+  book: ['Книги'],
+  comic: ['Комікси', 'Манґа']   // два цільові дерева паралельно
 };
 
 // Евристика «схоже на …» за вступним текстом статті — для сторінок
@@ -101,7 +107,8 @@ const UK_DEEPCAT = {
 const HEAD_WORDS = {
   album: /альбом|саундтрек|\bsoundtrack\b|\bep\b|мікстейп|\bmixtape\b|компіляц|\bcompilation\b|\blive album\b|концертний альбом|студійний альбом/i,
   single: /сингл|\bsingle\b|пісн|\bsong\b|\btrack\b/i,
-  book: /книга|роман|повіст|оповіданн|п'єса|казк|вірш|збірка|\bbook\b|\bnovel\b|\bnovella\b|\bstories\b|\bshort story\b|\bplay\b|\bmanga\b|\bcomic\b|манґа/i
+  book: /книга|роман|повіст|оповіданн|п'єса|казк|вірш|збірка|\bbook\b|\bnovel\b|\bnovella\b|\bstories\b|\bshort story\b|\bplay\b/i,
+  comic: /комікс|манґа|манга|манхва|маньхуа|графічний роман|\bcomic\b|\bmanga\b|\bwebcomic\b|\bmanhwa\b|\bgraphic novel\b/i
 };
 const PERSON_WORDS = /актор|актриса|режисер|письменник|поет|співак|співачка|музикант|композитор|продюсер|\bactor\b|\bactress\b|\bdirector\b|\bwriter\b|\bauthor\b|\bpoet\b|\bsinger\b|\bmusician\b|\bcomposer\b|\bproducer\b|\bbiography\b/i;
 
@@ -479,8 +486,9 @@ export async function searchMedia(query, kind, onPartial, opts = {}) {
         if (cl.some(c => KIND_CLASSES[kind].includes(c))) score += 5;
         if (cl.some(c => WRONG_KIND[kind].includes(c))) score -= 5;
         // додаткові сигнали роду
-        if (kind !== 'book' && ((ent.mbid || ent.mbGroup || ent.trackQids.length) || ent.performerQids.length)) score += 2;
-        if (kind === 'book' && (ent.authorQids.length || ent.pages)) score += 2;
+        const music = kind === 'album' || kind === 'single';
+        if (music && ((ent.mbid || ent.mbGroup || ent.trackQids.length) || ent.performerQids.length)) score += 2;
+        if (!music && (ent.authorQids.length || ent.pages)) score += 2;
         if (ent.year != null) score += 1;
       } else if (qid) {
         // сутність є, але Вікідані не відповіли — лишаємо м'яко
@@ -489,7 +497,7 @@ export async function searchMedia(query, kind, onPartial, opts = {}) {
         continue; // сторінка без QID і не схожа на медіа цього роду
       }
 
-      if (/\((альбом|album|сингл|single|пісня|song|книга|novel|роман)\)/i.test(p.title)) score += 2;
+      if (/\((альбом|album|сингл|single|пісня|song|книга|novel|роман|комікс|comic|манґа|manga)\)/i.test(p.title)) score += 2;
       if (qYear && ent && ent.year === qYear) score += 2;
       if (normQ && U.normTitle(p.title).startsWith(normQ)) score += 1;
       if (HEAD_WORDS[kind].test(extract.slice(0, 250))) score += 1;
@@ -526,7 +534,9 @@ export async function searchMedia(query, kind, onPartial, opts = {}) {
   ];
   // Кириличні короткі префікси: цільові дерева категорій
   if (hasCyrillic && qTitle.length >= 3) {
-    tasks.push(runPass('uk', { query: `${qTitle}*`, cat: UK_DEEPCAT[kind] }));
+    for (const cat of UK_DEEPCAT[kind]) {
+      tasks.push(runPass('uk', { query: `${qTitle}*`, cat }));
+    }
   }
   // Рік у запиті («creedence 1987»): цільовий повнотекст
   if (qYear) {
@@ -537,7 +547,7 @@ export async function searchMedia(query, kind, onPartial, opts = {}) {
   // Музика поза вікі: iTunes (майже будь-яка пісня/альбом + прев'ю)
   // і MusicBrainz (найповніший каталог релізів) — теж паралельно.
   // Вікі лишається в грі: укр. назви, жанри, трекліст, сюжет.
-  if (kind !== 'book') {
+  if (kind === 'album' || kind === 'single') {
     tasks.push(itunesSearch(qTitle, kind).then(list => { pushMusic(list); }).catch(() => {}));
     tasks.push(mbSearch(qTitle, kind).then(list => { pushMusic(list); }).catch(() => {}));
   }
@@ -716,7 +726,7 @@ async function fillLabels(items, kind) {
     if (!it.title && e.labelEn) it.title = e.labelEn;
     if (!it.year && e.year) it.year = e.year;
     if (!it.cover && e.imageFile) it.cover = commonsThumb(e.imageFile);
-    if (!it.cover && kind !== 'book') it.cover = coverArtArchive(e);
+    if (!it.cover && (kind === 'album' || kind === 'single')) it.cover = coverArtArchive(e);
     if (e.ukWikiTitle) it.ukWikiTitle = e.ukWikiTitle;
     if (e.enWikiTitle) it.enWikiTitle = e.enWikiTitle;
   }
