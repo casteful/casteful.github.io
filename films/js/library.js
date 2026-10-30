@@ -7,15 +7,15 @@
 // albums/, singles/, books/, comics/.
 // ============================================================
 
-import { USERS } from './config.js?v=6.3';
-import * as store from './store.js?v=6.3';
-import * as U from './utils.js?v=6.3';
-import * as A from './avatars.js?v=6.3';
-import { toast, openModal, confirmDialog, icons } from './ui.js?v=6.3';
-import { rateTrailHTML, paintTrail, popValue, openRatePop as openRatePopShared } from './rating-ui.js?v=6.3';
-import { openFormModal } from './media-form.js?v=6.3';
-import { notifyMediaRatingSet, notifyMediaRatingRemoved, notifyMediaDeleted } from './telegram.js?v=6.3';
-import { mediaCfg } from './media-kinds.js?v=6.3';
+import { USERS } from './config.js?v=6.4';
+import * as store from './store.js?v=6.4';
+import * as U from './utils.js?v=6.4';
+import * as A from './avatars.js?v=6.4';
+import { toast, openModal, confirmDialog, icons } from './ui.js?v=6.4';
+import { rateTrailHTML, paintTrail, popValue, openRatePop as openRatePopShared } from './rating-ui.js?v=6.4';
+import { openFormModal } from './media-form.js?v=6.4';
+import { notifyMediaRatingSet, notifyMediaRatingRemoved, notifyMediaDeleted } from './telegram.js?v=6.4';
+import { mediaCfg } from './media-kinds.js?v=6.4';
 
 // Конфігурація колекцій (назви, вузол бази, іконки) — у media-kinds.js,
 // спільно з формою додавання

@@ -3,19 +3,22 @@
 // Firebase та зв'язування вкладок
 // ============================================================
 
-import { USERS } from './config.js?v=6.3';
-import * as store from './store.js?v=6.3';
-import * as filmsView from './films.js?v=6.3';
-import * as gamesView from './games.js?v=6.3';
-import * as libraryView from './library.js?v=6.3';
-import { MEDIA_KINDS } from './media-kinds.js?v=6.3';
-import * as statsView from './stats.js?v=6.3';
-import * as quizView from './quiz.js?v=6.3';
-import * as avatars from './avatars.js?v=6.3';
-import { icons, toast } from './ui.js?v=6.3';
-import { escapeHtml } from './utils.js?v=6.3';
-import { fetchPoster } from './wiki.js?v=6.3';
-import * as settings from './settings.js?v=6.3';
+import { USERS } from './config.js?v=6.4';
+import * as store from './store.js?v=6.4';
+import * as filmsView from './films.js?v=6.4';
+import * as gamesView from './games.js?v=6.4';
+import * as libraryView from './library.js?v=6.4';
+import { MEDIA_KINDS } from './media-kinds.js?v=6.4';
+import * as statsView from './stats.js?v=6.4';
+import * as quizView from './quiz.js?v=6.4';
+import * as avatars from './avatars.js?v=6.4';
+import { icons, toast } from './ui.js?v=6.4';
+import { escapeHtml } from './utils.js?v=6.4';
+import { fetchPoster } from './wiki.js?v=6.4';
+import * as settings from './settings.js?v=6.4';
+import { TABS, tabsNavHTML } from './tabs.js?v=6.4';
+import * as catalog from './catalog.js?v=6.4';
+import * as palette from './palette.js?v=6.4';
 
 const view = document.getElementById('view');
 const userOverlay = document.getElementById('userOverlay');
@@ -30,12 +33,15 @@ const mediaArr = { albums: null, singles: null, books: null, comics: null };
 // Вкладки бібліотеки мають множинні назви (albums/…), колекції —
 // од ones (album/…): єдина мапа, щоб не роз'їжджалося ніде
 const TAB2KIND = { albums: 'album', singles: 'single', books: 'book', comics: 'comic' };
+// Панель вкладок рендериться з реєстру (tabs.js) ДО відновлення
+// останньої вкладки — щоб перевірка «така вкладка існує» була чесною
+try { document.getElementById('tabsNav').innerHTML = tabsNavHTML(); } catch (e) {}
 let activeTab = 'films';
 // Повертаємось на останню відкриту вкладку (глибокі лінки все одно
 // перекриють), щоб застосунок відкривався там, де користувач зупинився
 try {
   const savedTab = localStorage.getItem('films_last_tab');
-  if (savedTab && document.querySelector(`.tab[data-tab="${savedTab}"]`)) activeTab = savedTab;
+  if (savedTab && TABS[savedTab]) activeTab = savedTab;
 } catch (e) {}
 let mountedTab = null;    // яку вкладку зараз змонтовано у #view
 let currentUser = null;
@@ -89,6 +95,32 @@ function initChrome() {
       try { inp.setSelectionRange(inp.value.length, inp.value.length); } catch (e2) {}
     }
   });
+  // Кнопка глобального пошуку в шапці (⌘K / Ctrl+K — для телефонів)
+  const gsBtn = document.getElementById('globalSearchBtn');
+  if (gsBtn) {
+    const isMac = /Mac|iPhone|iPad/.test(navigator.platform || '');
+    gsBtn.innerHTML = `${icons.search}<kbd>${isMac ? '⌘K' : 'Ctrl K'}</kbd>`;
+    gsBtn.addEventListener('click', () => palette.toggle());
+  }
+  palette.init({
+    onOpenItem: (it) => {
+      if (!it) return;
+      if (it.tab === 'films' || it.tab === 'series') {
+        if (activeTab !== it.tab) switchTab(it.tab);
+        filmsView.openFilmById(it.id);
+      } else if (it.tab === 'games') {
+        if (activeTab !== 'games') switchTab('games');
+        gamesView.openGameById(it.id);
+      } else {
+        // бібліотека: вкладка = вузол колекції (albums/singles/books/comics)
+        if (activeTab !== it.tab) switchTab(it.tab);
+        libraryView.openItemById(it.id);
+      }
+    },
+    onGoTab: (tab) => { if (TABS[tab]) switchTab(tab); },
+    onToggleTheme: toggleTheme,
+    onOpenSettings: () => settings.openSettings()
+  });
 }
 
 // Клік на людину/жанр у модалці фільму чи статистиці: переключає потрібну
@@ -114,6 +146,7 @@ store.onFilms((list, err) => {
     return;
   }
   filmsArr = list;
+  catalog.setList('films', list); // глобальний пошук + клубна статистика
   removeSlowLoadHint(); // список прийшов — прибрати підказку про зависле завантаження
   renderTab();
   healMissingPosters(list); // тихо підтягуємо постери для фільмів без них
@@ -176,6 +209,7 @@ store.onGames((list, err) => {
     return;
   }
   gamesArr = list;
+  catalog.setList('games', list);
   renderTab();
   handleGameDeepLink(list);
 });
@@ -195,6 +229,7 @@ for (const k of Object.keys(MEDIA_KINDS)) {
       return;
     }
     mediaArr[node] = list;
+    catalog.setList(node, list);
     renderTab();
     handleMediaDeepLink(k, list);
   });
@@ -358,19 +393,20 @@ function initFab() {
 }
 
 // ---------- Тема ----------
+function applyThemeIcon() {
+  const dark = document.documentElement.dataset.theme === 'dark';
+  themeToggle.innerHTML = dark ? icons.sun : icons.moon;
+}
+function toggleTheme() {
+  const cur = document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light';
+  const next = cur === 'dark' ? 'light' : 'dark';
+  document.documentElement.dataset.theme = next;
+  try { localStorage.setItem('films_theme', next); } catch (e) {}
+  applyThemeIcon();
+}
 function initTheme() {
-  const apply = () => {
-    const dark = document.documentElement.dataset.theme === 'dark';
-    themeToggle.innerHTML = dark ? icons.sun : icons.moon;
-  };
-  apply();
-  themeToggle.addEventListener('click', () => {
-    const cur = document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light';
-    const next = cur === 'dark' ? 'light' : 'dark';
-    document.documentElement.dataset.theme = next;
-    try { localStorage.setItem('films_theme', next); } catch (e) {}
-    apply();
-  });
+  applyThemeIcon();
+  themeToggle.addEventListener('click', toggleTheme);
 }
 
 // ---------- Профіль користувача ----------
@@ -453,9 +489,8 @@ function switchTab(name) {
   try { localStorage.setItem('films_last_tab', name); } catch (e) {}
   renderTab();
   // FAB має відповідати вкладці («Додати фільм/гру/альбом…»)
-  const c = TAB2KIND[activeTab] ? MEDIA_KINDS[TAB2KIND[activeTab]] : null;
-  const noun = activeTab === 'games' ? 'гру'
-    : c ? c.oneAcc : 'фільм';
+  // — знахідний відмінок береться з реєстру вкладок (tabs.js)
+  const noun = (TABS[activeTab] || {}).acc || 'фільм';
   fab.setAttribute('aria-label', 'Додати ' + noun);
   fab.title = 'Додати ' + noun;
   // На вузьких екранах панель вкладок гортається вбік — активна
@@ -471,6 +506,10 @@ function renderTab() {
     const on = b.dataset.tab === activeTab;
     b.classList.toggle('active', on);
     b.setAttribute('aria-selected', on ? 'true' : 'false');
+  });
+  // Сімейство активної вкладки підсвічує свій дрібний підпис
+  document.querySelectorAll('.tab-family').forEach(f => {
+    f.classList.toggle('active', !!f.querySelector('.tab.active'));
   });
 
   if (activeTab === 'films' || activeTab === 'series') {
@@ -512,9 +551,14 @@ function renderTab() {
     // Список фільмів тримаємо актуальним навіть поза вкладкою —
     // щоб «Рекорди» у статистиці могли відкрити вікно фільму
     filmsView.setFilms(filmsArr);
-    statsView.mount(view, filmsArr, {
+    statsView.mount(view, {
+      films: filmsArr, games: gamesArr,
+      media: { albums: mediaArr.albums, singles: mediaArr.singles,
+               books: mediaArr.books, comics: mediaArr.comics }
+    }, {
       onFilter: (q) => { switchTab('films'); filmsView.setFilter(q); },
-      onOpenFilm: (id) => filmsView.openFilmById(id)
+      onOpenFilm: (id) => filmsView.openFilmById(id),
+      onGoTab: (tab) => { if (TABS[tab]) switchTab(tab); }
     });
     mountedTab = 'stats';
   }

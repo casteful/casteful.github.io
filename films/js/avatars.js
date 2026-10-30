@@ -5,14 +5,14 @@
 // класичну буквену аватарку з кольором профілю.
 //
 // Використання у будь-якому модулі:
-//   import * as A from './avatars.js?v=6.3';
+//   import * as A from './avatars.js?v=6.4';
 //   A.avatarHTML(u, 'sm')  -> <span class="avatar sm">…</span>
 // Підписка на зміни: A.onChange(cb) — щоб перемалювати свій UI,
 // коли хтось завантажив/прибрав фото.
 // ============================================================
 
-import * as store from './store.js?v=6.3';
-import { escapeHtml, initial } from './utils.js?v=6.3';
+import * as store from './store.js?v=6.4';
+import { escapeHtml, initial } from './utils.js?v=6.4';
 
 let cache = {};              // { userId: dataUrl } — живі дані з бази
 let started = false;

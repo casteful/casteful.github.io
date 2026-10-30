@@ -10,13 +10,13 @@
 //  - збереження у вузол albums/ | singles/ | books/ | comics/ + пуш
 // ============================================================
 
-import * as store from './store.js?v=6.3';
-import * as U from './utils.js?v=6.3';
-import { toast, openModal, confirmDialog, icons } from './ui.js?v=6.3';
-import { searchMedia, enrichMedia, translateTitle } from './media-lookup.js?v=6.3';
-import { mediaCfg } from './media-kinds.js?v=6.3';
-import { notifyMediaAdded, notifyMediaDeleted, notifyMediaRatingSet, notifyMediaRatingRemoved } from './telegram.js?v=6.3';
-import { rateTrailHTML, paintTrail, popValue } from './rating-ui.js?v=6.3';
+import * as store from './store.js?v=6.4';
+import * as U from './utils.js?v=6.4';
+import { toast, openModal, confirmDialog, icons } from './ui.js?v=6.4';
+import { searchMedia, enrichMedia, translateTitle } from './media-lookup.js?v=6.4';
+import { mediaCfg } from './media-kinds.js?v=6.4';
+import { notifyMediaAdded, notifyMediaDeleted, notifyMediaRatingSet, notifyMediaRatingRemoved } from './telegram.js?v=6.4';
+import { rateTrailHTML, paintTrail, popValue } from './rating-ui.js?v=6.4';
 
 const SUG_CACHE_MAX = 40;
 const sugCache = new Map(); // `${kind}:${query}` -> Promise зі списком підказок

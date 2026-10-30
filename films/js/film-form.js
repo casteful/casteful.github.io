@@ -5,16 +5,16 @@
 //  - збереження в Firebase
 // ============================================================
 
-import { USERS } from './config.js?v=6.3';
-import * as store from './store.js?v=6.3';
-import * as U from './utils.js?v=6.3';
-import { toast, openModal, confirmDialog, icons } from './ui.js?v=6.3';
-import { suggestFilms, typeLabel, imdbTemporarilyDown, imdbById } from './imdb.js?v=6.3';
-import { searchWikiFilms, fetchPoster, posterQuick, premiereInfo } from './wiki.js?v=6.3';
-import { translateToUk } from './translate.js?v=6.3';
-import { enrichFilm } from './enrich.js?v=6.3';
-import { notifyFilmAdded, notifyFilmDeleted, notifyRatingSet, notifyRatingRemoved } from './telegram.js?v=6.3';
-import { rateTrailHTML, paintTrail, popValue } from './rating-ui.js?v=6.3';
+import { USERS } from './config.js?v=6.4';
+import * as store from './store.js?v=6.4';
+import * as U from './utils.js?v=6.4';
+import { toast, openModal, confirmDialog, icons } from './ui.js?v=6.4';
+import { suggestFilms, typeLabel, imdbTemporarilyDown, imdbById } from './imdb.js?v=6.4';
+import { searchWikiFilms, fetchPoster, posterQuick, premiereInfo } from './wiki.js?v=6.4';
+import { translateToUk } from './translate.js?v=6.4';
+import { enrichFilm } from './enrich.js?v=6.4';
+import { notifyFilmAdded, notifyFilmDeleted, notifyRatingSet, notifyRatingRemoved } from './telegram.js?v=6.4';
+import { rateTrailHTML, paintTrail, popValue } from './rating-ui.js?v=6.4';
 
 // ============================================================
 // Швидкий пошук для автозаповнення (спільний між відкриттями).

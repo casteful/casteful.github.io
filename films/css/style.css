@@ -3122,3 +3122,258 @@ td.t-num .t-kind { margin-left: 6px; }
   .tab { font-size: 11.5px; padding: 8px 6px; letter-spacing: -0.01em; }
   .tab-sep { margin: 0 2px; }
 }
+
+/* ============================================================
+   v6.4 — Сімейства вкладок, глобальний пошук (⌘K), клубна
+   статистика
+   ============================================================ */
+
+/* ---------- Панель вкладок: сімейства з дрібними підписами ---------- */
+
+.tabs { align-items: stretch; }
+
+.tab-family {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;   /* вкладки всіх сімейств — на одній лінії, навіть якщо над ними немає підписа */
+  gap: 3px;
+  min-width: 0;
+}
+
+.tf-tabs { display: flex; gap: 2px; justify-content: center; }
+
+.tf-label {
+  font-size: 8.5px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.11em;
+  line-height: 1;
+  color: var(--muted);
+  text-align: center;
+  opacity: 0.75;
+  user-select: none;
+  white-space: nowrap;
+}
+.tab-family.active .tf-label { color: var(--accent); opacity: 1; }
+
+@media (max-width: 640px) {
+  .tf-label { display: none; }   /* на телефоні панель лишається компактною */
+  .tab-family { gap: 0; }
+}
+
+/* ---------- Кнопка глобального пошуку в шапці ---------- */
+
+.gs-btn {
+  width: auto;
+  padding: 0 12px 0 11px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+  font-weight: 700;
+}
+.gs-btn kbd, .cmdk kbd {
+  font-family: inherit;
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--muted);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-bottom-width: 2px;
+  border-radius: 6px;
+  padding: 2px 6px;
+  line-height: 1.45;
+  white-space: nowrap;
+}
+@media (max-width: 1100px) { .gs-btn kbd { display: none; } }
+@media (max-width: 640px) {
+  .gs-btn { width: 38px; padding: 0; }
+  .gs-btn kbd { display: none; }
+}
+
+/* ---------- Командна палітра (глобальний пошук ⌘K / Ctrl+K) ---------- */
+
+.cmdk-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding: 11vh 16px 16px;
+  background: color-mix(in srgb, var(--bg) 45%, transparent);
+  backdrop-filter: blur(7px) saturate(1.2);
+  -webkit-backdrop-filter: blur(7px) saturate(1.2);
+  opacity: 0;
+  transition: opacity 0.16s ease;
+}
+.cmdk-overlay.show { opacity: 1; }
+
+.cmdk {
+  width: min(640px, 100%);
+  max-height: 74vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  box-shadow: 0 30px 80px rgba(12, 9, 3, 0.38);
+  overflow: hidden;
+  transform: translateY(-8px) scale(0.985);
+  transition: transform 0.16s var(--ease-spring);
+}
+.cmdk-overlay.show .cmdk { transform: none; }
+
+.cmdk-head {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 13px 16px;
+  border-bottom: 1px solid var(--border);
+  color: var(--muted);
+}
+.cmdk-search-ic { display: grid; place-items: center; flex: 0 0 auto; }
+.cmdk-search-ic svg { width: 18px; height: 18px; }
+
+.cmdk-input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  font: inherit;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text);
+  outline: none;
+  padding: 0;
+}
+.cmdk-input::placeholder { color: var(--muted); opacity: 0.75; }
+
+.cmdk-esc { display: grid; place-items: center; background: none; padding: 0; }
+.cmdk-esc:hover kbd { color: var(--text); }
+
+.cmdk-list { flex: 1; overflow-y: auto; overscroll-behavior: contain; padding: 8px; }
+
+.cmdk-group {
+  font-size: 10.5px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  color: var(--muted);
+  padding: 9px 10px 4px;
+}
+.cmdk-row {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: 11px;
+  text-align: left;
+  color: var(--text);
+  transition: background 0.12s ease;
+}
+.cmdk-row.active { background: var(--surface-2); }
+.cmdk-row.active .cmdk-ic { color: var(--accent); }
+
+.cmdk-ic {
+  flex: 0 0 auto;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: var(--surface-2);
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+}
+.cmdk-ic svg { width: 17px; height: 17px; }
+
+.cmdk-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.cmdk-title {
+  font-size: 14px;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cmdk-title .cmdk-year { font-size: 12px; font-weight: 600; color: var(--muted); }
+.cmdk-orig {
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cmdk-sub {
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cmdk-meta { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; }
+.cmdk-avg { font-size: 13.5px; font-weight: 800; }
+.cmdk-kind {
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  background: var(--surface-2);
+  border-radius: 6px;
+  padding: 3px 7px;
+}
+
+.cmdk-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  padding: 26px 12px;
+  color: var(--muted);
+  font-size: 13.5px;
+  font-weight: 600;
+}
+
+.cmdk-foot {
+  display: flex;
+  gap: 16px;
+  padding: 9px 14px;
+  border-top: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 11.5px;
+  font-weight: 600;
+}
+.cmdk-foot span { display: inline-flex; align-items: center; gap: 5px; }
+
+@media (max-width: 640px) {
+  .cmdk-overlay {
+    padding: 0;
+    align-items: flex-end;
+  }
+  .cmdk {
+    max-height: 82vh;
+    border-radius: 18px 18px 0 0;
+    border-bottom: none;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  .cmdk-foot { display: none; }   /* на дотик клавіші не потрібні */
+}
+
+/* ---------- Клубна статистика ---------- */
+
+.club-tiles .tile-icon { color: var(--accent); }
+
+.cl-ic {
+  display: inline-grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 7px;
+  background: var(--surface-2);
+  color: var(--muted);
+  vertical-align: middle;
+  margin-right: 7px;
+}
+.cl-ic svg { width: 13px; height: 13px; }

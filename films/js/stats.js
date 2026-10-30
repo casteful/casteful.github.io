@@ -1,20 +1,28 @@
 // ============================================================
-// Вкладка «Статистика»: огляд, топ-10 фільмів, розподіл оцінок,
+// Вкладка «Статистика»: КЛУБНИЙ ОГЛЯД (усі колекції разом —
+// плитки клубу, колекції, оцінки учасників) + детальна кіно-
+// статистика: огляд, топ-10 фільмів, розподіл оцінок,
 // десятиліття (к-ть і середня), роки випуску, режисери (к-ть і
 // середня), жанри, країни, актори, хронометраж, рекорди, сезони
 // та активність переглядів, профілі глядачів, порівняння учасників.
 // Рядки з фільмами/людьми/жанрами клікабельні:
 //   onFilter(name)  -> відкрити «Фільми» з пошуком за цим значенням
 //   onOpenFilm(id)  -> відкрити вікно фільму (панель «Рекорди»)
+//   onGoTab(tab)    -> перейти на вкладку колекції (клубний огляд)
+// Дані приходять одним об'єктом: { films, games, media: {albums,
+// singles, books, comics} } — клубна статистика рахує по всіх
+// колекціях, кіно-панелі — тільки по films/series (як і раніше).
 // ============================================================
 
-import { USERS } from './config.js?v=6.3';
-import * as A from './avatars.js?v=6.3';
-import * as U from './utils.js?v=6.3';
-import { icons } from './ui.js?v=6.3';
+import { USERS } from './config.js?v=6.4';
+import * as A from './avatars.js?v=6.4';
+import * as U from './utils.js?v=6.4';
+import { icons } from './ui.js?v=6.4';
+import { TABS } from './tabs.js?v=6.4';
 
-export function mount(container, filmsArr, handlers = {}) {
-  if (filmsArr === null) {
+export function mount(container, data, handlers = {}) {
+  const filmsAll = (data && data.films) || null;
+  if (filmsAll === null) {
     container.innerHTML = `
       <div class="state-box slim">
         <span class="state-icon">${icons.chart}</span>
@@ -22,7 +30,9 @@ export function mount(container, filmsArr, handlers = {}) {
       </div>`;
     return;
   }
-  const s = compute(filmsArr);
+  const games = (data && data.games) || [];
+  const media = (data && data.media) || {};
+  const s = compute(filmsAll, games, media);
 
   // Оновлення даних не має «стрибати» — зберігаємо позицію прокрутки
   const y = window.scrollY;
@@ -32,7 +42,7 @@ export function mount(container, filmsArr, handlers = {}) {
   wire(container, handlers);
 }
 
-function compute(filmsAll) {
+function compute(filmsAll, games = [], media = {}) {
   // СЕРІАЛИ ЖИВУТЬ ОКРЕМО: не впливають на статистику фільмів — ні на
   // кіногодини, ні на рекорди, ні на топ-10, ні на жанри/країни/роки
   // (тривалість серіалу порахувати неможливо). Зведення серіалів — в
@@ -218,6 +228,7 @@ function compute(filmsAll) {
   }).sort((a, b) => (b.avg != null) - (a.avg != null) || b.avg - a.avg || b.n - a.n);
 
   return {
+    club: computeClub(filmsAll, games, media),
     films, series, totalRatings, overallAvg, topFilms, ratedCount: ratedFilms.length,
     dist, decadeRows, topDirectors, topGenres, topCast,
     countryRows, countryAvgRows, dirAvgRows, genreAvgRows,
@@ -241,8 +252,62 @@ function compute(filmsAll) {
   };
 }
 
+// ---------- Клубний огляд: усі колекції разом ----------
+// Плитки клубу + панель колекцій (клік -> вкладка) + оцінки учасників
+// по всіх колекціях. Кіно-панелі нижче лишаються незайманими.
+function computeClub(filmsAll, games, media) {
+  const collections = [
+    { tab: 'films',   items: filmsAll.filter(f => f.kind !== 'series') },
+    { tab: 'series',  items: filmsAll.filter(f => f.kind === 'series') },
+    { tab: 'albums',  items: media.albums || [] },
+    { tab: 'singles', items: media.singles || [] },
+    { tab: 'books',   items: media.books || [] },
+    { tab: 'comics',  items: media.comics || [] },
+    { tab: 'games',   items: games || [] }
+  ].map(c => {
+    const t = TABS[c.tab] || { label: c.tab, icon: 'film' };
+    let nRatings = 0, sum = 0;
+    (c.items || []).forEach(it => Object.values(it.ratings || {}).forEach(v => {
+      if (typeof v === 'number' && !Number.isNaN(v)) { nRatings++; sum += v; }
+    }));
+    const ratedCount = (c.items || []).filter(it => U.avg(it.ratings) != null).length;
+    return { tab: c.tab, label: t.label, icon: t.icon, items: c.items,
+             count: (c.items || []).length, ratedCount, nRatings,
+             avg: nRatings ? sum / nRatings : null };
+  });
+
+  let totalItems = 0, totalRatings = 0, sumAll = 0;
+  collections.forEach(c => {
+    totalItems += c.count; totalRatings += c.nRatings;
+    if (c.avg != null) sumAll += c.avg * c.nRatings;
+  });
+  const overallAvg = totalRatings ? sumAll / totalRatings : null;
+
+  // Учасники: скільки оцінок кожен поставив УСЬОГО (по всіх колекціях)
+  // і де його «основна стихія» — колекція з найбільшою кількістю його оцінок
+  const members = USERS.map(u => {
+    let n = 0, sum = 0, fav = null;
+    collections.forEach(c => {
+      let cn = 0;
+      (c.items || []).forEach(it => {
+        const v = (it.ratings || {})[u.id];
+        if (typeof v === 'number' && !Number.isNaN(v)) { n++; sum += v; cn++; }
+      });
+      if (cn > 0 && (!fav || cn > fav.n)) fav = { label: c.label, n: cn };
+    });
+    return { id: u.id, name: u.name, color: u.color, n,
+             avg: n ? sum / n : null, fav };
+  }).sort((a, b) => b.n - a.n || (b.avg || 0) - (a.avg || 0));
+
+  return {
+    collections, totalItems, totalRatings, overallAvg, members,
+    activeMembers: members.filter(m => m.n > 0).length,
+    maxMemberN: Math.max(1, ...members.map(m => m.n))
+  };
+}
+
 function template(s, handlers) {
-  if (!s.films.length && !s.series.length && !s.totalRatings) {
+  if (!s.films.length && !s.series.length && !s.totalRatings && s.club.totalItems === 0) {
     return `
       <div class="state-box">
         <span class="state-icon">${icons.chart}</span>
@@ -273,6 +338,45 @@ function template(s, handlers) {
       ${tile(icons.clock, `${s.totalMin ? Math.round(s.totalMin / 60) : '—'}<small class="tile-unit">год</small>`, 'спільного кіночасу')}
       ${tile(icons.users, s.activeUser ? `<i class="ava-dot" style="background:${s.activeUser.color}"></i>${U.escapeHtml(s.activeUser.name)}` : '—', 'найактивніший глядач', 'tile-user')}
     </div>`;
+
+  // --- КЛУБНИЙ ОГЛЯД (зверху, перед кіно-статистикою) ---
+
+  const clubTiles = `
+    <div class="tiles club-tiles">
+      ${tile(icons.grid, s.club.totalItems, 'записів у клубі')}
+      ${tile(icons.star, s.club.totalRatings, `${s.club.totalRatings} ${U.pluralRatingsGen(s.club.totalRatings)} поставлено`)}
+      ${tile(icons.chart, U.fmtAvg(s.club.overallAvg), 'середня по клубу')}
+      ${tile(icons.users, `${s.club.activeMembers}<small class="tile-unit">/${USERS.length}</small>`, 'активні учасники', 'tile-user')}
+    </div>`;
+
+  const maxColCount = Math.max(1, ...s.club.collections.map(c => c.count));
+  const collectionsPanel = s.club.totalItems === 0 ? '' : `
+    <section class="panel">
+      <h3 class="panel-title">Колекції клубу <span class="panel-hint">— клікніть, щоб відкрити вкладку</span></h3>
+      <div class="bars">
+        ${s.club.collections.map(c => `
+          <button type="button" class="brow clickable" data-go-tab="${c.tab}"
+                  title="${U.escapeHtml(c.label)}: ${c.count} запис(ів), ${c.nRatings} ${U.pluralRatingsGen(c.nRatings)}">
+            <span class="brow-label"><span class="cl-ic" aria-hidden="true">${icons[c.icon] || icons.film}</span>${U.escapeHtml(c.label)}</span>
+            <span class="bar"><i style="width:${Math.round(c.count / maxColCount * 100)}%"></i></span>
+            <span class="brow-value">${c.count}<small>${c.avg != null ? ` · сер. ${U.fmtAvg(c.avg)}` : ''}</small></span>
+          </button>`).join('')}
+      </div>
+    </section>`;
+
+  const clubMembersPanel = s.club.totalRatings === 0 ? '' : `
+    <section class="panel">
+      <h3 class="panel-title">Оцінки учасників <span class="panel-hint">— по всіх колекціях</span></h3>
+      <div class="bars">
+        ${s.club.members.map(m => `
+          <div class="brow" title="${U.escapeHtml(m.name)}: ${m.n} ${U.pluralRatingsGen(m.n)} усього${m.fav ? ` · найбільше — ${U.escapeHtml(m.fav.label)}` : ''}">
+            <span class="brow-label"><i class="ava-dot" style="background:${m.color}"></i>${U.escapeHtml(m.name)}</span>
+            <span class="bar"><i style="width:${Math.round(m.n / s.club.maxMemberN * 100)}%; background:var(--accent)"></i></span>
+            <span class="brow-value">${m.n}<small>${m.avg != null ? ` · сер. ${U.fmtAvg(m.avg)}` : ''}</small></span>
+          </div>`).join('')}
+      </div>
+      <p class="duo-note">Разом по фільмах, серіалах, альбомах, синглах, книгах, коміксах та іграх.</p>
+    </section>`;
 
   // Клікабельний рядок барами
   const browBtn = ({ label, sub, width, color, value, filter, title }) => `
@@ -555,7 +659,7 @@ function template(s, handlers) {
         </p>` : ''}
     </section>`;
 
-  return `${tiles}${records}${topFilms}${genresPanel}${genreAvgPanel}${countriesPanel}${countryAvgPanel}${directorsPanel}${dirAvgPanel}${castPanel}${distPanel}${decadesPanel}${decadeAvgPanel}${yearPanel}${seasonsPanel}${activityPanel}${runtimePanel}${seriesPanel}${viewers}${comparePanel}`;
+  return `${clubTiles}${collectionsPanel}${clubMembersPanel}${tiles}${records}${topFilms}${genresPanel}${genreAvgPanel}${countriesPanel}${countryAvgPanel}${directorsPanel}${dirAvgPanel}${castPanel}${distPanel}${decadesPanel}${decadeAvgPanel}${yearPanel}${seasonsPanel}${activityPanel}${runtimePanel}${seriesPanel}${viewers}${comparePanel}`;
 }
 
 // Клікабельні рядки: фільтр за людиною/жанром або відкриття фільму.
@@ -567,6 +671,11 @@ function wire(container, handlers) {
   if (container._statsWired) return;
   container._statsWired = true;
   container.addEventListener('click', (e) => {
+    const goBtn = e.target.closest('[data-go-tab]');
+    if (goBtn && typeof handlers.onGoTab === 'function') {
+      handlers.onGoTab(goBtn.dataset.goTab);
+      return;
+    }
     const openBtn = e.target.closest('[data-open-film]');
     if (openBtn && typeof handlers.onOpenFilm === 'function') {
       handlers.onOpenFilm(openBtn.dataset.openFilm);

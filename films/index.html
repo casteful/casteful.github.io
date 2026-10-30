@@ -11,7 +11,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/style.css?v=6.3">
+  <link rel="stylesheet" href="css/style.css?v=6.4">
   <script>
     // Set theme before first paint to avoid flash
     try {
@@ -30,19 +30,12 @@
         <span class="brand-icon" id="brandIcon"></span>
         <span class="brand-name">Фільмотека</span>
       </div>
-      <nav class="tabs" role="tablist" aria-label="Розділи">
-        <button class="tab active" data-tab="films" role="tab" aria-selected="true">Фільми</button>
-        <button class="tab" data-tab="series" role="tab" aria-selected="false">Серіали</button>
-        <button class="tab" data-tab="albums" role="tab" aria-selected="false">Альбоми</button>
-        <button class="tab" data-tab="singles" role="tab" aria-selected="false">Сингли</button>
-        <button class="tab" data-tab="books" role="tab" aria-selected="false">Книги</button>
-        <button class="tab" data-tab="comics" role="tab" aria-selected="false">Комікси</button>
-        <button class="tab" data-tab="games" role="tab" aria-selected="false">Ігри</button>
-        <span class="tab-sep" aria-hidden="true"></span>
-        <button class="tab" data-tab="stats" role="tab" aria-selected="false">Статистика</button>
-        <button class="tab" data-tab="quiz" role="tab" aria-selected="false">Гра</button>
+      <nav class="tabs" id="tabsNav" role="tablist" aria-label="Розділи">
+        <!-- Вкладки рендеряться з реєстру tabs.js (app.js) —
+             щоб назви/сімейства/колекції ніде не роз'їжджалися -->
       </nav>
       <div class="topbar-actions">
+        <button id="globalSearchBtn" class="icon-btn gs-btn" aria-label="Глобальний пошук (Ctrl+K)" title="Глобальний пошук (Ctrl+K)"></button>
         <button id="settingsBtn" class="icon-btn" aria-label="Налаштування" title="Налаштування"></button>
         <button id="themeToggle" class="icon-btn" aria-label="Переключити світлу/темну тему" title="Світла / темна тема"></button>
         <button id="userBadge" class="user-badge" aria-label="Змінити користувача" title="Змінити користувача"></button>
@@ -73,6 +66,6 @@
     </div>
   </noscript>
 
-  <script type="module" src="js/app.js?v=6.3"></script>
+  <script type="module" src="js/app.js?v=6.4"></script>
 </body>
 </html>
