@@ -23,10 +23,10 @@
 // повідомлення через «битий» HTML.
 // ============================================================
 
-import { USERS } from './config.js?v=6.1';
-import * as store from './store.js?v=6.1';
-import { toast, openModal, icons } from './ui.js?v=6.1';
-import { escapeHtml } from './utils.js?v=6.1';
+import { USERS } from './config.js?v=6.2';
+import * as store from './store.js?v=6.2';
+import { toast, openModal, icons } from './ui.js?v=6.2';
+import { escapeHtml } from './utils.js?v=6.2';
 
 let cfg = null; // { enabled, token, chatId, chatTitle } | null
 
@@ -156,7 +156,7 @@ export function notifyRatingRemoved(userId, film) {
 // ---------- Ігри: ті самі повідомлення, посилання ?game=<id> ----------
 
 export function gameTitle(g) {
-  return (g && (g.titleUk || g.title)) || 'Без назви';
+  return (g && (g.title || g.titleUk)) || 'Без назви';
 }
 
 function gameLink(game) {
@@ -175,24 +175,38 @@ function gameNameHTML(game) {
   return link ? `<a href="${esc(link)}">${name}</a>` : name;
 }
 
-export function gameAddedText(userId, game) {
-  const year = game && typeof game === 'object' && game.year ? ` (${game.year})` : '';
-  return `${esc(userName(userId))} додав гру ${gameNameHTML(game)}${year}`;
+// «Автор» запису для пуша: розробник гри (без нього — видавець).
+// Дужки після назви — як рік у фільмів: «The Witcher 3» (CD Projekt Red, 2015)
+function ctxHTML(who, year) {
+  if (!who && !year) return '';
+  const bits = [who ? esc(who) : null, year ? esc(String(year)) : null].filter(Boolean);
+  return ` (${bits.join(', ')})`;
 }
 
-export function gameDeletedText(userId, title) {
-  return `${esc(userName(userId))} видалив гру ${gameNameHTML(String(title || ''))}`;
+function gameAuthorOf(g) {
+  return (g && typeof g === 'object') ? (g.developer || g.publisher || null) : null;
+}
+
+export function gameAddedText(userId, game) {
+  const rec = (game && typeof game === 'object') ? game : null;
+  return `${esc(userName(userId))} додав гру ${gameNameHTML(game)}${ctxHTML(gameAuthorOf(rec), rec && rec.year)}`;
+}
+
+export function gameDeletedText(userId, game) {
+  const rec = (game && typeof game === 'object') ? game : null;
+  return `${esc(userName(userId))} видалив гру ${gameNameHTML(rec ? game : String(game || ''))}${ctxHTML(gameAuthorOf(rec), rec && rec.year)}`;
 }
 
 export function gameRatingSetText(userId, game, score, prev) {
   const name = gameNameHTML(game);
+  const ctx = ctxHTML(gameAuthorOf(game), game && game.year);
   return (prev != null && prev !== score)
-    ? `${esc(userName(userId))} змінив оцінку ${name}: ${prev} → ${score}`
-    : `${esc(userName(userId))} оцінив гру ${name} на ${score}/10`;
+    ? `${esc(userName(userId))} змінив оцінку ${name}${ctx}: ${prev} → ${score}`
+    : `${esc(userName(userId))} оцінив гру ${name}${ctx} на ${score}/10`;
 }
 
 export function gameRatingRemovedText(userId, game) {
-  return `${esc(userName(userId))} прибрав свою оцінку гри ${gameNameHTML(game)}`;
+  return `${esc(userName(userId))} прибрав свою оцінку гри ${gameNameHTML(game)}${ctxHTML(gameAuthorOf(game), game && game.year)}`;
 }
 
 export function notifyGameAdded(userId, game) {
@@ -215,6 +229,7 @@ export function notifyGameRatingRemoved(userId, game) {
 // ?album=<id> / ?single=<id> / ?book=<id> ----------
 // Рід відновлюємо з поля запису kind ('album' | 'single' | 'book'):
 // «додав альбом/сингл/книгу», «оцінив книгу…», «оцінку альбому…».
+// «Автор» для пуша: виконавець/гурт (музика) або автор (книги).
 
 const MEDIA_KINDS = {
   album:  { acc: 'альбом', gen: 'альбому', link: 'album' },
@@ -227,7 +242,11 @@ function mediaKindOf(item) {
 }
 
 export function mediaTitle(m) {
-  return (m && (m.titleUk || m.title)) || 'Без назви';
+  return (m && (m.title || m.titleUk)) || 'Без назви';
+}
+
+function mediaAuthorOf(m) {
+  return (m && typeof m === 'object') ? (m.author || m.artist || null) : null;
 }
 
 function mediaLink(item) {
@@ -249,25 +268,25 @@ function mediaNameHTML(item) {
 
 export function mediaAddedText(userId, item) {
   const what = mediaKindOf(item).acc;
-  const year = item && typeof item === 'object' && item.year ? ` (${item.year})` : '';
   const mine = item && typeof item === 'object' && item.ratings ? item.ratings[userId] : null;
   const rated = mine != null ? ` — ${mine}/10` : '';
-  return `${esc(userName(userId))} додав ${what} ${mediaNameHTML(item)}${year}${rated}`;
+  return `${esc(userName(userId))} додав ${what} ${mediaNameHTML(item)}${ctxHTML(mediaAuthorOf(item), item && item.year)}${rated}`;
 }
 
 export function mediaRatingSetText(userId, item, score, prev) {
   const name = mediaNameHTML(item);
+  const ctx = ctxHTML(mediaAuthorOf(item), item && item.year);
   return (prev != null && prev !== score)
-    ? `${esc(userName(userId))} змінив оцінку ${name}: ${prev} → ${score}`
-    : `${esc(userName(userId))} оцінив ${mediaKindOf(item).acc} ${name} на ${score}/10`;
+    ? `${esc(userName(userId))} змінив оцінку ${name}${ctx}: ${prev} → ${score}`
+    : `${esc(userName(userId))} оцінив ${mediaKindOf(item).acc} ${name}${ctx} на ${score}/10`;
 }
 
 export function mediaRatingRemovedText(userId, item) {
-  return `${esc(userName(userId))} прибрав свою оцінку ${mediaKindOf(item).gen} ${mediaNameHTML(item)}`;
+  return `${esc(userName(userId))} прибрав свою оцінку ${mediaKindOf(item).gen} ${mediaNameHTML(item)}${ctxHTML(mediaAuthorOf(item), item && item.year)}`;
 }
 
 export function mediaDeletedText(userId, item) {
-  return `${esc(userName(userId))} видалив ${mediaKindOf(item).acc} ${mediaNameHTML(item)}`;
+  return `${esc(userName(userId))} видалив ${mediaKindOf(item).acc} ${mediaNameHTML(item)}${ctxHTML(mediaAuthorOf(item), item && item.year)}`;
 }
 
 export function notifyMediaAdded(userId, item) {

@@ -5,12 +5,12 @@
 //  - збереження у вузол games/ + Telegram-сповіщення
 // ============================================================
 
-import { USERS } from './config.js?v=6.1';
-import * as store from './store.js?v=6.1';
-import * as U from './utils.js?v=6.1';
-import { toast, openModal, confirmDialog, icons } from './ui.js?v=6.1';
-import { searchGames, enrichGame, translateTitle } from './game-lookup.js?v=6.1';
-import { notifyGameAdded, notifyGameDeleted } from './telegram.js?v=6.1';
+import { USERS } from './config.js?v=6.2';
+import * as store from './store.js?v=6.2';
+import * as U from './utils.js?v=6.2';
+import { toast, openModal, confirmDialog, icons } from './ui.js?v=6.2';
+import { searchGames, enrichGame } from './game-lookup.js?v=6.2';
+import { notifyGameAdded, notifyGameDeleted } from './telegram.js?v=6.2';
 
 const SUG_CACHE_MAX = 40;
 const sugCache = new Map();
@@ -42,8 +42,7 @@ export function openFormModal({ game = null, currentUserId, allGames = [] }) {
   const set = (id, v) => { if ($(id)) $(id).value = v ?? ''; };
 
   if (game) {
-    set('gTitleUk', game.titleUk || '');
-    set('gTitle', game.title || '');
+    set('gTitle', game.title || game.titleUk || '');
     set('gYear', game.year || '');
     set('gDeveloper', game.developer || '');
     set('gPublisher', game.publisher || '');
@@ -75,9 +74,7 @@ export function openFormModal({ game = null, currentUserId, allGames = [] }) {
         sugItems = list;
         sugIndex = -1;
         sugList.innerHTML = list.map((s, i) => {
-          const main = U.stripDab(s.titleUk || s.title);
-          const altRaw = (s.titleUk && s.title) ? U.stripDab(s.title) : '';
-          const alt = altRaw && altRaw !== main ? altRaw : '';
+          const main = U.stripDab(s.title || s.titleUk || '');
           const sub = [s.year || '', s.developer || '', s.platforms && s.platforms.length ? s.platforms.slice(0, 3).join(', ') : '']
             .filter(Boolean).join(' · ');
           return `
@@ -87,7 +84,6 @@ export function openFormModal({ game = null, currentUserId, allGames = [] }) {
               : ''}</span>
             <span class="s-text">
               <span class="s-name">${U.escapeHtml(main)}</span>
-              ${alt ? `<span class="s-orig">${U.escapeHtml(alt)}</span>` : ''}
               <span class="s-year">${sub || 'Вікіпедія'}</span>
             </span>
           </button>`;
@@ -193,15 +189,9 @@ export function openFormModal({ game = null, currentUserId, allGames = [] }) {
     picked = s;
 
     // Явний вибір підказки замінює дані полів (як у фільмів — так можна
-    // «перезібрати» неправильно додану гру в режимі редагування)
-    if (s.titleUk) set('gTitleUk', U.stripDab(s.titleUk));
-    const cleanOrig = U.stripDab(s.title);
-    const cleanUk = U.stripDab(s.titleUk);
-    if (s.title && (!s.titleUk || s.title.toLowerCase() !== s.titleUk.toLowerCase())) {
-      set('gTitle', cleanOrig);
-    } else {
-      set('gTitle', cleanUk || cleanOrig);
-    }
+    // «перезібрати» неправильно додану гру в режимі редагування).
+    // ОДНА назва — оригінальна (укр. переклад в ігор не ведемо)
+    set('gTitle', U.stripDab(s.title || s.titleUk || ''));
     if (s.year != null) set('gYear', s.year);
     if (s.developer) set('gDeveloper', s.developer);
     if (s.publisher) set('gPublisher', s.publisher);
@@ -210,7 +200,7 @@ export function openFormModal({ game = null, currentUserId, allGames = [] }) {
     if (s.plot) set('gPlot', s.plot);
     if (s.cover) { set('gCover', s.cover); showCover(box, s.cover); }
 
-    searchInput.value = `${U.stripDab(s.titleUk || s.title)}${s.year ? ` (${s.year})` : ''}`;
+    searchInput.value = `${U.stripDab(s.title || s.titleUk || '')}${s.year ? ` (${s.year})` : ''}`;
     hideSug();
     runEnrichment();
   }
@@ -232,8 +222,7 @@ export function openFormModal({ game = null, currentUserId, allGames = [] }) {
         titleUk: picked.titleUk,
         year: U.intOrNull(val('gYear'), 1958, 2100) || picked.year || null
       });
-      fillIfEmpty('gTitleUk', U.stripDab(d.titleUk));
-      if (!val('gTitle')) fillIfEmpty('gTitle', U.stripDab(d.title));
+      if (!val('gTitle') && (d.title || d.titleUk)) fillIfEmpty('gTitle', U.stripDab(d.title || d.titleUk));
       if (!val('gYear') && d.year) set('gYear', d.year);
       fillIfEmpty('gDeveloper', d.developer);
       fillIfEmpty('gPublisher', d.publisher);
@@ -247,22 +236,9 @@ export function openFormModal({ game = null, currentUserId, allGames = [] }) {
       }
       if (!val('gCover') && d.cover) { set('gCover', d.cover); showCover(box, d.cover); }
 
-      // Укр. назви досі немає — автопереклад оригінальної
-      let autoTranslated = false;
-      if (!val('gTitleUk') && val('gTitle').trim()) {
-        st.textContent = 'Перекладаю назву українською…';
-        const tr = await translateTitle(val('gTitle').trim());
-        if (tr && !val('gTitleUk')) {
-          set('gTitleUk', tr);
-          autoTranslated = true;
-        }
-      }
-
-      const got = [d.titleUk, d.developer, (d.genres || []).length, (d.platforms || []).length, d.plot, val('gCover'), val('gTitleUk')].some(Boolean);
+      const got = [d.developer, (d.genres || []).length, (d.platforms || []).length, d.plot, val('gCover'), val('gTitle')].some(Boolean);
       st.textContent = got
-        ? (autoTranslated
-          ? 'Готово — деталі підтягнуто. Укр. назву перекладено автоматично — перевірте й виправте за потреби.'
-          : 'Готово — деталі підтягнуто. Перевірте й за потреби виправте поля.')
+        ? 'Готово — деталі підтягнуто. Перевірте й за потреби виправте поля.'
         : 'Додаткові дані не знайдено — заповніть поля вручну.';
     } catch (e) {
       st.textContent = 'Не вдалося отримати додаткові дані — заповніть поля вручну.';
@@ -297,7 +273,7 @@ export function openFormModal({ game = null, currentUserId, allGames = [] }) {
       try {
         await store.deleteGame(game.id);
         toast('Гру видалено');
-        notifyGameDeleted(currentUserId, gTitle(game));
+        notifyGameDeleted(currentUserId, game);
         close();
       } catch (err) {
         console.error(err);
@@ -311,13 +287,12 @@ export function openFormModal({ game = null, currentUserId, allGames = [] }) {
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
 
-    const titleUk = val('gTitleUk').trim();
     const title = val('gTitle').trim();
-    if (!titleUk && !title) { toast('Вкажіть назву гри', 'err'); return; }
+    if (!title) { toast('Вкажіть назву гри', 'err'); return; }
 
     const data = {
-      title: title || titleUk,
-      titleUk: titleUk || null,
+      title,
+      titleUk: null, // в ігор укр. переклад не ведемо (на редагуванні затираємо старий)
       year: U.intOrNull(val('gYear'), 1958, 2100),
       cover: val('gCover').trim() || null,
       qid: (picked ? picked.qid : null) || (game ? game.qid : null) || null,
@@ -365,7 +340,7 @@ export function openFormModal({ game = null, currentUserId, allGames = [] }) {
     }
   });
 
-  function gTitle(g) { return g.titleUk || g.title || 'Без назви'; }
+  function gTitle(g) { return g.title || g.titleUk || 'Без назви'; }
 }
 
 function showCover(box, url) {
@@ -407,12 +382,8 @@ function formHTML(isEdit, game) {
     </label>`}
 
     <div class="form-grid">
-      <label class="field">
-        <span class="field-label">Назва (українською)</span>
-        <input id="gTitleUk" type="text" placeholder="Напр.: The Witcher 3">
-      </label>
-      <label class="field">
-        <span class="field-label">Оригінальна назва</span>
+      <label class="field span-2">
+        <span class="field-label">Назва</span>
         <input id="gTitle" type="text" placeholder="The Witcher 3: Wild Hunt">
       </label>
       <label class="field">

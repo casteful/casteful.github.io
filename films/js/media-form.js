@@ -8,13 +8,13 @@
 //  - збереження у вузол albums/ | singles/ | books/ + Telegram-пуш
 // ============================================================
 
-import * as store from './store.js?v=6.1';
-import * as U from './utils.js?v=6.1';
-import { toast, openModal, confirmDialog, icons } from './ui.js?v=6.1';
-import { searchMedia, enrichMedia, translateTitle } from './media-lookup.js?v=6.1';
-import { mediaCfg } from './media-kinds.js?v=6.1';
-import { notifyMediaAdded, notifyMediaDeleted, notifyMediaRatingSet, notifyMediaRatingRemoved } from './telegram.js?v=6.1';
-import { rateTrailHTML, paintTrail, popValue } from './rating-ui.js?v=6.1';
+import * as store from './store.js?v=6.2';
+import * as U from './utils.js?v=6.2';
+import { toast, openModal, confirmDialog, icons } from './ui.js?v=6.2';
+import { searchMedia, enrichMedia } from './media-lookup.js?v=6.2';
+import { mediaCfg } from './media-kinds.js?v=6.2';
+import { notifyMediaAdded, notifyMediaDeleted, notifyMediaRatingSet, notifyMediaRatingRemoved } from './telegram.js?v=6.2';
+import { rateTrailHTML, paintTrail, popValue } from './rating-ui.js?v=6.2';
 
 const SUG_CACHE_MAX = 40;
 const sugCache = new Map(); // `${kind}:${query}` -> Promise зі списком підказок
@@ -52,8 +52,7 @@ export function openFormModal({ kind = 'album', item = null, currentUserId, allI
   const set = (id, v) => { if ($(id)) $(id).value = v ?? ''; };
 
   if (item) {
-    set('mTitleUk', item.titleUk || '');
-    set('mTitle', item.title || '');
+    set('mTitle', item.title || item.titleUk || '');
     set('mYear', item.year || '');
     if (kind === 'book') set('mAuthor', item.author || '');
     else set('mArtist', item.artist || '');
@@ -124,9 +123,7 @@ export function openFormModal({ kind = 'album', item = null, currentUserId, allI
           : s.source === 'mb' ? 'MusicBrainz'
           : 'Вікіпедія';
         sugList.innerHTML = list.map((s, i) => {
-          const main = U.stripDab(s.titleUk || s.title);
-          const altRaw = (s.titleUk && s.title) ? U.stripDab(s.title) : '';
-          const alt = altRaw && altRaw !== main ? altRaw : '';
+          const main = U.stripDab(s.title || s.titleUk || '');
           const who = kind === 'book' ? s.author : s.artist;
           const kindTag = kind === 'single' ? 'пісня' : kind === 'album' ? 'альбом' : '';
           const sub = [s.year || '', who || '', s.genres && s.genres.length ? s.genres.slice(0, 3).join(', ') : '']
@@ -138,7 +135,6 @@ export function openFormModal({ kind = 'album', item = null, currentUserId, allI
               : ''}${s.preview ? `<span class="s-prev-dot" title="Є 30-секундне прев'ю">♪</span>` : ''}</span>
             <span class="s-text">
               <span class="s-name">${U.escapeHtml(main)}</span>
-              ${alt ? `<span class="s-orig">${U.escapeHtml(alt)}</span>` : ''}
               <span class="s-year">${[sub, kindTag, srcLabel(s)].filter(Boolean).join(' · ')}</span>
             </span>
           </button>`;
@@ -251,15 +247,9 @@ export function openFormModal({ kind = 'album', item = null, currentUserId, allI
     picked = s;
 
     // Явний вибір підказки замінює дані полів (як у фільмів/ігор —
-    // так можна «перезібрати» неправильно доданий запис у режимі редагування)
-    if (s.titleUk) set('mTitleUk', U.stripDab(s.titleUk));
-    const cleanOrig = U.stripDab(s.title);
-    const cleanUk = U.stripDab(s.titleUk);
-    if (s.title && (!s.titleUk || s.title.toLowerCase() !== s.titleUk.toLowerCase())) {
-      set('mTitle', cleanOrig);
-    } else {
-      set('mTitle', cleanUk || cleanOrig);
-    }
+    // так можна «перезібрати» неправильно доданий запис у режимі редагування).
+    // ОДНА назва — оригінальна (укр. переклад у цих колекціях не ведемо)
+    set('mTitle', U.stripDab(s.title || s.titleUk || ''));
     if (s.year != null) set('mYear', s.year);
     if (kind === 'book') {
       if (s.author) set('mAuthor', s.author);
@@ -270,7 +260,7 @@ export function openFormModal({ kind = 'album', item = null, currentUserId, allI
     if (s.plot) set('mPlot', s.plot);
     if (s.cover) { set('mCover', s.cover); showCover(box, s.cover); }
 
-    searchInput.value = `${U.stripDab(s.titleUk || s.title)}${s.year ? ` (${s.year})` : ''}`;
+    searchInput.value = `${U.stripDab(s.title || s.titleUk || '')}${s.year ? ` (${s.year})` : ''}`;
     hideSug();
     runEnrichment();
   }
@@ -301,8 +291,7 @@ export function openFormModal({ kind = 'album', item = null, currentUserId, allI
         publisher: picked.publisher || null,
         pages: picked.pages || null
       });
-      fillIfEmpty('mTitleUk', U.stripDab(d.titleUk));
-      if (!val('mTitle')) fillIfEmpty('mTitle', U.stripDab(d.title));
+      if (!val('mTitle') && (d.title || d.titleUk)) fillIfEmpty('mTitle', U.stripDab(d.title || d.titleUk));
       if (!val('mYear') && d.year) set('mYear', d.year);
       if (kind === 'book') {
         fillIfEmpty('mAuthor', d.author);
@@ -321,22 +310,9 @@ export function openFormModal({ kind = 'album', item = null, currentUserId, allI
       }
       if (!val('mCover') && d.cover) { set('mCover', d.cover); showCover(box, d.cover); }
 
-      // Укр. назви досі немає — автопереклад оригінальної
-      let autoTranslated = false;
-      if (!val('mTitleUk') && val('mTitle').trim()) {
-        st.textContent = 'Перекладаю назву українською…';
-        const tr = await translateTitle(val('mTitle').trim());
-        if (tr && !val('mTitleUk')) {
-          set('mTitleUk', tr);
-          autoTranslated = true;
-        }
-      }
-
-      const got = [d.titleUk, d.artist, d.author, (d.genres || []).length, (d.tracks || []).length, d.plot, val('mCover'), val('mTitleUk')].some(Boolean);
+      const got = [d.artist, d.author, (d.genres || []).length, (d.tracks || []).length, d.plot, val('mCover'), val('mTitle')].some(Boolean);
       st.textContent = got
-        ? (autoTranslated
-          ? 'Готово — деталі підтягнуто. Укр. назву перекладено автоматично — перевірте й виправте за потреби.'
-          : 'Готово — деталі підтягнуто. Перевірте й за потреби виправте поля.')
+        ? 'Готово — деталі підтягнуто. Перевірте й за потреби виправте поля.'
         : 'Додаткові дані не знайдено — заповніть поля вручну.';
     } catch (e) {
       st.textContent = 'Не вдалося отримати додаткові дані — заповніть поля вручну.';
@@ -385,17 +361,16 @@ export function openFormModal({ kind = 'album', item = null, currentUserId, allI
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
 
-    const titleUk = val('mTitleUk').trim();
     const title = val('mTitle').trim();
-    if (!titleUk && !title) { toast(`Вкажіть назву ${c.oneGen}`, 'err'); return; }
+    if (!title) { toast(`Вкажіть назву ${c.oneGen}`, 'err'); return; }
 
     const tracks = c.tracks
       ? val('mTracks').split('\n').map(x => x.trim()).filter(Boolean).slice(0, 40)
       : [];
 
     const data = {
-      title: title || titleUk,
-      titleUk: titleUk || null,
+      title,
+      titleUk: null, // у цих колекціях укр. переклад не ведемо (на редагуванні затираємо старий)
       kind, // пуші й глибокі лінки відновлюють рід із цього поля
       year: U.intOrNull(val('mYear'), 1400, 2100),
       cover: val('mCover').trim() || null,
@@ -464,7 +439,7 @@ export function openFormModal({ kind = 'album', item = null, currentUserId, allI
     }
   });
 
-  function mTitle(m) { return m.titleUk || m.title || 'Без назви'; }
+  function mTitle(m) { return m.title || m.titleUk || 'Без назви'; }
 }
 
 function showCover(box, url) {
@@ -536,12 +511,8 @@ function formHTML(c, isEdit, item, withRating = false, rating = null) {
     </label>`}
 
     <div class="form-grid">
-      <label class="field">
-        <span class="field-label">Назва (українською)</span>
-        <input id="mTitleUk" type="text" placeholder="${kind === 'book' ? 'Напр.: 1984' : 'Напр.: Abbey Road'}">
-      </label>
-      <label class="field">
-        <span class="field-label">Оригінальна назва</span>
+      <label class="field span-2">
+        <span class="field-label">Назва</span>
         <input id="mTitle" type="text" placeholder="${kind === 'book' ? 'Nineteen Eighty-Four' : 'Abbey Road'}">
       </label>
       <label class="field">

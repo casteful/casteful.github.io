@@ -4,14 +4,14 @@
 // з оцінками 1–10. Дані — в окремому вузлі games/.
 // ============================================================
 
-import { USERS } from './config.js?v=6.1';
-import * as store from './store.js?v=6.1';
-import * as U from './utils.js?v=6.1';
-import * as A from './avatars.js?v=6.1';
-import { toast, openModal, confirmDialog, icons } from './ui.js?v=6.1';
-import { rateTrailHTML, paintTrail, popValue, openRatePop as openRatePopShared } from './rating-ui.js?v=6.1';
-import { openFormModal } from './game-form.js?v=6.1';
-import { notifyGameRatingSet, notifyGameRatingRemoved, notifyGameDeleted } from './telegram.js?v=6.1';
+import { USERS } from './config.js?v=6.2';
+import * as store from './store.js?v=6.2';
+import * as U from './utils.js?v=6.2';
+import * as A from './avatars.js?v=6.2';
+import { toast, openModal, confirmDialog, icons } from './ui.js?v=6.2';
+import { rateTrailHTML, paintTrail, popValue, openRatePop as openRatePopShared } from './rating-ui.js?v=6.2';
+import { openFormModal } from './game-form.js?v=6.2';
+import { notifyGameRatingSet, notifyGameRatingRemoved, notifyGameDeleted } from './telegram.js?v=6.2';
 
 let container = null;
 let gridEl = null;
@@ -237,7 +237,7 @@ function filtered() {
       return rated.concat(list.filter(g => val(g) == null));
     }
     case 'year': return [...list].sort((a, b) => (b.year || 0) - (a.year || 0));
-    case 'title': return [...list].sort((a, b) => String(a.titleUk || a.title || '').localeCompare(String(b.titleUk || b.title || ''), 'uk'));
+    case 'title': return [...list].sort((a, b) => String(a.title || a.titleUk || '').localeCompare(String(b.title || b.titleUk || ''), 'uk'));
     default: return [...list].sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
   }
 }
@@ -441,8 +441,7 @@ function tableHTML(list) {
 
 function rowHTML(g) {
   const a = U.avg(g.ratings);
-  const mainTitle = g.titleUk || g.title || 'Без назви';
-  const orig = (g.titleUk && g.title && g.titleUk !== g.title) ? g.title : '';
+  const mainTitle = gTitle(g);
 
   const userCells = USERS.map(u => {
     const v = (g.ratings || {})[u.id];
@@ -461,7 +460,6 @@ function rowHTML(g) {
           : icons.gamepad}</span>
         <span class="t-titles">
           <span class="t-name">${U.escapeHtml(mainTitle)}</span>
-          ${orig ? `<span class="t-orig">${U.escapeHtml(orig)}</span>` : ''}
         </span>
       </div>
     </td>
@@ -481,8 +479,7 @@ function rowHTML(g) {
 function cardHTML(g) {
   const a = U.avg(g.ratings);
   const my = (g.ratings || {})[currentUserId];
-  const mainTitle = g.titleUk || g.title || 'Без назви';
-  const orig = (g.titleUk && g.title && g.titleUk !== g.title) ? g.title : '';
+  const mainTitle = gTitle(g);
   const ratedCount = Object.keys(g.ratings || {}).length;
   const metaBits = [
     g.year,
@@ -505,7 +502,6 @@ function cardHTML(g) {
     </div>
     <div class="card-body">
       <h3 class="card-title">${U.escapeHtml(mainTitle)}</h3>
-      ${orig ? `<div class="card-sub">${U.escapeHtml(orig)}</div>` : ''}
       <div class="card-meta">${U.escapeHtml(metaBits)}</div>
       <div class="rating-row">
         <button class="rate-btn ${my != null ? 'rated' : ''}" data-rate aria-label="Оцінити гру" ${my != null ? `style="--my:${U.ratingColor(my)}"` : ''}>
@@ -571,12 +567,11 @@ function openDetail(gameId) {
   wireDetail(box);
 }
 
-function gTitle(g) { return g.titleUk || g.title || 'Без назви'; }
+function gTitle(g) { return g.title || g.titleUk || 'Без назви'; }
 
 function detailHTML(g) {
   const a = U.avg(g.ratings);
   const my = (g.ratings || {})[currentUserId];
-  const orig = (g.titleUk && g.title && g.titleUk !== g.title) ? g.title : '';
   const metaBits = [g.year, ...(g.platforms || [])].filter(Boolean).join(' · ');
   const genres = (g.genres || []).map(x =>
     `<button type="button" class="genre-chip clickable" data-person="${U.escapeHtml(x)}" title="Ігри цього жанру">${U.escapeHtml(x)}</button>`
@@ -607,7 +602,6 @@ function detailHTML(g) {
         : `<span class="hero-poster placeholder">${icons.gamepad}</span>`}
       <div class="hero-text">
         <h2 class="detail-heading">${U.escapeHtml(gTitle(g))}</h2>
-        ${orig ? `<div class="detail-orig">${U.escapeHtml(orig)}</div>` : ''}
         <div class="detail-meta">${[g.developer ? `розробка ${devBtn}` : '', metaBits].filter(Boolean).join(' · ')}</div>
         ${a != null ? `<span class="avg-big" style="background:${U.ratingColor(a)}" title="Середня оцінка">${U.fmtAvg(a)}</span>` : ''}
       </div>
@@ -725,7 +719,8 @@ function wireDetail(box) {
       }
       // Снапшот Firebase міг уже закрити модалку під час видалення
       toast('Гру видалено');
-      notifyGameDeleted(currentUserId, gTitle(game));
+      // передаємо сам запис — щоб пуш показав розробника
+      notifyGameDeleted(currentUserId, game);
       if (detailState) { detailState.close(); detailState = null; }
     }
   });

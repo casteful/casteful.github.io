@@ -7,15 +7,15 @@
 // albums/, singles/, books/.
 // ============================================================
 
-import { USERS } from './config.js?v=6.1';
-import * as store from './store.js?v=6.1';
-import * as U from './utils.js?v=6.1';
-import * as A from './avatars.js?v=6.1';
-import { toast, openModal, confirmDialog, icons } from './ui.js?v=6.1';
-import { rateTrailHTML, paintTrail, popValue, openRatePop as openRatePopShared } from './rating-ui.js?v=6.1';
-import { openFormModal } from './media-form.js?v=6.1';
-import { notifyMediaRatingSet, notifyMediaRatingRemoved, notifyMediaDeleted } from './telegram.js?v=6.1';
-import { mediaCfg } from './media-kinds.js?v=6.1';
+import { USERS } from './config.js?v=6.2';
+import * as store from './store.js?v=6.2';
+import * as U from './utils.js?v=6.2';
+import * as A from './avatars.js?v=6.2';
+import { toast, openModal, confirmDialog, icons } from './ui.js?v=6.2';
+import { rateTrailHTML, paintTrail, popValue, openRatePop as openRatePopShared } from './rating-ui.js?v=6.2';
+import { openFormModal } from './media-form.js?v=6.2';
+import { notifyMediaRatingSet, notifyMediaRatingRemoved, notifyMediaDeleted } from './telegram.js?v=6.2';
+import { mediaCfg } from './media-kinds.js?v=6.2';
 
 // Конфігурація колекцій (назви, вузол бази, іконки) — у media-kinds.js,
 // спільно з формою додавання
@@ -93,7 +93,7 @@ function loadKindState() {
   friendId = friendId || (USERS.find(u => u.id !== currentUserId) || USERS[0] || {}).id || null;
 }
 
-function mTitle(m) { return m.titleUk || m.title || 'Без назви'; }
+function mTitle(m) { return m.title || m.titleUk || 'Без назви'; }
 function personOf(m) { return kind === 'book' ? (m.author || null) : (m.artist || null); }
 
 // ---------- Публічний інтерфейс ----------
@@ -388,7 +388,7 @@ function filtered() {
       return rated.concat(out.filter(m => val(m) == null));
     }
     case 'year': return [...out].sort((a, b) => (b.year || 0) - (a.year || 0));
-    case 'title': return [...out].sort((a, b) => String(a.titleUk || a.title || '').localeCompare(String(b.titleUk || b.title || ''), 'uk'));
+    case 'title': return [...out].sort((a, b) => String(a.title || a.titleUk || '').localeCompare(String(b.title || b.titleUk || ''), 'uk'));
     default: return [...out].sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
   }
 }
@@ -504,7 +504,6 @@ function tableHTML(rows) {
 function rowHTML(m) {
   const a = U.avg(m.ratings);
   const mainTitle = mTitle(m);
-  const orig = (m.titleUk && m.title && m.titleUk !== m.title) ? m.title : '';
   const person = personOf(m);
 
   const userCells = USERS.map(u => {
@@ -524,7 +523,6 @@ function rowHTML(m) {
           : cfg().icon}</span>
         <span class="t-titles">
           <span class="t-name">${U.escapeHtml(mainTitle)}</span>
-          ${orig ? `<span class="t-orig">${U.escapeHtml(orig)}</span>` : ''}
         </span>
       </div>
     </td>
@@ -546,7 +544,6 @@ function cardHTML(m) {
   const a = U.avg(m.ratings);
   const my = (m.ratings || {})[currentUserId];
   const mainTitle = mTitle(m);
-  const orig = (m.titleUk && m.title && m.titleUk !== m.title) ? m.title : '';
   const person = personOf(m);
   const ratedCount = Object.keys(m.ratings || {}).length;
   const metaBits = [
@@ -573,7 +570,6 @@ function cardHTML(m) {
     </div>
     <div class="card-body">
       <h3 class="card-title">${U.escapeHtml(mainTitle)}</h3>
-      ${orig ? `<div class="card-sub">${U.escapeHtml(orig)}</div>` : ''}
       <div class="card-meta">${U.escapeHtml(metaBits)}</div>
       <div class="rating-row">
         <button class="rate-btn ${my != null ? 'rated' : ''}" data-rate aria-label="Оцінити" ${my != null ? `style="--my:${U.ratingColor(my)}"` : ''}>
@@ -664,7 +660,6 @@ function detailHTML(m) {
   const c = cfg();
   const a = U.avg(m.ratings);
   const my = (m.ratings || {})[currentUserId];
-  const orig = (m.titleUk && m.title && m.titleUk !== m.title) ? m.title : '';
   const person = personOf(m);
   const personTitle = kind === 'book' ? 'Твори цього автора' : (kind === 'single' ? 'Сингли цього виконавця' : 'Альбоми цього виконавця');
   const kindBadge = `<span class="kind-badge">${c.one}</span>`;
@@ -705,7 +700,6 @@ function detailHTML(m) {
         : `<span class="hero-poster placeholder ${c.sq ? 'sq' : ''}">${c.icon}</span>`}
       <div class="hero-text">
         <h2 class="detail-heading">${U.escapeHtml(mTitle(m))}</h2>
-        ${orig ? `<div class="detail-orig">${U.escapeHtml(orig)}</div>` : ''}
         <div class="detail-meta">${[person ? personBtn : '', metaBits].filter(Boolean).join(' · ')}</div>
         <div class="hero-actions">
           ${a != null ? `<span class="avg-big" style="background:${U.ratingColor(a)}" title="Середня оцінка">${U.fmtAvg(a)}</span>` : ''}

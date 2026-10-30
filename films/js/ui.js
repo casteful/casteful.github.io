@@ -2,7 +2,7 @@
 // UI-примітиви: іконки (SVG), тости, модальні вікна, підтвердження
 // ============================================================
 
-import { escapeHtml } from './utils.js?v=6.1';
+import { escapeHtml } from './utils.js?v=6.2';
 
 // --- Мінімалістичні SVG-іконки (stroke = currentColor) ---
 const I = (paths, extra = '') =>

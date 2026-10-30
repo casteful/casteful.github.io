@@ -3,19 +3,19 @@
 // Firebase та зв'язування вкладок
 // ============================================================
 
-import { USERS } from './config.js?v=6.1';
-import * as store from './store.js?v=6.1';
-import * as filmsView from './films.js?v=6.1';
-import * as gamesView from './games.js?v=6.1';
-import * as libraryView from './library.js?v=6.1';
-import { MEDIA_KINDS } from './media-kinds.js?v=6.1';
-import * as statsView from './stats.js?v=6.1';
-import * as quizView from './quiz.js?v=6.1';
-import * as avatars from './avatars.js?v=6.1';
-import { icons, toast } from './ui.js?v=6.1';
-import { escapeHtml } from './utils.js?v=6.1';
-import { fetchPoster } from './wiki.js?v=6.1';
-import * as settings from './settings.js?v=6.1';
+import { USERS } from './config.js?v=6.2';
+import * as store from './store.js?v=6.2';
+import * as filmsView from './films.js?v=6.2';
+import * as gamesView from './games.js?v=6.2';
+import * as libraryView from './library.js?v=6.2';
+import { MEDIA_KINDS } from './media-kinds.js?v=6.2';
+import * as statsView from './stats.js?v=6.2';
+import * as quizView from './quiz.js?v=6.2';
+import * as avatars from './avatars.js?v=6.2';
+import { icons, toast } from './ui.js?v=6.2';
+import { escapeHtml } from './utils.js?v=6.2';
+import { fetchPoster } from './wiki.js?v=6.2';
+import * as settings from './settings.js?v=6.2';
 
 const view = document.getElementById('view');
 const userOverlay = document.getElementById('userOverlay');

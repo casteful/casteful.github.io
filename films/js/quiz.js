@@ -23,11 +23,11 @@
 // доки є незіграні. Коли всі фільми вже були — починається новий круг.
 // ============================================================
 
-import { USERS } from './config.js?v=6.1';
-import * as U from './utils.js?v=6.1';
-import * as store from './store.js?v=6.1';
-import * as A from './avatars.js?v=6.1';
-import { icons, toast, confirmDialog } from './ui.js?v=6.1';
+import { USERS } from './config.js?v=6.2';
+import * as U from './utils.js?v=6.2';
+import * as store from './store.js?v=6.2';
+import * as A from './avatars.js?v=6.2';
+import { icons, toast, confirmDialog } from './ui.js?v=6.2';
 
 const RATE_LABELS = {
   1: 'Жах', 2: 'Дуже погано', 3: 'Погано', 4: 'Слабко', 5: 'Так собі',

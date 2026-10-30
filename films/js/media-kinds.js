@@ -4,7 +4,7 @@
 // (media-form.js) — щоб назви, вузли бази та іконки не роз'їжджалися.
 // ============================================================
 
-import { icons } from './ui.js?v=6.1';
+import { icons } from './ui.js?v=6.2';
 
 export const MEDIA_KINDS = {
   album: {
