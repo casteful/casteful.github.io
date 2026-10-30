@@ -14,11 +14,11 @@
 // колекціях, кіно-панелі — тільки по films/series (як і раніше).
 // ============================================================
 
-import { USERS } from './config.js?v=6.4';
-import * as A from './avatars.js?v=6.4';
-import * as U from './utils.js?v=6.4';
-import { icons } from './ui.js?v=6.4';
-import { TABS } from './tabs.js?v=6.4';
+import { USERS } from './config.js?v=6.4.1';
+import * as A from './avatars.js?v=6.4.1';
+import * as U from './utils.js?v=6.4.1';
+import { icons } from './ui.js?v=6.4.1';
+import { TABS } from './tabs.js?v=6.4.1';
 
 export function mount(container, data, handlers = {}) {
   const filmsAll = (data && data.films) || null;

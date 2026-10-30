@@ -192,6 +192,37 @@ body.no-scroll { overflow: hidden; touch-action: none; }
   opacity: 0.35;
 }
 
+/* Сімейство вкладок (v6.4): колонка «дрібний підпис над групою кнопок».
+   Базові правила ДО медіазапитів нижче — медіазапит має їх перекривати.
+   Головне: сімейство НІКОЛИ не стискається нижче власного вмісту —
+   стиснута група «роз'їжджається» і кнопки налізають на сусідів. */
+.tabs { align-items: stretch; }
+
+.tab-family {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;   /* вкладки всіх сімейств — на одній лінії, навіть якщо над ними немає підписа */
+  gap: 3px;
+  flex: 0 0 auto;
+  min-width: max-content;
+}
+
+.tf-tabs { display: flex; gap: 2px; justify-content: center; }
+
+.tf-label {
+  font-size: 8.5px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.11em;
+  line-height: 1;
+  color: var(--muted);
+  text-align: center;
+  opacity: 0.75;
+  user-select: none;
+  white-space: nowrap;
+}
+.tab-family.active .tf-label { color: var(--accent); opacity: 1; }
+
 .topbar-actions {
   display: flex;
   align-items: center;
@@ -3098,16 +3129,26 @@ td.t-num .t-kind { margin-left: 6px; }
 .s-retry { display: flex; justify-content: center; padding: 6px 0 2px; }
 
 /* 9 вкладок: на середніх екранах панель переїжджає окремим рядком —
-   рівномірно на всю ширину; так бренд і дії не тиснуть одна одну */
+   сімейства ростуть рівномірно на всю ширину, але НЕ стискаються
+    нижче свого вмісту (інакше кнопки виїжджають за межі групи);
+   якщо й так не вміщується (вузький планшет) — гортається вбік */
 @media (max-width: 1180px) {
   .topbar { flex-wrap: wrap; }
-  .tabs { order: 3; width: 100%; margin-left: 0; justify-content: stretch; }
-  .tab { flex: 1; text-align: center; padding: 8px 10px; }
+  .tabs {
+    order: 3; width: 100%; margin-left: 0;
+    justify-content: flex-start;
+    overflow-x: auto; scrollbar-width: none;
+  }
+  .tabs::-webkit-scrollbar { display: none; }
+  .tab { flex: 1 1 auto; text-align: center; padding: 8px 10px; }
+  .tab-family { flex: 1 1 0; min-width: max-content; }
+  .tab-sep { flex: 0 0 auto; }
 }
 
 /* 9 вкладок: трохи менші на вузьких екранах; якщо всі не вміщуються —
    панель гортається вбік (скролбар сховано, активна вкладка сама
-   доїжджає у видиму зону) */
+   доїжджає у видиму зону); сімейства — назад на природну ширину
+   (флекс-рост із планшетного правила тут лишає діри між групами) */
 @media (max-width: 640px) {
   .tabs {
     justify-content: flex-start;
@@ -3117,6 +3158,8 @@ td.t-num .t-kind { margin-left: 6px; }
   }
   .tabs::-webkit-scrollbar { display: none; }
   .tab { flex: 0 0 auto; font-size: 12.5px; padding: 8px 9px; }
+  .tab-family { flex: 0 0 auto; }
+  .tab-sep { flex: 0 0 auto; }
 }
 @media (max-width: 380px) {
   .tab { font-size: 11.5px; padding: 8px 6px; letter-spacing: -0.01em; }
@@ -3128,33 +3171,9 @@ td.t-num .t-kind { margin-left: 6px; }
    статистика
    ============================================================ */
 
-/* ---------- Панель вкладок: сімейства з дрібними підписами ---------- */
-
-.tabs { align-items: stretch; }
-
-.tab-family {
-  display: flex;
-  flex-direction: column;
-  justify-content: flex-end;   /* вкладки всіх сімейств — на одній лінії, навіть якщо над ними немає підписа */
-  gap: 3px;
-  min-width: 0;
-}
-
-.tf-tabs { display: flex; gap: 2px; justify-content: center; }
-
-.tf-label {
-  font-size: 8.5px;
-  font-weight: 800;
-  text-transform: uppercase;
-  letter-spacing: 0.11em;
-  line-height: 1;
-  color: var(--muted);
-  text-align: center;
-  opacity: 0.75;
-  user-select: none;
-  white-space: nowrap;
-}
-.tab-family.active .tf-label { color: var(--accent); opacity: 1; }
+/* ---------- Панель вкладок: сімейства з дрібними підписами ----------
+   (базові правила стоять вище, біля .tabs/.tab — до медіазапитів,
+   інакше каскад їх перебиває) */
 
 @media (max-width: 640px) {
   .tf-label { display: none; }   /* на телефоні панель лишається компактною */

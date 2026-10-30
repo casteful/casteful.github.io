@@ -8,10 +8,10 @@
 // системної клавіатури.
 // ============================================================
 
-import { icons, lockScroll, unlockScroll } from './ui.js?v=6.4';
-import { escapeHtml, trunc } from './utils.js?v=6.4';
-import { TABS, TAB_ORDER } from './tabs.js?v=6.4';
-import * as catalog from './catalog.js?v=6.4';
+import { icons, lockScroll, unlockScroll } from './ui.js?v=6.4.1';
+import { escapeHtml, trunc } from './utils.js?v=6.4.1';
+import { TABS, TAB_ORDER } from './tabs.js?v=6.4.1';
+import * as catalog from './catalog.js?v=6.4.1';
 
 let handlers = null;
 let overlay = null;

@@ -11,8 +11,8 @@
 //     з uk/en статті; укр. назва — з мітки/статті або автопереклад.
 // ============================================================
 
-import * as U from './utils.js?v=6.4';
-import { translateToUk } from './translate.js?v=6.4';
+import * as U from './utils.js?v=6.4.1';
+import { translateToUk } from './translate.js?v=6.4.1';
 
 const WD_API = 'https://www.wikidata.org/w/api.php';
 

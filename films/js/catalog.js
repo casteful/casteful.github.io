@@ -9,8 +9,8 @@
 // albums/, singles/, books/, comics/.
 // ============================================================
 
-import { TABS } from './tabs.js?v=6.4';
-import { avg } from './utils.js?v=6.4';
+import { TABS } from './tabs.js?v=6.4.1';
+import { avg } from './utils.js?v=6.4.1';
 
 const lists = { films: [], games: [], albums: [], singles: [], books: [], comics: [] };
 

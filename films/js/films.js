@@ -3,14 +3,14 @@
 // модальне вікно фільму з оцінками 1–10
 // ============================================================
 
-import { USERS } from './config.js?v=6.4';
-import * as store from './store.js?v=6.4';
-import * as U from './utils.js?v=6.4';
-import * as A from './avatars.js?v=6.4';
-import { toast, openModal, confirmDialog, icons } from './ui.js?v=6.4';
-import { rateTrailHTML, paintTrail, popValue, openRatePop as openRatePopShared } from './rating-ui.js?v=6.4';
-import { openFormModal } from './film-form.js?v=6.4';
-import { notifyRatingSet, notifyRatingRemoved, notifyFilmDeleted } from './telegram.js?v=6.4';
+import { USERS } from './config.js?v=6.4.1';
+import * as store from './store.js?v=6.4.1';
+import * as U from './utils.js?v=6.4.1';
+import * as A from './avatars.js?v=6.4.1';
+import { toast, openModal, confirmDialog, icons } from './ui.js?v=6.4.1';
+import { rateTrailHTML, paintTrail, popValue, openRatePop as openRatePopShared } from './rating-ui.js?v=6.4.1';
+import { openFormModal } from './film-form.js?v=6.4.1';
+import { notifyRatingSet, notifyRatingRemoved, notifyFilmDeleted } from './telegram.js?v=6.4.1';
 
 let container = null;
 let gridEl = null;
