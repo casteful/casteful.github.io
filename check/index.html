@@ -35,6 +35,8 @@
   .state.on{color:var(--on)} .state.off{color:var(--off)} .state.maybe{color:var(--maybe)}
   .state.unknown{color:var(--muted)}
   .nextsw{font-size:17px;margin-top:6px}
+  .cd{font-size:20px;font-weight:700;margin-top:10px;color:var(--accent)}
+  .cd.urgent{color:var(--off)}
   .badge{display:inline-block;background:#f5f8fc;border:1px solid var(--line);
          border-radius:999px;padding:4px 13px;font-size:13px;margin:2px 4px 2px 0;color:var(--text)}
   .badge b{color:var(--accent)}
@@ -111,6 +113,7 @@
     <div>
       <div class="state" id="state">&hellip;</div>
       <div class="nextsw" id="stateSub"></div>
+      <div class="cd" id="countdown"></div>
     </div>
     <div id="badges" style="text-align:right"></div>
   </div>
@@ -171,6 +174,7 @@ const COL = { on: "#16a34a", off: "#dc2626", maybe: "#d97706", unknown: "#c3ccd9
 /* ---------------- state ---------------- */
 
 let DATA = null, DATA_TS = 0, FETCH_ERROR = null, SELECTED_QUEUE = null, SLOT_TABLE = [];
+let HERO_STATE = null;
 
 function settings() {
   try {
@@ -342,6 +346,7 @@ function render() {
     el("state").className = "state unknown";
     el("state").textContent = FETCH_ERROR ? "NO DATA" : "LOADING…";
     el("stateSub").textContent = "";
+    el("countdown").textContent = "";
     el("badges").textContent = "";
     el("bar").innerHTML = ""; el("ruler").innerHTML = "";
     el("winList").innerHTML = ""; el("totals").textContent = "";
@@ -367,6 +372,7 @@ function render() {
     el("state").className = "state unknown";
     el("state").textContent = "PICK YOUR QUEUE";
     el("stateSub").textContent = "one-time setup below";
+    el("countdown").textContent = "";
     el("badges").textContent = "";
     if (group) banner("Saved queue <b>" + group + "</b> is not in today's data — pick your queue again.", "warn");
     openSetup(true);
@@ -399,6 +405,7 @@ function render() {
     sub = "Schedule not published for today";
   }
   el("stateSub").textContent = sub;
+  updateCountdown(cur, next, nowMin);
 
   el("badges").innerHTML =
     '<div><span class="badge">Queue: <b>' + (schNames[group] || group) + '</b></span></div>' +
@@ -486,6 +493,39 @@ function render() {
   const upd = (DATA.fact && DATA.fact.update) || "";
   el("updated").textContent = upd ? "DTEK update: " + upd : "";
   el("updated").title = "Mirror lastUpdated: " + (DATA.lastUpdated || "?");
+}
+
+/* ---------------- countdown ---------------- */
+
+/* live "time until" line: updates every 30 s between full renders;
+   if the power state flipped since the last paint, re-render everything */
+function updateCountdown(cur, next, nowMin) {
+  HERO_STATE = cur.state;
+  const cdEl = el("countdown");
+  if (!next) { cdEl.textContent = ""; cdEl.className = "cd"; return; }
+  const mins = next.min - nowMin;
+  let txt;
+  if (next.state === "off") {
+    txt = (next.planned ? "First planned shutdown in " : "Shutdown in ") + fmtDur(Math.max(0, mins));
+  } else {
+    txt = (next.planned ? "Power back tomorrow in " : "Power back in ") + fmtDur(Math.max(0, mins));
+  }
+  cdEl.textContent = "\u23F3 " + txt;
+  cdEl.className = "cd" + (next.state === "off" && mins <= 30 ? " urgent" : "");
+}
+
+function tickCountdown() {
+  if (!DATA || !SLOT_TABLE.length) return;
+  const group = settings().group;
+  if (!group || !((DATA.preset && DATA.preset.sch_names) || {})[group]) return;
+  const now = nowKyiv(), nowMin = now.hh * 60 + now.mm;
+  const today = queueDay(DATA, group, now);
+  if (!today.slots.length) return;
+  const cur = currentState(today.slots, nowMin);
+  if (cur.state !== HERO_STATE) { render(); return; }
+  const tomorrow = queueDay(DATA, group, dateInDays(1));
+  const next = nextEvent(today.slots, tomorrow.slots, nowMin);
+  updateCountdown(cur, next, nowMin);
 }
 
 /* ---------------- one-time setup ---------------- */
@@ -599,8 +639,10 @@ async function doRefresh() {
   if (DATA) SLOT_TABLE = slotTable(DATA.preset.time_zone);
   render();
   setInterval(() => { if (!document.hidden) doRefresh(); }, REFRESH_MS);
+  setInterval(tickCountdown, 30000);
   document.addEventListener("visibilitychange", () => {
     if (!document.hidden && Date.now() - DATA_TS > REFRESH_MS) doRefresh();
+    else if (!document.hidden) tickCountdown();
   });
   // installable app: register service worker (skipped when opened as file://)
   if ("serviceWorker" in navigator && location.protocol !== "file:") {
