@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>DTEK Odesa · Today's Shutdowns</title>
+<title>Odesa · Shutdowns</title>
 <meta name="description" content="Today's power outage schedule for Odesa (DTEK) — current status and on/off timeline for your queue.">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%E2%9A%A1%3C/text%3E%3C/svg%3E">
 <link rel="manifest" href="manifest.json">
@@ -16,88 +16,75 @@
 <meta name="apple-mobile-web-app-title" content="Shutdowns">
 <style>
   :root{
-    --bg:#f2f2f7; --card:#ffffff; --card-soft:#f2f2f7;
-    --sep:#e5e5ea;
+    --bg:#f2f2f7; --card:#ffffff; --card-soft:#f2f2f7; --sep:#e5e5ea;
     --text:#1c1c1e; --muted:#8e8e93;
     --on:#34c759; --off:#ff3b30; --maybe:#ff9500; --unkn:#d1d1d6;
-    --accent:#007aff;
-    --now:#1c1c1e; --header-bg:rgba(242,242,247,.82);
+    --accent:#007aff; --now:#1c1c1e; --header-bg:rgba(242,242,247,.82);
     --err-bg:rgba(255,59,48,.09); --err-ink:#d70015;
     --warn-bg:rgba(255,149,0,.12); --warn-ink:#a04d00;
     --attn-bg:rgba(255,59,48,.09); --attn-ink:#d70015;
-    --emg-bg:rgba(255,59,48,.09); --emg-ink:#d70015;
   }
   :root[data-theme="dark"]{
-    --bg:#000000; --card:#1c1c1e; --card-soft:#2c2c2e;
-    --sep:#38383a;
+    --bg:#000000; --card:#1c1c1e; --card-soft:#2c2c2e; --sep:#38383a;
     --text:#f5f5f7; --muted:#98989d;
     --on:#30d158; --off:#ff453a; --maybe:#ff9f0a; --unkn:#48484a;
-    --accent:#0a84ff;
-    --now:#f5f5f7; --header-bg:rgba(18,18,20,.78);
+    --accent:#0a84ff; --now:#f5f5f7; --header-bg:rgba(18,18,20,.78);
     --err-bg:rgba(255,69,58,.14); --err-ink:#ff8a80;
     --warn-bg:rgba(255,159,10,.14); --warn-ink:#ffb340;
     --attn-bg:rgba(255,69,58,.14); --attn-ink:#ff8a80;
-    --emg-bg:rgba(255,69,58,.14); --emg-ink:#ff8a80;
   }
   @media (prefers-color-scheme: dark){
     :root:not([data-theme="light"]){
-      --bg:#000000; --card:#1c1c1e; --card-soft:#2c2c2e;
-      --sep:#38383a;
+      --bg:#000000; --card:#1c1c1e; --card-soft:#2c2c2e; --sep:#38383a;
       --text:#f5f5f7; --muted:#98989d;
       --on:#30d158; --off:#ff453a; --maybe:#ff9f0a; --unkn:#48484a;
-      --accent:#0a84ff;
-      --now:#f5f5f7; --header-bg:rgba(18,18,20,.78);
+      --accent:#0a84ff; --now:#f5f5f7; --header-bg:rgba(18,18,20,.78);
       --err-bg:rgba(255,69,58,.14); --err-ink:#ff8a80;
       --warn-bg:rgba(255,159,10,.14); --warn-ink:#ffb340;
       --attn-bg:rgba(255,69,58,.14); --attn-ink:#ff8a80;
-      --emg-bg:rgba(255,69,58,.14); --emg-ink:#ff8a80;
     }
   }
   *{box-sizing:border-box}
-  html{scroll-behavior:smooth}
   body{margin:0;background:var(--bg);color:var(--text);
        font:16px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",sans-serif;
        -webkit-font-smoothing:antialiased}
-  .wrap{max-width:680px;margin:0 auto;padding:0 16px 48px}
+  .wrap{max-width:640px;margin:0 auto;padding:0 16px 48px}
   header{position:sticky;top:0;z-index:40;margin:0 -16px 20px;padding:12px 16px 10px;
          background:var(--header-bg);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);
          border-bottom:1px solid var(--sep)}
   .htop{display:flex;align-items:center;justify-content:space-between;gap:10px}
   .hbtns{display:flex;gap:8px}
-  .hmeta{display:flex;flex-wrap:wrap;justify-content:space-between;gap:4px 10px;margin-top:3px}
+  .hmeta{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:4px 10px;margin-top:6px}
   h1{font-size:17px;margin:0;font-weight:700;letter-spacing:-.2px}
   .sub{color:var(--muted);font-size:13px}
   .card{background:var(--card);border-radius:20px;padding:20px;margin-bottom:14px}
-  .row{display:flex;flex-wrap:wrap;gap:12px;align-items:center}
-  .hero{gap:14px}
-  .state{display:inline-flex;align-items:center;gap:10px;font-size:clamp(24px,6vw,32px);font-weight:700;
-         letter-spacing:.3px;line-height:1.15;padding:8px 20px;border-radius:999px;color:#fff}
+  /* hero: state pill + next switch + countdown */
+  .state{display:inline-flex;align-items:center;gap:10px;font-size:clamp(22px,5.5vw,30px);font-weight:700;
+         letter-spacing:.3px;line-height:1.15;padding:7px 18px;border-radius:999px;color:#fff}
   .state::before{content:"";flex:none;width:9px;height:9px;border-radius:50%;background:rgba(255,255,255,.9)}
   .state.on{background:var(--on)} .state.off{background:var(--off)}
   .state.maybe{background:var(--maybe)} .state.unknown{background:var(--muted)}
   .nextsw{font-size:15px;margin-top:12px}
-  .cd{font-size:clamp(19px,4.5vw,22px);font-weight:700;margin-top:6px;color:var(--accent);
-      font-variant-numeric:tabular-nums}
+  .nextsw:empty{display:none}
+  .cd{font-size:clamp(30px,8vw,38px);font-weight:700;margin-top:10px;color:var(--accent);
+      font-variant-numeric:tabular-nums;letter-spacing:-.5px;line-height:1.15}
+  .cd:empty{display:none}
   .cd.urgent{color:var(--off)}
-  .badge{display:inline-block;background:var(--card-soft);border-radius:999px;padding:5px 13px;
-         font-size:13px;margin:2px 0 2px 6px;color:var(--text)}
-  .badge b{color:var(--accent);font-weight:700}
-  .badge.red{background:var(--err-bg);color:var(--err-ink);font-weight:600}
-  .muted{color:var(--muted)} .small{font-size:13px}
+  .cdlabel{font-size:14px;color:var(--muted);margin-top:2px}
+  .cdlabel:empty{display:none}
+  .hr{border:0;border-top:1px solid var(--sep);margin:18px 0 16px}
+  /* section header */
   h2{font-size:13px;margin:0 0 10px;font-weight:600;color:var(--muted);
      text-transform:uppercase;letter-spacing:.06em}
+  h2.h2big{font-size:17px;font-weight:700;color:var(--text);text-transform:none;letter-spacing:-.2px}
   .src{font-weight:500;color:var(--muted);font-size:13px;text-transform:none;letter-spacing:0}
+  /* banners */
   .banner{border-radius:16px;padding:12px 15px;margin-bottom:12px;font-size:14px}
   .banner.err{background:var(--err-bg);color:var(--err-ink)}
   .banner.warn{background:var(--warn-bg);color:var(--warn-ink)}
   .banner.attn{background:var(--attn-bg);color:var(--attn-ink)}
   .attn-body{white-space:pre-line;margin-top:6px;font-size:15px}
-  .banner.emg{background:var(--emg-bg);color:var(--emg-ink)}
-  .emg-times{font-size:15px;margin-top:5px}
-  .emg-cd{font-size:clamp(18px,4.5vw,21px);font-weight:700;margin-top:6px;color:var(--emg-ink);
-          font-variant-numeric:tabular-nums}
-  .emg-cd.passed{color:var(--warn-ink)}
-  .timein{width:110px}
+  /* controls */
   button{background:var(--accent);color:#fff;border:0;border-radius:12px;
          padding:10px 18px;font-weight:600;font-size:14px;cursor:pointer;transition:opacity .15s ease}
   button:hover{opacity:.85}
@@ -106,20 +93,13 @@
   button:disabled{opacity:.4;cursor:wait}
   .iconbtn{width:38px;height:38px;padding:0;display:inline-flex;align-items:center;justify-content:center;
            font-size:17px;line-height:1;border-radius:50%}
-  input{background:var(--card-soft);border:1px solid transparent;color:var(--text);
-        border-radius:12px;padding:9px 12px;font-size:14px;width:170px}
-  input:focus{outline:none;border-color:var(--accent)}
-  details summary{cursor:pointer;font-weight:600;font-size:15px;list-style:none;
-                  display:flex;align-items:center;justify-content:space-between;gap:10px}
-  details summary::-webkit-details-marker{display:none}
-  details summary::after{content:"\25BE";color:var(--muted);font-size:12px;transition:transform .2s ease}
-  details[open] summary::after{transform:rotate(180deg)}
-  form{display:flex;flex-wrap:wrap;gap:10px;margin-top:12px;align-items:end}
-  label{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--muted)}
+  .queuebtn{background:var(--card-soft);color:var(--text);border-radius:999px;
+            padding:5px 13px;font-size:13px;font-weight:600}
+  .row{display:flex;flex-wrap:wrap;gap:12px;align-items:center}
   footer{color:var(--muted);font-size:12px;text-align:center;margin-top:12px}
   a{color:var(--accent)}
   :focus-visible{outline:2px solid var(--accent);outline-offset:2px}
-  input:focus-visible{outline:none}
+  .muted{color:var(--muted)} .small{font-size:13px}
   /* --- timeline bar --- */
   .barwrap{position:relative;margin-top:30px}
   .bar{display:flex;height:46px;border-radius:12px;overflow:hidden;border:1px solid var(--sep);position:relative}
@@ -140,7 +120,7 @@
   .wins{list-style:none;margin:10px 0 0;padding:0}
   .wins li{display:flex;align-items:center;gap:12px;padding:12px 2px;border-bottom:1px solid var(--sep)}
   .wins li:last-child{border-bottom:0}
-  .wins .mark{flex:none;font-size:11px;font-weight:700;letter-spacing:.5px;border-radius:999px;padding:3px 10px;color:#fff}
+  .wins .mark{flex:none;font-size:10px;font-weight:700;letter-spacing:.5px;border-radius:999px;padding:3px 9px;color:#fff}
   .wins .t{font-weight:600;font-size:16px;font-variant-numeric:tabular-nums}
   .wins .dur{color:var(--muted);font-size:13px;margin-left:auto;white-space:nowrap}
   .totals{margin-top:12px;font-size:13px;color:var(--muted)}
@@ -155,10 +135,7 @@
   .qcard .qnow{font-size:13px;margin-top:3px}
   .qcard .qwins{font-size:12px;color:var(--muted);margin-top:3px}
   .dot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:7px}
-  @media (prefers-reduced-motion: reduce){
-    *{animation:none!important;transition:none!important}
-    html{scroll-behavior:auto}
-  }
+  @media (prefers-reduced-motion: reduce){ *{transition:none!important} }
 </style>
 <script>
 /* apply saved theme before first paint to avoid a flash on dark devices */
@@ -169,14 +146,14 @@ try{var t=localStorage.getItem("dtek_theme");if(t)document.documentElement.datas
 <div class="wrap">
   <header>
     <div class="htop">
-      <h1>&#9889; DTEK Odesa &middot; Shutdowns</h1>
+      <h1>&#9889; Odesa &middot; Shutdowns</h1>
       <div class="hbtns">
-        <button class="iconbtn" onclick="doRefresh()" title="Refresh" aria-label="Refresh">&#8635;</button>
+        <button class="iconbtn" id="btnRefresh" onclick="doRefresh()" title="Refresh" aria-label="Refresh">&#8635;</button>
         <button class="iconbtn" id="themeBtn" onclick="toggleTheme()" title="Dark / light mode" aria-label="Toggle dark mode">&#127769;</button>
       </div>
     </div>
     <div class="hmeta">
-      <span class="sub" id="addr"></span>
+      <button class="queuebtn" id="queueBtn" onclick="openSetup(false)" title="Change your queue (чергу)">Queue &#9662;</button>
       <span class="sub" id="updated"></span>
     </div>
   </header>
@@ -185,18 +162,15 @@ try{var t=localStorage.getItem("dtek_theme");if(t)document.documentElement.datas
 
   <div class="card" id="setupCard" style="display:none"></div>
 
-  <div class="card hero">
-    <div>
-      <div class="state" id="state">&hellip;</div>
-      <div class="nextsw" id="stateSub"></div>
-      <div class="cd" id="countdown"></div>
-    </div>
-    <div id="badges" style="text-align:right"></div>
-  </div>
-
   <div class="card">
+    <div class="state" id="state">&hellip;</div>
+    <div class="nextsw" id="stateSub"></div>
+    <div class="cd" id="countdown"></div>
+    <div class="cdlabel" id="cdLabel"></div>
+
+    <div class="hr"></div>
+
     <h2>Today <span class="src" id="todaySrc"></span></h2>
-    <div class="small muted">Green = power on &middot; red = power off &middot; amber = possible outage &middot; grid lines every 30&nbsp;min</div>
     <div class="barwrap">
       <div class="bar" id="bar"></div>
       <div class="ruler" id="ruler"></div>
@@ -205,56 +179,9 @@ try{var t=localStorage.getItem("dtek_theme");if(t)document.documentElement.datas
     <div class="totals" id="totals"></div>
   </div>
 
-  <div class="card">
-    <details>
-      <summary>Power off, but the schedule says ON? (unplanned outage)</summary>
-      <div class="small" style="margin-top:8px">
-        Short-notice <b>unplanned outages</b> &mdash; emergency repair works, equipment damage,
-        wartime grid events &mdash; are tied to your <b>exact address</b>, not to your queue,
-        so they never show up in the schedule above. DTEK publishes them per address:
-        open <a href="https://www.dtek-oem.com.ua/ua/shutdowns" target="_blank" rel="noreferrer">dtek-oem.com.ua/ua/shutdowns</a>,
-        enter your address, and look for the red notice
-        (&laquo;За вашою адресою в даний момент відсутня електроенергія…&raquo;) with the cause and the
-        estimated restore time. Citywide emergency announcements from DTEK appear directly on this
-        page as a red banner when the mirror captures them. If your power is off with no banner,
-        the DTEK site above is the fastest check.
-      </div>
-      <div class="row" style="margin-top:12px;gap:10px;flex-wrap:wrap;align-items:flex-end">
-        <label class="small">Off since (&laquo;Час початку&raquo;)<br>
-          <input type="time" id="emgStart" class="timein"></label>
-        <label class="small">Power back by (&laquo;Орієнтовний час відновлення&raquo;)<br>
-          <input type="time" id="emgEnd" class="timein"></label>
-        <button type="button" class="secondary" onclick="trackEmergency()">Track recovery</button>
-      </div>
-      <div class="small muted" id="emgMsg" style="margin-top:6px">
-        Copy the two times from the DTEK notice and the app will track the recovery with a live
-        countdown. Stored on this device only; cleared automatically the next day.
-      </div>
-    </details>
-  </div>
-
-  <div class="card">
-    <details>
-      <summary>Settings</summary>
-      <div class="row" style="margin-top:10px">
-        <button class="secondary" onclick="openSetup(false)">Change my queue (чергу)</button>
-      </div>
-      <form onsubmit="saveAddress(event)">
-        <label>Settlement (label only)<input id="inCity" placeholder="м. Одеса"></label>
-        <label>Street (label only)<input id="inStreet" placeholder="Колонтаївська"></label>
-        <label>House (label only)<input id="inHouse" placeholder="59" style="width:90px"></label>
-        <button type="submit" class="secondary">Save label</button>
-      </form>
-      <p class="small muted" style="margin-bottom:0">
-        Schedules come per queue, not per address &mdash; the address above is just a label for you.
-        The one-time queue pick is the only thing the site needs from you.
-      </p>
-    </details>
-  </div>
-
   <footer>Data: community mirror of the official DTEK Odesa schedule
-    (<a href="https://github.com/Baskerville42/outage-data-ua" target="_blank" rel="noreferrer">outage-data-ua</a>),
-    refreshed ~every 15&nbsp;min &middot; times in Kyiv time &middot; unofficial tool</footer>
+    (<a href="https://github.com/Baskerville42/outage-data-ua" target="_blank" rel="noreferrer">outage-data-ua</a>)
+    &middot; refreshes ~every 15&nbsp;min &middot; Kyiv time &middot; unofficial</footer>
 </div>
 
 <script>
@@ -271,8 +198,6 @@ const LS_DATA = "dtek-odesa-web-data";
 const TZ = "Europe/Kyiv";
 const REFRESH_MS = 10 * 60 * 1000;
 const STALE_MS = 12 * 60 * 60 * 1000;
-
-const DEFAULT_ADDR = { city: "м. Одеса", street: "Колонтаївська", house: "59" };
 const COL = { on: "#16a34a", off: "#dc2626", maybe: "#d97706", unknown: "#c3ccd9" };
 
 /* ---------------- state ---------------- */
@@ -281,11 +206,8 @@ let DATA = null, DATA_TS = 0, FETCH_ERROR = null, SELECTED_QUEUE = null, SLOT_TA
 let HERO_STATE = null;
 
 function settings() {
-  try {
-    const s = JSON.parse(localStorage.getItem(LS_SETTINGS) || "{}");
-    return { group: s.group || "", city: s.city || DEFAULT_ADDR.city,
-             street: s.street || DEFAULT_ADDR.street, house: s.house || DEFAULT_ADDR.house };
-  } catch (e) { return { group: "", ...DEFAULT_ADDR }; }
+  try { return { group: (JSON.parse(localStorage.getItem(LS_SETTINGS) || "{}").group) || "" }; }
+  catch (e) { return { group: "" }; }
 }
 function saveSettings(s) { localStorage.setItem(LS_SETTINGS, JSON.stringify(s)); }
 
@@ -477,111 +399,20 @@ function attentionBanner(raw) {
   el("banners").appendChild(d);
 }
 
-/* ---------------- manual unplanned-outage tracking ---------------- */
-/* Per-address emergency notices («Час початку», «Орієнтовний час відновлення
-   електроенергії») cannot be fetched from a static page — DTEK's API is
-   bot-protected and same-origin — so the user records the two times from the
-   DTEK site once; the app tracks the recovery with a live countdown.
-   Stored per device, auto-cleared on a new day. */
-
-function toMin(hhmm) {
-  const m = /^(\d{1,2}):(\d{2})$/.exec(hhmm || "");
-  return m ? (+m[1]) * 60 + (+m[2]) : null;
-}
-function emgLoad() {
-  try {
-    const e = JSON.parse(localStorage.getItem("dtek_emergency") || "null");
-    if (!e || toMin(e.start) === null || toMin(e.end) === null) return null;
-    if (e.day !== nowKyiv().date) {           // notices are same-day only
-      localStorage.removeItem("dtek_emergency");
-      return null;
-    }
-    return e;
-  } catch (err) { return null; }
-}
-function emgState() {
-  const e = emgLoad();
-  if (!e) return null;
-  const now = nowKyiv(), nowMin = now.hh * 60 + now.mm;
-  const start = toMin(e.start);
-  let end = toMin(e.end);
-  if (end <= start) end += 1440;              // recovery estimate crosses midnight
-  return { e, nowMin, start, end, active: nowMin < end };
-}
-function emgCountdownText(st) {
-  return st.active
-    ? "\u23F3 Power back in " + fmtDur(st.end - st.nowMin)
-    : "Estimated recovery time (" + st.e.end + ") has passed \u2014 check dtek-oem.com.ua for updates";
-}
-function renderEmergency() {
-  const old = document.getElementById("emgCard");
-  if (old) old.remove();
-  const st = emgState();
-  if (!st) return;
-  const d = document.createElement("div");
-  d.className = "banner emg"; d.id = "emgCard";
-  d.innerHTML = "<b>\u26A0\uFE0F Unplanned outage \u2014 from your DTEK notice</b>" +
-    "<div class='emg-times'>Off since " + st.e.start +
-    " \u00b7 power expected back by ~" + st.e.end + "</div>";
-  const cd = document.createElement("div");
-  cd.className = "emg-cd" + (st.active ? "" : " passed");
-  cd.id = "emgCd";
-  cd.textContent = emgCountdownText(st);
-  d.appendChild(cd);
-  const clr = document.createElement("button");
-  clr.className = "secondary"; clr.type = "button";
-  clr.textContent = "Clear"; clr.style.marginTop = "8px";
-  clr.addEventListener("click", clearEmergency);
-  d.appendChild(clr);
-  el("banners").insertBefore(d, el("banners").firstChild);
-}
-function trackEmergency() {
-  const s = document.getElementById("emgStart").value;
-  const t = document.getElementById("emgEnd").value;
-  const msg = document.getElementById("emgMsg");
-  if (toMin(s) === null || toMin(t) === null) {
-    msg.textContent = "Enter both times (HH:MM) from the DTEK notice.";
-    return;
-  }
-  const pad = x => (x.length === 4 ? "0" + x : x);
-  localStorage.setItem("dtek_emergency",
-    JSON.stringify({ start: pad(s), end: pad(t), day: nowKyiv().date }));
-  msg.textContent = "Tracking \u2014 the outage card is shown at the top of the page.";
-  render();
-  const card = document.getElementById("emgCard");
-  if (card) card.scrollIntoView({ behavior: "smooth", block: "center" });
-}
-function clearEmergency() {
-  localStorage.removeItem("dtek_emergency");
-  const msg = document.getElementById("emgMsg");
-  if (msg) msg.textContent = "";
-  render();
-}
-function tickEmergency() {
-  const st = emgState();
-  const card = document.getElementById("emgCard");
-  if (!st) { if (card) card.remove(); return; }
-  if (!card) { renderEmergency(); return; }
-  const cd = document.getElementById("emgCd");
-  if (!cd) return;
-  cd.className = "emg-cd" + (st.active ? "" : " passed");
-  cd.textContent = emgCountdownText(st);
-}
-
 function render() {
   const s = settings();
   el("banners").innerHTML = "";
-  el("addr").textContent = s.city + ", " + s.street + ", " + s.house;
-  renderEmergency();   // user's tracked unplanned outage — always first banner
+  const qb = el("queueBtn");
 
   if (!DATA) {
     el("state").className = "state unknown";
-    el("state").textContent = FETCH_ERROR ? "NO DATA" : "LOADING…";
+    el("state").textContent = FETCH_ERROR ? "NO DATA" : "LOADING\u2026";
     el("stateSub").textContent = "";
     el("countdown").textContent = "";
-    el("badges").textContent = "";
+    el("cdLabel").textContent = "";
     el("bar").innerHTML = ""; el("ruler").innerHTML = "";
     el("winList").innerHTML = ""; el("totals").textContent = "";
+    qb.textContent = "Queue \u25BE";
     if (FETCH_ERROR) banner("<b>Could not load the schedule.</b> " + FETCH_ERROR, "err");
     return;
   }
@@ -607,7 +438,8 @@ function render() {
     el("state").textContent = "PICK YOUR QUEUE";
     el("stateSub").textContent = "one-time setup below";
     el("countdown").textContent = "";
-    el("badges").textContent = "";
+    el("cdLabel").textContent = "";
+    qb.textContent = "Pick your queue \u25BE";
     if (group) banner("Saved queue <b>" + group + "</b> is not in today's data — pick your queue again.", "warn");
     openSetup(true);
     return;
@@ -622,13 +454,13 @@ function render() {
   const stateNames = { on: "POWER ON", off: "POWER OFF", maybe: "POSSIBLE OUTAGE" };
   const stEl = el("state");
   stEl.className = "state " + cur.state;
-  stEl.textContent = stateNames[cur.state] || "—";
+  stEl.textContent = stateNames[cur.state] || "\u2014";
 
   let sub = "";
   if (next) {
     if (next.state === "off") {
       const w = segs.find(g => g.state === "off" && g.from <= next.min && next.min < g.to);
-      sub = "Power off at " + next.at + (w ? " · back on at " + fmtEnd(w.to) : "");
+      sub = "Power off at " + next.at + (w ? " \u00b7 back on at " + fmtEnd(w.to) : "");
     } else {
       sub = "Power back on at " + next.at;
     }
@@ -640,15 +472,10 @@ function render() {
   }
   el("stateSub").textContent = sub;
   updateCountdown(cur, next, nowMin);
+  qb.textContent = (schNames[group] || group) + " \u25BE";
 
-  const emg = emgState();
-  el("badges").innerHTML =
-    (emg && emg.active ? '<div><span class="badge red">UNPLANNED OFF</span></div>' : "") +
-    '<div><span class="badge">Queue: <b>' + (schNames[group] || group) + '</b></span></div>' +
-    '<div><span class="badge">Odesa region</span></div>';
-
-  el("todaySrc").textContent = today.source === "fact" ? "— confirmed schedule" :
-    (today.source === "preset" ? "— planned weekly schedule" : "");
+  el("todaySrc").textContent = today.source === "fact" ? "\u2014 confirmed schedule" :
+    (today.source === "preset" ? "\u2014 planned weekly schedule" : "");
 
   /* --- timeline bar: proportional on/off blocks --- */
   const bar = el("bar"); bar.innerHTML = "";
@@ -657,7 +484,7 @@ function render() {
     d.className = "seg";
     d.style.width = ((g.to - g.from) / 1440 * 100) + "%";
     d.style.background = COL[g.state] || COL.unknown;
-    d.title = fmtMin(g.from) + " – " + fmtEnd(g.to) + " · " +
+    d.title = fmtMin(g.from) + " \u2013 " + fmtEnd(g.to) + " \u00b7 " +
       (g.state === "on" ? "power on" : g.state === "off" ? "power off" :
        g.state === "maybe" ? "possible outage" : "no data");
     if (g.to - g.from >= 120) {
@@ -707,24 +534,20 @@ function render() {
   const addWin = (g, label, color) => {
     const li = document.createElement("li");
     li.innerHTML = '<span class="mark" style="background:' + color + '">' + label + '</span>' +
-      '<span class="t">' + fmtMin(g.from) + " – " + fmtEnd(g.to) + "</span>" +
+      '<span class="t">' + fmtMin(g.from) + " \u2013 " + fmtEnd(g.to) + "</span>" +
       '<span class="dur">' + fmtDur(g.to - g.from) + "</span>";
     wl.appendChild(li);
   };
   offs.forEach(g => addWin(g, "OFF", COL.off));
   maybes.forEach(g => addWin(g, "MAYBE", COL.maybe));
   if (!offs.length && !maybes.length)
-    wl.innerHTML = '<li class="muted" style="border-bottom:0">No shutdowns scheduled for today 🎉</li>';
+    wl.innerHTML = '<li class="muted" style="border-bottom:0">No shutdowns scheduled for today \uD83C\uDF89</li>';
 
   const totOff = offs.reduce((a, g) => a + g.to - g.from, 0);
   const totMaybe = maybes.reduce((a, g) => a + g.to - g.from, 0);
   let totals = totOff ? "Planned without power today: <b>" + fmtDur(totOff) + "</b>" : "";
-  if (totMaybe) totals += (totals ? " · " : "") + "possible outages: <b>" + fmtDur(totMaybe) + "</b>";
+  if (totMaybe) totals += (totals ? " \u00b7 " : "") + "possible outages: <b>" + fmtDur(totMaybe) + "</b>";
   el("totals").innerHTML = totals;
-
-  el("inCity").value = s.city;
-  el("inStreet").value = s.street;
-  el("inHouse").value = s.house;
 
   const upd = (DATA.fact && DATA.fact.update) || "";
   el("updated").textContent = upd ? "DTEK update: " + upd : "";
@@ -733,20 +556,15 @@ function render() {
 
 /* ---------------- countdown ---------------- */
 
-/* live "time until" line: updates every 30 s between full renders;
+/* live "time until" hero number: updates every 30 s between full renders;
    if the power state flipped since the last paint, re-render everything */
 function updateCountdown(cur, next, nowMin) {
   HERO_STATE = cur.state;
-  const cdEl = el("countdown");
-  if (!next) { cdEl.textContent = ""; cdEl.className = "cd"; return; }
-  const mins = next.min - nowMin;
-  let txt;
-  if (next.state === "off") {
-    txt = (next.planned ? "First planned shutdown in " : "Shutdown in ") + fmtDur(Math.max(0, mins));
-  } else {
-    txt = (next.planned ? "Power back tomorrow in " : "Power back in ") + fmtDur(Math.max(0, mins));
-  }
-  cdEl.textContent = "\u23F3 " + txt;
+  const cdEl = el("countdown"), labEl = el("cdLabel");
+  if (!next) { cdEl.textContent = ""; labEl.textContent = ""; cdEl.className = "cd"; return; }
+  const mins = Math.max(0, next.min - nowMin);
+  cdEl.textContent = fmtDur(mins);
+  labEl.textContent = next.state === "off" ? "until power goes off" : "until power is back on";
   cdEl.className = "cd" + (next.state === "off" && mins <= 30 ? " urgent" : "");
 }
 
@@ -772,21 +590,20 @@ function openSetup(keepBanners) {
   card.style.display = "";
   const now = nowKyiv(), nowMin = now.hh * 60 + now.mm;
   const schNames = (DATA && DATA.preset && DATA.preset.sch_names) || {};
-  const names = Object.keys(schNames).length ? Object.entries(schNames) : [["GPV1.1", "Черга 1.1"]];
+  const names = Object.keys(schNames).length ? Object.entries(schNames) : [["GPV1.1", "\u0427\u0435\u0440\u0433\u0430 1.1"]];
 
-  let html = "<h2>One-time setup — pick your outage queue (чергу)</h2>" +
-    "<div class='small'>How to find it: open " +
-    "<a href='https://www.dtek-oem.com.ua/ua/shutdowns' target='_blank' rel='noreferrer'>dtek-oem.com.ua/ua/shutdowns</a>, " +
-    "enter your address once — the site shows <b>Черга X.X</b> for your house. Pick the same queue below; " +
-    "it is saved in this browser, and that's the last time you need the DTEK site.</div>" +
-    "<div class='small muted'>Hint: each card shows that queue's shutdown windows for today — " +
-    "if you roughly know when your power goes off, match the pattern.</div>" +
+  let html = "<h2 class='h2big'>Pick your outage queue (\u0447\u0435\u0440\u0433\u0443)</h2>" +
+    "<div class='small'>Find yours at <a href='https://www.dtek-oem.com.ua/ua/shutdowns' target='_blank' rel='noreferrer'>dtek-oem.com.ua/ua/shutdowns</a> " +
+    "\u2014 enter your address once and it shows <b>\u0427\u0435\u0440\u0433\u0430 X.X</b>. " +
+    "Saved in this browser \u2014 that's the last time you need the DTEK site.</div>" +
+    "<div class='small muted' style='margin-top:4px'>Each card shows that queue's shutdowns today \u2014 " +
+    "match yours by when the power goes off.</div>" +
     "<div class='qgrid'>";
   for (const [g, name] of names) {
     const qd = DATA ? queueDay(DATA, g, now) : { slots: [] };
     const st = currentState(qd.slots, nowMin).state;
     const wins = segments(qd.slots).filter(x => x.state === "off")
-      .map(x => fmtMin(x.from) + "–" + fmtEnd(x.to)).join(", ");
+      .map(x => fmtMin(x.from) + "\u2013" + fmtEnd(x.to)).join(", ");
     html += "<div class='qcard" + (SELECTED_QUEUE === g ? " sel" : "") + "' data-g='" + g + "'>" +
       "<div class='qname'>" + name + "</div>" +
       "<div class='qnow'><span class='dot' style='background:" + (COL[st] || COL.maybe) + "'></span>" +
@@ -795,7 +612,7 @@ function openSetup(keepBanners) {
       "</div>";
   }
   html += "</div><div class='row' style='margin-top:14px'>" +
-    "<button id='btnSaveQueue'" + (SELECTED_QUEUE ? "" : " disabled") + ">Save — this is my queue</button>" +
+    "<button id='btnSaveQueue'" + (SELECTED_QUEUE ? "" : " disabled") + ">Save \u2014 this is my queue</button>" +
     "<button class='secondary' onclick='closeSetup()'>Cancel</button></div>";
   card.innerHTML = html;
 
@@ -814,16 +631,6 @@ function openSetup(keepBanners) {
   });
 }
 function closeSetup() { el("setupCard").style.display = "none"; }
-
-function saveAddress(ev) {
-  ev.preventDefault();
-  const s = settings();
-  s.city = el("inCity").value.trim() || s.city;
-  s.street = el("inStreet").value.trim() || s.street;
-  s.house = el("inHouse").value.trim() || s.house;
-  saveSettings(s);
-  render();
-}
 
 /* ---------------- data loading ---------------- */
 
@@ -882,18 +689,11 @@ async function doRefresh() {
   if (DATA) SLOT_TABLE = slotTable(DATA.preset.time_zone);
   render();
   setInterval(() => { if (!document.hidden) doRefresh(); }, REFRESH_MS);
-  setInterval(() => { tickCountdown(); tickEmergency(); }, 30000);
+  setInterval(() => { if (!document.hidden) tickCountdown(); }, 30000);
   document.addEventListener("visibilitychange", () => {
     if (!document.hidden && Date.now() - DATA_TS > REFRESH_MS) doRefresh();
-    else if (!document.hidden) { tickCountdown(); tickEmergency(); }
+    else if (!document.hidden) tickCountdown();
   });
-  // prefill the unplanned-outage form (saved values, or "off since" = now)
-  (() => {
-    const e = emgLoad(), n = nowKyiv();
-    document.getElementById("emgStart").value =
-      e ? e.start : String(n.hh).padStart(2, "0") + ":" + String(n.mm).padStart(2, "0");
-    if (e) document.getElementById("emgEnd").value = e.end;
-  })();
   // installable app: register service worker (skipped when opened as file://)
   if ("serviceWorker" in navigator && location.protocol !== "file:") {
     navigator.serviceWorker.register("sw.js").catch(() => {});
