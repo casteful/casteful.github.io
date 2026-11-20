@@ -78,12 +78,21 @@
      text-transform:uppercase;letter-spacing:.06em}
   h2.h2big{font-size:17px;font-weight:700;color:var(--text);text-transform:none;letter-spacing:-.2px}
   .src{font-weight:500;color:var(--muted);font-size:13px;text-transform:none;letter-spacing:0}
-  /* banners */
+  /* banners (attn = collapsible one-liner by default) */
   .banner{border-radius:16px;padding:12px 15px;margin-bottom:12px;font-size:14px}
   .banner.err{background:var(--err-bg);color:var(--err-ink)}
   .banner.warn{background:var(--warn-bg);color:var(--warn-ink)}
   .banner.attn{background:var(--attn-bg);color:var(--attn-ink)}
-  .attn-body{white-space:pre-line;margin-top:6px;font-size:15px}
+  details.banner{padding:0}
+  details.banner:not([open]) .attn-body{display:none}   /* bulletproof, any engine */
+  details.banner summary{padding:11px 15px;cursor:pointer;list-style:none;display:flex;
+    align-items:center;justify-content:space-between;gap:10px;font-weight:600}
+  details.banner summary:hover{opacity:.8}
+  details.banner summary::-webkit-details-marker{display:none}
+  details.banner summary::after{content:"\25BE";font-size:12px;transition:transform .2s ease;flex:none}
+  details.banner[open] summary{border-bottom:1px solid var(--sep);border-radius:16px 16px 0 0}
+  details.banner[open] summary::after{transform:rotate(180deg)}
+  .attn-body{white-space:pre-line;font-size:15px;padding:10px 15px 12px}
   /* controls */
   button{background:var(--accent);color:#fff;border:0;border-radius:12px;
          padding:10px 18px;font-weight:600;font-size:14px;cursor:pointer;transition:opacity .15s ease}
@@ -123,6 +132,9 @@
   .wins .mark{flex:none;font-size:10px;font-weight:700;letter-spacing:.5px;border-radius:999px;padding:3px 9px;color:#fff}
   .wins .t{font-weight:600;font-size:16px;font-variant-numeric:tabular-nums}
   .wins .dur{color:var(--muted);font-size:13px;margin-left:auto;white-space:nowrap}
+  .wins .tag{flex:none;font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;
+             border-radius:999px;padding:2px 8px;color:#fff}
+  .tag.now{background:var(--off)} .tag.next{background:var(--accent)}
   .totals{margin-top:12px;font-size:13px;color:var(--muted)}
   .totals b{color:var(--text)}
   /* --- queue picker --- */
@@ -199,6 +211,7 @@ const TZ = "Europe/Kyiv";
 const REFRESH_MS = 10 * 60 * 1000;
 const STALE_MS = 12 * 60 * 60 * 1000;
 const COL = { on: "#16a34a", off: "#dc2626", maybe: "#d97706", unknown: "#c3ccd9" };
+const STATE_NAMES = { on: "POWER ON", off: "POWER OFF", maybe: "POSSIBLE OUTAGE" };
 
 /* ---------------- state ---------------- */
 
@@ -383,19 +396,30 @@ function banner(html, cls) {
 
 /* DTEK's "Шановні клієнти!" window from the mirror — emergency notices
    (air raid alerts, grid emergencies) during which schedules may not apply.
-   Rendered as plain text (no HTML from the feed), line breaks preserved. */
+   Collapsed to one quiet line by default; tap to read. Once opened, it stays
+   open until a different announcement arrives. Plain text only (no feed HTML). */
 function attentionBanner(raw) {
   const text = String(raw).replace(/[\u200b\u200c\u200d\ufeff]/g, "").trim();
   if (!text) return;
-  const d = document.createElement("div");
+  const sig = text.slice(0, 60);
+  let open = false;
+  try {
+    const j = JSON.parse(localStorage.getItem("dtek_attn") || "null");
+    open = !!(j && j.sig === sig && j.open);
+  } catch (e) {}
+  const d = document.createElement("details");
   d.className = "banner attn";
-  const t = document.createElement("div");
-  t.innerHTML = "<b>\u26A0\uFE0F DTEK announcement \u2014 schedules may not apply:</b>";
+  d.open = open;
+  const s = document.createElement("summary");
+  s.innerHTML = "<b>\u26A0\uFE0F DTEK announcement \u2014 schedules may not apply</b>";
   const body = document.createElement("div");
   body.className = "attn-body";
   body.textContent = text;
-  d.appendChild(t);
+  d.appendChild(s);
   d.appendChild(body);
+  d.addEventListener("toggle", () => {
+    try { localStorage.setItem("dtek_attn", JSON.stringify({ sig, open: d.open })); } catch (e) {}
+  });
   el("banners").appendChild(d);
 }
 
@@ -451,18 +475,21 @@ function render() {
   const cur = currentState(today.slots, nowMin);
   const next = nextEvent(today.slots, tomorrow.slots, nowMin);
 
-  const stateNames = { on: "POWER ON", off: "POWER OFF", maybe: "POSSIBLE OUTAGE" };
   const stEl = el("state");
   stEl.className = "state " + cur.state;
-  stEl.textContent = stateNames[cur.state] || "\u2014";
+  stEl.textContent = STATE_NAMES[cur.state] || "\u2014";
 
+  /* quick-check line: what's happening now / what's coming next */
   let sub = "";
   if (next) {
     if (next.state === "off") {
       const w = segs.find(g => g.state === "off" && g.from <= next.min && next.min < g.to);
-      sub = "Power off at " + next.at + (w ? " \u00b7 back on at " + fmtEnd(w.to) : "");
+      sub = w ? "Next outage: " + fmtMin(w.from) + " \u2013 " + fmtEnd(w.to) +
+                " (" + fmtDur(w.to - w.from) + ")"
+              : "Power off at " + next.at;
     } else {
-      sub = "Power back on at " + next.at;
+      const w = segs.find(g => g.state === "off" && g.from <= nowMin && nowMin < g.to);
+      sub = (w ? "Off since " + fmtMin(w.from) + " \u00b7 " : "") + "back on at " + next.at;
     }
     if (next.planned) sub += " (planned)";
   } else if (today.slots.length) {
@@ -531,15 +558,23 @@ function render() {
   const wl = el("winList"); wl.innerHTML = "";
   const offs = segs.filter(g => g.state === "off");
   const maybes = segs.filter(g => g.state === "maybe");
-  const addWin = (g, label, color) => {
+  const addWin = (g, label, color, tag, tagCls) => {
     const li = document.createElement("li");
     li.innerHTML = '<span class="mark" style="background:' + color + '">' + label + '</span>' +
       '<span class="t">' + fmtMin(g.from) + " \u2013 " + fmtEnd(g.to) + "</span>" +
+      (tag ? '<span class="tag ' + tagCls + '">' + tag + "</span>" : "") +
       '<span class="dur">' + fmtDur(g.to - g.from) + "</span>";
     wl.appendChild(li);
   };
-  offs.forEach(g => addWin(g, "OFF", COL.off));
-  maybes.forEach(g => addWin(g, "MAYBE", COL.maybe));
+  offs.forEach(g => {
+    const isNow = g.from <= nowMin && nowMin < g.to;
+    const isNext = !isNow && next && next.state === "off" && g.from === next.min;
+    addWin(g, "OFF", COL.off, isNow ? "now" : isNext ? "next" : "", isNow ? "now" : "next");
+  });
+  maybes.forEach(g => {
+    const isNow = g.from <= nowMin && nowMin < g.to;
+    addWin(g, "MAYBE", COL.maybe, isNow ? "now" : "", "now");
+  });
   if (!offs.length && !maybes.length)
     wl.innerHTML = '<li class="muted" style="border-bottom:0">No shutdowns scheduled for today \uD83C\uDF89</li>';
 
@@ -550,7 +585,11 @@ function render() {
   el("totals").innerHTML = totals;
 
   const upd = (DATA.fact && DATA.fact.update) || "";
-  el("updated").textContent = upd ? "DTEK update: " + upd : "";
+  if (upd) {
+    const todayStr = now.d + "." + now.m + "." + now.y;   // mirror format: dd.mm.yyyy hh:mm
+    el("updated").textContent = "DTEK update: " +
+      (upd.startsWith(todayStr) ? upd.slice(todayStr.length).trim() : upd);
+  } else el("updated").textContent = "";
   el("updated").title = "Mirror lastUpdated: " + (DATA.lastUpdated || "?");
 }
 
@@ -561,11 +600,18 @@ function render() {
 function updateCountdown(cur, next, nowMin) {
   HERO_STATE = cur.state;
   const cdEl = el("countdown"), labEl = el("cdLabel");
-  if (!next) { cdEl.textContent = ""; labEl.textContent = ""; cdEl.className = "cd"; return; }
+  if (!next) {
+    cdEl.textContent = ""; labEl.textContent = ""; cdEl.className = "cd";
+    document.title = (STATE_NAMES[cur.state] || "Odesa") + " \u00b7 Shutdowns";
+    return;
+  }
   const mins = Math.max(0, next.min - nowMin);
   cdEl.textContent = fmtDur(mins);
   labEl.textContent = next.state === "off" ? "until power goes off" : "until power is back on";
   cdEl.className = "cd" + (next.state === "off" && mins <= 30 ? " urgent" : "");
+  /* live status in the tab / app-switcher title for a glance without switching */
+  document.title = (STATE_NAMES[cur.state] || "Odesa") + " \u00b7 " +
+    (next.state === "off" ? "off in " : "back on in ") + fmtDur(mins);
 }
 
 function tickCountdown() {
@@ -654,8 +700,7 @@ async function loadData() {
       return;
     } catch (err) { lastErr = err.message || String(err); }
   }
-  FETCH_ERROR = "Could not reach the data mirror (" + lastErr + "). " +
-    "Check your internet connection; showing cached data if available.";
+  FETCH_ERROR = "Could not reach the data mirror (" + lastErr + ") \u2014 showing saved data if any.";
 }
 function loadCache() {
   try {
