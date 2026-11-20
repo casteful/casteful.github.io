@@ -48,6 +48,12 @@
   .banner.warn{background:#fffbeb;border:1px solid #fde68a;color:#b45309}
   .banner.attn{background:#fef2f2;border:1px solid #fca5a5;color:#7f1d1d}
   .attn-body{white-space:pre-line;margin-top:4px;font-size:15px}
+  .banner.emg{background:#fef2f2;border:1px solid #f87171;color:#7f1d1d}
+  .emg-times{font-size:15px;margin-top:4px}
+  .emg-cd{font-size:20px;font-weight:700;margin-top:6px;color:#b91c1c}
+  .emg-cd.passed{color:#b45309}
+  .badge.red{background:#fee2e2;border-color:#fecaca;color:#b91c1c}
+  .timein{width:110px}
   button{background:var(--accent);color:#fff;border:0;border-radius:8px;
          padding:9px 18px;font-weight:600;font-size:14px;cursor:pointer}
   button.secondary{background:#f5f8fc;color:var(--text);border:1px solid var(--line)}
@@ -144,6 +150,17 @@
         estimated restore time. Citywide emergency announcements from DTEK appear directly on this
         page as a red banner when the mirror captures them. If your power is off with no banner,
         the DTEK site above is the fastest check.
+      </div>
+      <div class="row" style="margin-top:12px;gap:10px;flex-wrap:wrap;align-items:flex-end">
+        <label class="small">Off since (&laquo;Час початку&raquo;)<br>
+          <input type="time" id="emgStart" class="timein"></label>
+        <label class="small">Power back by (&laquo;Орієнтовний час відновлення&raquo;)<br>
+          <input type="time" id="emgEnd" class="timein"></label>
+        <button type="button" class="secondary" onclick="trackEmergency()">Track recovery</button>
+      </div>
+      <div class="small muted" id="emgMsg" style="margin-top:6px">
+        Copy the two times from the DTEK notice and the app will track the recovery with a live
+        countdown. Stored on this device only; cleared automatically the next day.
       </div>
     </details>
   </div>
@@ -374,10 +391,102 @@ function attentionBanner(raw) {
   el("banners").appendChild(d);
 }
 
+/* ---------------- manual unplanned-outage tracking ---------------- */
+/* Per-address emergency notices («Час початку», «Орієнтовний час відновлення
+   електроенергії») cannot be fetched from a static page — DTEK's API is
+   bot-protected and same-origin — so the user records the two times from the
+   DTEK site once; the app tracks the recovery with a live countdown.
+   Stored per device, auto-cleared on a new day. */
+
+function toMin(hhmm) {
+  const m = /^(\d{1,2}):(\d{2})$/.exec(hhmm || "");
+  return m ? (+m[1]) * 60 + (+m[2]) : null;
+}
+function emgLoad() {
+  try {
+    const e = JSON.parse(localStorage.getItem("dtek_emergency") || "null");
+    if (!e || toMin(e.start) === null || toMin(e.end) === null) return null;
+    if (e.day !== nowKyiv().date) {           // notices are same-day only
+      localStorage.removeItem("dtek_emergency");
+      return null;
+    }
+    return e;
+  } catch (err) { return null; }
+}
+function emgState() {
+  const e = emgLoad();
+  if (!e) return null;
+  const now = nowKyiv(), nowMin = now.hh * 60 + now.mm;
+  const start = toMin(e.start);
+  let end = toMin(e.end);
+  if (end <= start) end += 1440;              // recovery estimate crosses midnight
+  return { e, nowMin, start, end, active: nowMin < end };
+}
+function emgCountdownText(st) {
+  return st.active
+    ? "\u23F3 Power back in " + fmtDur(st.end - st.nowMin)
+    : "Estimated recovery time (" + st.e.end + ") has passed \u2014 check dtek-oem.com.ua for updates";
+}
+function renderEmergency() {
+  const old = document.getElementById("emgCard");
+  if (old) old.remove();
+  const st = emgState();
+  if (!st) return;
+  const d = document.createElement("div");
+  d.className = "banner emg"; d.id = "emgCard";
+  d.innerHTML = "<b>\u26A0\uFE0F Unplanned outage \u2014 from your DTEK notice</b>" +
+    "<div class='emg-times'>Off since " + st.e.start +
+    " \u00b7 power expected back by ~" + st.e.end + "</div>";
+  const cd = document.createElement("div");
+  cd.className = "emg-cd" + (st.active ? "" : " passed");
+  cd.id = "emgCd";
+  cd.textContent = emgCountdownText(st);
+  d.appendChild(cd);
+  const clr = document.createElement("button");
+  clr.className = "secondary"; clr.type = "button";
+  clr.textContent = "Clear"; clr.style.marginTop = "8px";
+  clr.addEventListener("click", clearEmergency);
+  d.appendChild(clr);
+  el("banners").insertBefore(d, el("banners").firstChild);
+}
+function trackEmergency() {
+  const s = document.getElementById("emgStart").value;
+  const t = document.getElementById("emgEnd").value;
+  const msg = document.getElementById("emgMsg");
+  if (toMin(s) === null || toMin(t) === null) {
+    msg.textContent = "Enter both times (HH:MM) from the DTEK notice.";
+    return;
+  }
+  const pad = x => (x.length === 4 ? "0" + x : x);
+  localStorage.setItem("dtek_emergency",
+    JSON.stringify({ start: pad(s), end: pad(t), day: nowKyiv().date }));
+  msg.textContent = "Tracking \u2014 the outage card is shown at the top of the page.";
+  render();
+  const card = document.getElementById("emgCard");
+  if (card) card.scrollIntoView({ behavior: "smooth", block: "center" });
+}
+function clearEmergency() {
+  localStorage.removeItem("dtek_emergency");
+  const msg = document.getElementById("emgMsg");
+  if (msg) msg.textContent = "";
+  render();
+}
+function tickEmergency() {
+  const st = emgState();
+  const card = document.getElementById("emgCard");
+  if (!st) { if (card) card.remove(); return; }
+  if (!card) { renderEmergency(); return; }
+  const cd = document.getElementById("emgCd");
+  if (!cd) return;
+  cd.className = "emg-cd" + (st.active ? "" : " passed");
+  cd.textContent = emgCountdownText(st);
+}
+
 function render() {
   const s = settings();
   el("banners").innerHTML = "";
   el("addr").textContent = s.city + ", " + s.street + ", " + s.house;
+  renderEmergency();   // user's tracked unplanned outage — always first banner
 
   if (!DATA) {
     el("state").className = "state unknown";
@@ -446,7 +555,9 @@ function render() {
   el("stateSub").textContent = sub;
   updateCountdown(cur, next, nowMin);
 
+  const emg = emgState();
   el("badges").innerHTML =
+    (emg && emg.active ? '<div><span class="badge red">UNPLANNED OFF</span></div>' : "") +
     '<div><span class="badge">Queue: <b>' + (schNames[group] || group) + '</b></span></div>' +
     '<div><span class="badge">Odesa region</span></div>';
 
@@ -678,11 +789,18 @@ async function doRefresh() {
   if (DATA) SLOT_TABLE = slotTable(DATA.preset.time_zone);
   render();
   setInterval(() => { if (!document.hidden) doRefresh(); }, REFRESH_MS);
-  setInterval(tickCountdown, 30000);
+  setInterval(() => { tickCountdown(); tickEmergency(); }, 30000);
   document.addEventListener("visibilitychange", () => {
     if (!document.hidden && Date.now() - DATA_TS > REFRESH_MS) doRefresh();
-    else if (!document.hidden) tickCountdown();
+    else if (!document.hidden) { tickCountdown(); tickEmergency(); }
   });
+  // prefill the unplanned-outage form (saved values, or "off since" = now)
+  (() => {
+    const e = emgLoad(), n = nowKyiv();
+    document.getElementById("emgStart").value =
+      e ? e.start : String(n.hh).padStart(2, "0") + ":" + String(n.mm).padStart(2, "0");
+    if (e) document.getElementById("emgEnd").value = e.end;
+  })();
   // installable app: register service worker (skipped when opened as file://)
   if ("serviceWorker" in navigator && location.protocol !== "file:") {
     navigator.serviceWorker.register("sw.js").catch(() => {});
