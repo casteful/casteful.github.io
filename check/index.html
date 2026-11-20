@@ -46,6 +46,8 @@
   .banner{border-radius:10px;padding:10px 14px;margin-bottom:14px;font-size:14px}
   .banner.err{background:#fef2f2;border:1px solid #fecaca;color:#b91c1c}
   .banner.warn{background:#fffbeb;border:1px solid #fde68a;color:#b45309}
+  .banner.attn{background:#fef2f2;border:1px solid #fca5a5;color:#7f1d1d}
+  .attn-body{white-space:pre-line;margin-top:4px;font-size:15px}
   button{background:var(--accent);color:#fff;border:0;border-radius:8px;
          padding:9px 18px;font-weight:600;font-size:14px;cursor:pointer}
   button.secondary{background:#f5f8fc;color:var(--text);border:1px solid var(--line)}
@@ -127,6 +129,23 @@
     </div>
     <ul class="wins" id="winList"></ul>
     <div class="totals" id="totals"></div>
+  </div>
+
+  <div class="card">
+    <details>
+      <summary>Power off, but the schedule says ON? (unplanned outage)</summary>
+      <div class="small" style="margin-top:8px">
+        Short-notice <b>unplanned outages</b> &mdash; emergency repair works, equipment damage,
+        wartime grid events &mdash; are tied to your <b>exact address</b>, not to your queue,
+        so they never show up in the schedule above. DTEK publishes them per address:
+        open <a href="https://www.dtek-oem.com.ua/ua/shutdowns" target="_blank" rel="noreferrer">dtek-oem.com.ua/ua/shutdowns</a>,
+        enter your address, and look for the red notice
+        (&laquo;За вашою адресою в даний момент відсутня електроенергія…&raquo;) with the cause and the
+        estimated restore time. Citywide emergency announcements from DTEK appear directly on this
+        page as a red banner when the mirror captures them. If your power is off with no banner,
+        the DTEK site above is the fastest check.
+      </div>
+    </details>
   </div>
 
   <div class="card">
@@ -337,6 +356,24 @@ function banner(html, cls) {
   el("banners").appendChild(d);
 }
 
+/* DTEK's "Шановні клієнти!" window from the mirror — emergency notices
+   (air raid alerts, grid emergencies) during which schedules may not apply.
+   Rendered as plain text (no HTML from the feed), line breaks preserved. */
+function attentionBanner(raw) {
+  const text = String(raw).replace(/[\u200b\u200c\u200d\ufeff]/g, "").trim();
+  if (!text) return;
+  const d = document.createElement("div");
+  d.className = "banner attn";
+  const t = document.createElement("div");
+  t.innerHTML = "<b>\u26A0\uFE0F DTEK announcement \u2014 schedules may not apply:</b>";
+  const body = document.createElement("div");
+  body.className = "attn-body";
+  body.textContent = text;
+  d.appendChild(t);
+  d.appendChild(body);
+  el("banners").appendChild(d);
+}
+
 function render() {
   const s = settings();
   el("banners").innerHTML = "";
@@ -354,6 +391,8 @@ function render() {
     return;
   }
 
+  if (DATA.attention && DATA.attention.text)
+    attentionBanner(DATA.attention.text);
   if (FETCH_ERROR && DATA)
     banner("Could not refresh — showing data saved at " +
       new Date(DATA_TS).toLocaleString([], { dateStyle: "short", timeStyle: "short" }) + ".", "warn");
