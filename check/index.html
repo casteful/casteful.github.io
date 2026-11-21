@@ -93,6 +93,7 @@
   details.banner[open] summary{border-bottom:1px solid var(--sep);border-radius:16px 16px 0 0}
   details.banner[open] summary::after{transform:rotate(180deg)}
   .attn-body{white-space:pre-line;font-size:15px;padding:10px 15px 12px}
+  .attn-line{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   /* controls */
   button{background:var(--accent);color:#fff;border:0;border-radius:12px;
          padding:10px 18px;font-weight:600;font-size:14px;cursor:pointer;transition:opacity .15s ease}
@@ -396,8 +397,9 @@ function banner(html, cls) {
 
 /* DTEK's "Шановні клієнти!" window from the mirror — emergency notices
    (air raid alerts, grid emergencies) during which schedules may not apply.
-   Collapsed to one quiet line by default; tap to read. Once opened, it stays
-   open until a different announcement arrives. Plain text only (no feed HTML). */
+   Collapsed by default to one line showing DTEK's actual message; tap to read
+   the full text. Once opened, it stays open until a different announcement
+   arrives. Plain text only (no feed HTML). */
 function attentionBanner(raw) {
   const text = String(raw).replace(/[\u200b\u200c\u200d\ufeff]/g, "").trim();
   if (!text) return;
@@ -411,7 +413,11 @@ function attentionBanner(raw) {
   d.className = "banner attn";
   d.open = open;
   const s = document.createElement("summary");
-  s.innerHTML = "<b>\u26A0\uFE0F DTEK announcement \u2014 schedules may not apply</b>";
+  s.title = "DTEK announcement \u2014 schedules may not apply \u00b7 tap to read";
+  const head = document.createElement("span");
+  head.className = "attn-line";
+  head.textContent = "\u26A0\uFE0F " + (text.split("\n").map(t => t.trim()).find(t => t) || text);
+  s.appendChild(head);
   const body = document.createElement("div");
   body.className = "attn-body";
   body.textContent = text;
