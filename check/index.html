@@ -23,6 +23,7 @@
     --err-bg:rgba(255,59,48,.09); --err-ink:#d70015;
     --warn-bg:rgba(255,149,0,.12); --warn-ink:#a04d00;
     --attn-bg:rgba(255,59,48,.09); --attn-ink:#d70015;
+    --curon-bg:rgba(52,199,89,.11); --curon-ink:#1a7f37;
   }
   :root[data-theme="dark"]{
     --bg:#000000; --card:#1c1c1e; --card-soft:#2c2c2e; --sep:#38383a;
@@ -32,6 +33,7 @@
     --err-bg:rgba(255,69,58,.14); --err-ink:#ff8a80;
     --warn-bg:rgba(255,159,10,.14); --warn-ink:#ffb340;
     --attn-bg:rgba(255,69,58,.14); --attn-ink:#ff8a80;
+    --curon-bg:rgba(48,209,88,.15); --curon-ink:#7ee2a8;
   }
   @media (prefers-color-scheme: dark){
     :root:not([data-theme="light"]){
@@ -42,6 +44,7 @@
       --err-bg:rgba(255,69,58,.14); --err-ink:#ff8a80;
       --warn-bg:rgba(255,159,10,.14); --warn-ink:#ffb340;
       --attn-bg:rgba(255,69,58,.14); --attn-ink:#ff8a80;
+      --curon-bg:rgba(48,209,88,.15); --curon-ink:#7ee2a8;
     }
   }
   *{box-sizing:border-box}
@@ -83,6 +86,8 @@
   .banner.err{background:var(--err-bg);color:var(--err-ink)}
   .banner.warn{background:var(--warn-bg);color:var(--warn-ink)}
   .banner.attn{background:var(--attn-bg);color:var(--attn-ink)}
+  .banner.curon{background:var(--curon-bg);color:var(--curon-ink)}   /* per-address: power on */
+  .cur-body{white-space:pre-line;font-size:15px;margin-top:4px}
   details.banner{padding:0}
   details.banner:not([open]) .attn-body{display:none}   /* bulletproof, any engine */
   details.banner summary{padding:11px 15px;cursor:pointer;list-style:none;display:flex;
@@ -105,8 +110,13 @@
            font-size:17px;line-height:1;border-radius:50%}
   .queuebtn{background:var(--card-soft);color:var(--text);border-radius:999px;
             padding:5px 13px;font-size:13px;font-weight:600}
+  a.queuebtn{text-decoration:none}   /* header chip linking to DTEK's own site */
   .row{display:flex;flex-wrap:wrap;gap:12px;align-items:center}
   footer{color:var(--muted);font-size:12px;text-align:center;margin-top:12px}
+  .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--now);color:var(--bg);
+         padding:10px 16px;border-radius:12px;font-size:14px;font-weight:600;opacity:0;transition:opacity .25s ease;
+         pointer-events:none;z-index:99;max-width:90vw;text-align:center}
+  .toast.show{opacity:1}
   a{color:var(--accent)}
   :focus-visible{outline:2px solid var(--accent);outline-offset:2px}
   .muted{color:var(--muted)} .small{font-size:13px}
@@ -167,6 +177,8 @@ try{var t=localStorage.getItem("dtek_theme");if(t)document.documentElement.datas
     </div>
     <div class="hmeta">
       <button class="queuebtn" id="queueBtn" onclick="openSetup(false)" title="Change your queue (чергу)">Queue &#9662;</button>
+      <a class="queuebtn" id="dtekBtn" href="https://www.dtek-oem.com.ua/ua/shutdowns" target="_blank" rel="noreferrer"
+         title="Copies your address, then opens DTEK's site — paste it there to see the live per-address box. The app itself cannot read DTEK (WAF, no CORS).">&#127968; Колонтаївська, 59 &#8599;</a>
       <span class="sub" id="updated"></span>
     </div>
   </header>
@@ -213,11 +225,15 @@ const REFRESH_MS = 10 * 60 * 1000;
 const STALE_MS = 12 * 60 * 60 * 1000;
 const COL = { on: "#16a34a", off: "#dc2626", maybe: "#d97706", unknown: "#c3ccd9" };
 const STATE_NAMES = { on: "POWER ON", off: "POWER OFF", maybe: "POSSIBLE OUTAGE" };
+/* hardcoded address for the header chip: one tap copies it and opens DTEK's
+   site (the app itself cannot read DTEK — Imperva WAF, no CORS headers) */
+const DTEK_ADDRESS = "м. Одеса, Колонтаївська, 59";
 
 /* ---------------- state ---------------- */
 
 let DATA = null, DATA_TS = 0, FETCH_ERROR = null, SELECTED_QUEUE = null, SLOT_TABLE = [];
 let HERO_STATE = null;
+let CUR_DATA = null;   /* per-address showCurOutage box from cur_outage.json (GitHub Action) */
 
 function settings() {
   try { return { group: (JSON.parse(localStorage.getItem(LS_SETTINGS) || "{}").group) || "" }; }
@@ -395,6 +411,29 @@ function banner(html, cls) {
   el("banners").appendChild(d);
 }
 
+/* Live per-address status copied verbatim from DTEK's site (#showCurOutage),
+   fetched by the repo's GitHub Action into cur_outage.json. Red while the
+   power is off at your address, green when it's on. Renders DTEK's own text,
+   including the reason and the estimated restoration time. Text-only. */
+function curBanner(d) {
+  const text = String(d.text || "").trim();
+  if (!text) return;
+  const outage = d.is_outage === true || /відсутня електроенергія|відключено/i.test(text);
+  const b = document.createElement("div");
+  b.className = "banner " + (outage ? "attn" : "curon");
+  const head = document.createElement("b");
+  const addr = String(d.address || "").split(",").slice(1).join(",").trim();
+  head.textContent = "\uD83C\uDFE0 " + (addr || "Your address") + " \u2014 " +
+    (outage ? "power off now" : "power on") +
+    (d.dtek_updated ? " \u00b7 updated " + String(d.dtek_updated) : "");
+  const body = document.createElement("div");
+  body.className = "cur-body";
+  body.textContent = text;
+  b.appendChild(head);
+  b.appendChild(body);
+  el("banners").appendChild(b);
+}
+
 /* DTEK's "Шановні клієнти!" window from the mirror — emergency notices
    (air raid alerts, grid emergencies) during which schedules may not apply.
    Collapsed by default to one line showing DTEK's actual message; tap to read
@@ -447,6 +486,11 @@ function render() {
     return;
   }
 
+  if (CUR_DATA) {
+    const curTs = Date.parse(CUR_DATA.fetched_at);   // file only exists if the Action ran
+    if (!Number.isFinite(curTs) || Date.now() - curTs < 24 * 3600 * 1000)
+      curBanner(CUR_DATA);
+  }
   if (DATA.attention && DATA.attention.text)
     attentionBanner(DATA.attention.text);
   if (FETCH_ERROR && DATA)
@@ -718,14 +762,56 @@ async function doRefresh() {
   const btn = el("btnRefresh");
   btn.disabled = true;
   await loadData();
+  await fetchCur();
   render();
   btn.disabled = false;
+}
+
+/* per-address live status published by the repo's GitHub Action
+   (cur_outage.json next to index.html); silently absent when the Action
+   hasn't run yet or isn't deployed */
+async function fetchCur() {
+  if (!/^https?:$/.test(location.protocol)) return;   // file:// — no server file
+  try {
+    const j = await fetchWithTimeout("cur_outage.json", 8000);
+    CUR_DATA = (j && typeof j.text === "string" && j.text.trim()) ? j : null;
+  } catch (e) { CUR_DATA = null; }   // 404 = not published yet — normal
+}
+
+/* transient toast message */
+let toastTimer = null;
+function toast(msg) {
+  let t = document.querySelector(".toast");
+  if (!t) { t = document.createElement("div"); t.className = "toast"; document.body.appendChild(t); }
+  t.textContent = msg;
+  requestAnimationFrame(() => t.classList.add("show"));
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove("show"), 2600);
+}
+
+/* header chip: copy the hardcoded address, then open DTEK's site (new tab).
+   A static page cannot fetch DTEK itself (WAF blocks server relays, the API
+   sends no CORS headers) — this just makes the manual check one tap. */
+function wireDtekChip() {
+  const chip = document.getElementById("dtekBtn");
+  if (!chip) return;
+  chip.addEventListener("click", async () => {
+    let copied = false;
+    try {
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(DTEK_ADDRESS);
+        copied = true;
+      }
+    } catch (e) {}
+    toast(copied ? "Address copied \u2014 paste it on the DTEK page" : DTEK_ADDRESS);
+  });
 }
 
 /* ---------------- init ---------------- */
 
 (async function init() {
   applyTheme();
+  wireDtekChip();
   if (window.matchMedia) {
     const mq = window.matchMedia("(prefers-color-scheme: dark)");
     if (mq.addEventListener) mq.addEventListener("change", () => {
@@ -738,6 +824,7 @@ async function doRefresh() {
   else render();
   await loadData();
   if (DATA) SLOT_TABLE = slotTable(DATA.preset.time_zone);
+  await fetchCur();
   render();
   setInterval(() => { if (!document.hidden) doRefresh(); }, REFRESH_MS);
   setInterval(() => { if (!document.hidden) tickCountdown(); }, 30000);

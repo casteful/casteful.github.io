@@ -5,7 +5,7 @@
    localStorage copy of the last schedule. */
 "use strict";
 
-const CACHE = "dtek-odesa-v6";
+const CACHE = "dtek-odesa-v9";
 const ASSETS = [
   "./",
   "./index.html",
