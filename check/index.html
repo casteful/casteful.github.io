@@ -178,7 +178,7 @@ try{var t=localStorage.getItem("dtek_theme");if(t)document.documentElement.datas
     <div class="hmeta">
       <button class="queuebtn" id="queueBtn" onclick="openSetup(false)" title="Change your queue (чергу)">Queue &#9662;</button>
       <a class="queuebtn" id="dtekBtn" href="https://www.dtek-oem.com.ua/ua/shutdowns" target="_blank" rel="noreferrer"
-         title="Copies your address, then opens DTEK's site — paste it there to see the live per-address box. The app itself cannot read DTEK (WAF, no CORS).">&#127968; Колонтаївська, 59 &#8599;</a>
+         title="Copies your address, then opens DTEK's site — paste it there to see the live per-address box. The app itself cannot read DTEK (WAF, no CORS).">&#127968; Open DTEK's site &#8599;</a>
       <span class="sub" id="updated"></span>
     </div>
   </header>
@@ -227,7 +227,7 @@ const COL = { on: "#16a34a", off: "#dc2626", maybe: "#d97706", unknown: "#c3ccd9
 const STATE_NAMES = { on: "POWER ON", off: "POWER OFF", maybe: "POSSIBLE OUTAGE" };
 /* hardcoded address for the header chip: one tap copies it and opens DTEK's
    site (the app itself cannot read DTEK — Imperva WAF, no CORS headers) */
-const DTEK_ADDRESS = "м. Одеса, Колонтаївська, 59";
+const DTEK_ADDRESS = "м. Одеса";
 
 /* ---------------- state ---------------- */
 
